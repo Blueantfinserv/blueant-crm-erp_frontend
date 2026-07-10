@@ -7,6 +7,10 @@ type Props = {
   onLogin: () => void;
   onActivateAccount: () => void;
   onForgotPassword: () => void;
+  onHelp: () => void;
+  onContact: () => void;
+  onPrivacyPolicy: () => void;
+  onTerms: () => void;
   loading: boolean;
   errorMessage: string | null;
   successMessage: string | null;

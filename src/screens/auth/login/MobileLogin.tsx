@@ -1,9 +1,11 @@
 import { Image, View, StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { BackgroundCurves } from '../../../components/BackgroundCurves';
 import { LoginCard, LogoRow, LoginScreenProps } from './LoginShared';
+import { FooterLink } from '../../../components/LegalPage';
 
 export function MobileLogin(props: LoginScreenProps) {
   const { width, height } = useWindowDimensions();
+  const currentYear = new Date().getFullYear();
   const mascotWidth = Math.min(286, Math.max(232, width * 0.69));
   const mascotHeight = Math.min(258, Math.max(208, height * 0.275));
   const mascotScale = width < 375 ? 1.16 : width < 410 ? 1.18 : 1.2;
@@ -29,7 +31,13 @@ export function MobileLogin(props: LoginScreenProps) {
       <LoginCard {...props} />
 
       <View style={styles.footer}>
-        <Text style={[styles.footerSubtext, { fontSize: footerFontSize }]}>{'\u26E8'} 2024 BlueAnt Finserv</Text>
+        <View style={styles.footerLinks}>
+          <FooterLink label="Help" onPress={props.onHelp} />
+          <FooterLink label="Contact" onPress={props.onContact} />
+          <FooterLink label="Privacy Policy" onPress={props.onPrivacyPolicy} />
+          <FooterLink label="Terms" onPress={props.onTerms} />
+        </View>
+        <Text style={[styles.footerSubtext, { fontSize: footerFontSize }]}>{'\u00A9'} {currentYear} BlueAnt Finserv</Text>
       </View>
     </View>
   );
@@ -67,6 +75,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 3,
     flexShrink: 0,
+  },
+  footerLinks: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 14,
   },
   footerText: {
     color: '#2563EB',

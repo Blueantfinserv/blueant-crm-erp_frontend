@@ -9,8 +9,15 @@ import { ForgotPasswordScreen } from './src/screens/auth/ForgotPasswordScreen';
 import { ResetPasswordScreen } from './src/screens/auth/ResetPasswordScreen';
 import { theme } from './src/theme/theme';
 import { DashboardScreen } from './src/screens/DashboardScreen';
+import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
 
-type ScreenState = 'splash' | 'login' | 'activateAccount' | 'forgotPassword' | 'resetPassword' | 'dashboard';
+type ScreenState =
+  | 'splash'
+  | 'login'
+  | 'activateAccount'
+  | 'forgotPassword'
+  | 'resetPassword'
+  | 'dashboard';
 
 export default function App() {
   return (
@@ -24,6 +31,7 @@ function AppShell() {
   const auth = useAuth();
   const [screen, setScreen] = useState<ScreenState>('splash');
   const [message, setMessage] = useState<string | null>(null);
+  const [legalPage, setLegalPage] = useState<LegalPageKind | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -54,6 +62,11 @@ function AppShell() {
     setScreen(next);
   };
 
+  const openLegalPage = (next: LegalPageKind) => {
+    setMessage(null);
+    setLegalPage(next);
+  };
+
   const runAction = async (action: () => Promise<unknown>, next?: ScreenState) => {
     setMessage(null);
     try {
@@ -76,6 +89,10 @@ function AppShell() {
             onLogin={() => runAction(() => auth.login())}
             onForgotPassword={() => navigate('forgotPassword')}
             onActivateAccount={() => navigate('activateAccount')}
+            onHelp={() => openLegalPage('help')}
+            onContact={() => openLegalPage('contact')}
+            onPrivacyPolicy={() => openLegalPage('privacyPolicy')}
+            onTerms={() => openLegalPage('terms')}
             loading={auth.isLoading || auth.isRefreshing}
             errorMessage={message ?? auth.error}
             successMessage={auth.success}
@@ -126,6 +143,11 @@ function AppShell() {
       <StatusBar barStyle="light-content" backgroundColor={theme.colors.secondary} />
       <Animated.View style={[styles.animatedShell, { opacity: fade }]}>
         {content}
+        <LegalDocsScreen
+          kind={legalPage}
+          onClose={() => setLegalPage(null)}
+          onNavigate={(next) => setLegalPage(next)}
+        />
       </Animated.View>
     </SafeAreaView>
   );

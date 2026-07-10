@@ -1,43 +1,41 @@
 import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BackgroundCurves } from '../../../components/BackgroundCurves';
-import { LoginCard, LogoRow, LoginScreenProps } from './LoginShared';
+import { FeatureCard, LoginCard, LogoRow, LoginScreenProps } from './LoginShared';
 import { theme } from '../../../theme/theme';
+import { FooterLink } from '../../../components/LegalPage';
 
 export function DesktopLogin(props: LoginScreenProps) {
   const { width, height } = useWindowDimensions();
+  const currentYear = new Date().getFullYear();
+  const isUltraWide = width >= 1800;
   const isLargeDesktop = width >= 1440;
   const isWideDesktop = width >= 1280;
 
-  const logoWidth = Math.min(220, Math.max(176, width * 0.15));
-  const logoHeight = Math.min(66, Math.max(54, height * 0.05));
-  const mascotWidth = Math.min(isLargeDesktop ? 440 : 380, Math.max(420, width * 0.22));
-  const mascotHeight = Math.min(isLargeDesktop ? 540 : 500, Math.max(450, height * 0.51));
+  const logoWidth = isUltraWide ? Math.min(360, Math.max(240, width * 0.20)) : Math.min(250, Math.max(188, width * 0.17));
+  const logoHeight = isUltraWide ? Math.min(108, Math.max(74, height * 0.078)) : Math.min(74, Math.max(58, height * 0.05));
+  const mascotWidth = isUltraWide ? Math.min(760, Math.max(580, width * 0.33)) : Math.min(isLargeDesktop ? 440 : 380, Math.max(420, width * 0.22));
+  const mascotHeight = isUltraWide ? Math.min(860, Math.max(700, height * 0.72)) : Math.min(isLargeDesktop ? 540 : 500, Math.max(450, height * 0.51));
   const mascotImageWidth = mascotWidth * 0.96;
   const mascotImageHeight = mascotHeight * 0.96;
-  const cardWidth = Math.min(isLargeDesktop ? 520 : 480, Math.max(420, width * 0.32));
-  const titleSize = isLargeDesktop ? 44 : isWideDesktop ? 40 : 38;
-  const subtitleSize = isLargeDesktop ? 17 : 16;
+  const cardWidth = isUltraWide ? Math.min(820, Math.max(560, width * 0.44)) : Math.min(isLargeDesktop ? 520 : 480, Math.max(420, width * 0.32));
+  const titleSize = isUltraWide ? 68 : isLargeDesktop ? 44 : isWideDesktop ? 40 : 38;
 
   return (
     <View style={[styles.screen, isLargeDesktop && styles.screenLarge]}>
       <BackgroundCurves variant="desktop" />
       <View style={styles.header}>
         <LogoRow width={logoWidth} height={logoHeight} />
-        <View style={styles.headerLinks}>
-          <Text style={styles.headerLink}>Help</Text>
-          <Text style={styles.headerLink}>Contact</Text>
-        </View>
       </View>
 
       <View style={styles.body}>
         <View style={styles.left}>
           <View style={styles.brandCopy}>
             <Text style={[styles.title, { fontSize: titleSize, lineHeight: titleSize + 6 }]}>Welcome!</Text>
-            <Text style={[styles.subtitle, { fontSize: subtitleSize }]}>Login to access your workspace</Text>
           </View>
 
-          <View style={styles.helperCopy}>
-            <Text style={styles.helper}>BlueAnt ERP keeps your enterprise access simple and secure.</Text>
+          <View style={styles.infoCards}>
+            <FeatureCard title="Mission" description="Empowering through knowledge" />
+            <FeatureCard title="Vision" description="Committed to your long-term success" />
           </View>
         </View>
 
@@ -55,9 +53,11 @@ export function DesktopLogin(props: LoginScreenProps) {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerLink}>Privacy Policy</Text>
-        <Text style={styles.footerLink}>Terms</Text>
-        <Text style={styles.footerText}>{'\u00A9'} 2024 BlueAnt Finserv</Text>
+        <FooterLink label="Help" onPress={props.onHelp} />
+        <FooterLink label="Contact" onPress={props.onContact} />
+        <FooterLink label="Privacy Policy" onPress={props.onPrivacyPolicy} />
+        <FooterLink label="Terms" onPress={props.onTerms} />
+        <Text style={styles.footerText}>{'\u00A9'} {currentYear} BlueAnt Finserv</Text>
       </View>
     </View>
   );
@@ -84,27 +84,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     zIndex: 1,
   },
-  headerLinks: {
-    flexDirection: 'row',
-    gap: 20,
-  },
-  headerLink: {
-    color: theme.colors.muted,
-    fontSize: 14,
-    fontWeight: '600',
-  },
   body: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 24,
+    gap: isUltraWide ? 68 : 24,
     zIndex: 1,
   },
   left: {
     flex: 1,
     justifyContent: 'center',
-    gap: 24,
+    gap: 18,
+    transform: [{ translateY: isUltraWide ? -22 : -10 }],
   },
   centerMascot: {
     paddingVertical: 10,
@@ -118,48 +110,39 @@ const styles = StyleSheet.create({
   },
   brandCopy: {
     gap: 8,
-    marginTop: 10,
+    marginTop: isUltraWide ? 0 : 10,
   },
-  helperCopy: {
-    maxWidth: 420,
+  infoCards: {
+    width: '100%',
+    maxWidth: isUltraWide ? 760 : 420,
+    gap: isUltraWide ? 24 : 12,
   },
   title: {
     color: theme.colors.text,
-    fontSize: 40,
-    lineHeight: 46,
-    fontWeight: '800',
-    letterSpacing: -0.8,
-  },
-  subtitle: {
-    color: theme.colors.muted,
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  helper: {
-    color: theme.colors.muted,
-    fontSize: 14,
-    lineHeight: 21,
-    maxWidth: 420,
+    fontSize: isUltraWide ? 42 : 42,
+    lineHeight: isUltraWide ? 68 : 50,
+    fontWeight: '900',
+    letterSpacing: -1.2,
   },
   right: {
-    width: 480,
-    maxWidth: 480,
+    width: isUltraWide ? 820 : 480,
+    maxWidth: isUltraWide ? 820 : 480,
     alignSelf: 'center',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 20,
+    gap: isUltraWide ? 42 : 20,
     alignItems: 'center',
     zIndex: 1,
   },
   footerLink: {
     color: theme.colors.muted,
-    fontSize: 13,
+    fontSize: isUltraWide ? 16 : 13,
     fontWeight: '600',
   },
   footerText: {
     color: theme.colors.subtle,
-    fontSize: 13,
+    fontSize: isUltraWide ? 16 : 13,
   },
 });

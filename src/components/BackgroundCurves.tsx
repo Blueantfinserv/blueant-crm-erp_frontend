@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 type Props = {
@@ -6,6 +6,9 @@ type Props = {
 };
 
 export function BackgroundCurves({ variant }: Props) {
+  const { width } = useWindowDimensions();
+  const isUltraWide = variant === 'desktop' && width >= 1800;
+
   if (variant === 'mobile') {
     return (
       <View pointerEvents="none" style={styles.layer}>
@@ -51,20 +54,20 @@ export function BackgroundCurves({ variant }: Props) {
 
   return (
     <View pointerEvents="none" style={styles.layer}>
-      <View style={[styles.blob, styles.desktopBlobTop]} />
-      <View style={[styles.blobShade, styles.desktopBlobTopShade]} />
-      <View style={[styles.blobShadeDark, styles.desktopBlobTopShadeDark]} />
-      <View style={[styles.wave, styles.desktopWaveLeft]} />
-      <View style={[styles.waveShade, styles.desktopWaveLeftShade]} />
-      <View style={[styles.waveShadeDark, styles.desktopWaveLeftShadeDark]} />
-      <View style={[styles.wave, styles.desktopWaveRight]} />
-      <View style={[styles.waveShade, styles.desktopWaveRightShade]} />
-      <View style={[styles.waveShadeDark, styles.desktopWaveRightShadeDark]} />
-      <View style={[styles.ringBlob, styles.desktopRingBlob]} />
-      <View style={[styles.dots, styles.desktopDotsLeft]} />
-      <View style={[styles.dots, styles.desktopDotsRight]} />
-      <View style={[styles.curve, styles.desktopCurveA]} />
-      <View style={[styles.curve, styles.desktopCurveB]} />
+      <View style={[styles.blob, isUltraWide ? styles.desktopBlobTopUltra : styles.desktopBlobTop]} />
+      <View style={[styles.blobShade, isUltraWide ? styles.desktopBlobTopShadeUltra : styles.desktopBlobTopShade]} />
+      <View style={[styles.blobShadeDark, isUltraWide ? styles.desktopBlobTopShadeDarkUltra : styles.desktopBlobTopShadeDark]} />
+      <View style={[styles.wave, isUltraWide ? styles.desktopWaveLeftUltra : styles.desktopWaveLeft]} />
+      <View style={[styles.waveShade, isUltraWide ? styles.desktopWaveLeftShadeUltra : styles.desktopWaveLeftShade]} />
+      <View style={[styles.waveShadeDark, isUltraWide ? styles.desktopWaveLeftShadeDarkUltra : styles.desktopWaveLeftShadeDark]} />
+      <View style={[styles.wave, isUltraWide ? styles.desktopWaveRightUltra : styles.desktopWaveRight]} />
+      <View style={[styles.waveShade, isUltraWide ? styles.desktopWaveRightShadeUltra : styles.desktopWaveRightShade]} />
+      <View style={[styles.waveShadeDark, isUltraWide ? styles.desktopWaveRightShadeDarkUltra : styles.desktopWaveRightShadeDark]} />
+      <View style={[styles.ringBlob, isUltraWide ? styles.desktopRingBlobUltra : styles.desktopRingBlob]} />
+      <View style={[styles.dots, isUltraWide ? styles.desktopDotsLeftUltra : styles.desktopDotsLeft]} />
+      <View style={[styles.dots, isUltraWide ? styles.desktopDotsRightUltra : styles.desktopDotsRight]} />
+      <View style={[styles.curve, isUltraWide ? styles.desktopCurveAUltra : styles.desktopCurveA]} />
+      <View style={[styles.curve, isUltraWide ? styles.desktopCurveBUltra : styles.desktopCurveB]} />
     </View>
   );
 }
@@ -543,6 +546,132 @@ mobileWaveRightShadeDark: {
     height: 510,
     bottom: -200,
     left: -560,
+    transform: [{ rotate: '-27deg' }],
+    borderRightColor: 'transparent',
+    borderTopColor: 'transparent',
+    opacity: 0.28,
+  },
+  desktopBlobTopUltra: {
+    width: 720,
+    height: 720,
+    top: -280,
+    left: -320,
+    backgroundColor: 'rgba(96, 165, 250, 0.24)',
+    opacity: 1,
+  },
+  desktopBlobTopShadeUltra: {
+    width: 520,
+    height: 520,
+    top: -224,
+    left: -244,
+    backgroundColor: 'rgba(37, 99, 235, 0.72)',
+  },
+  desktopBlobTopShadeDarkUltra: {
+    width: 380,
+    height: 380,
+    top: -170,
+    left: -170,
+    backgroundColor: 'rgba(29, 78, 216, 0.82)',
+  },
+  desktopWaveLeftUltra: {
+    width: 1720,
+    height: 720,
+    bottom: -470,
+    left: -460,
+    backgroundColor: 'rgba(99, 102, 241, 0.20)',
+    transform: [{ rotate: '15deg' }],
+    opacity: 1,
+  },
+  desktopWaveLeftShadeUltra: {
+    width: 1120,
+    height: 600,
+    bottom: -380,
+    left: -360,
+    backgroundColor: 'rgba(49, 46, 129, 0.72)',
+    transform: [{ rotate: '13deg' }],
+  },
+  desktopWaveLeftShadeDarkUltra: {
+    width: 880,
+    height: 420,
+    bottom: -280,
+    left: -290,
+    backgroundColor: 'rgba(2, 56, 142, 0.88)',
+    borderTopLeftRadius: 180,
+    borderTopRightRadius: 300,
+    borderBottomRightRadius: 24,
+    borderBottomLeftRadius: 150,
+    transform: [{ rotate: '15deg' }],
+  },
+  desktopWaveRightUltra: {
+    width: 1020,
+    height: 1460,
+    bottom: -500,
+    right: -440,
+    backgroundColor: 'rgba(251, 146, 60, 0.18)',
+    transform: [{ rotate: '-16deg' }],
+    opacity: 1,
+  },
+  desktopWaveRightShadeUltra: {
+    width: 800,
+    height: 1180,
+    bottom: -320,
+    right: -340,
+    backgroundColor: 'rgba(234, 88, 12, 0.68)',
+    transform: [{ rotate: '-14deg' }],
+  },
+  desktopWaveRightShadeDarkUltra: {
+    width: 580,
+    height: 730,
+    bottom: -240,
+    right: -220,
+    backgroundColor: 'rgba(120, 53, 15, 0.88)',
+    borderTopLeftRadius: 200,
+    borderTopRightRadius: 120,
+    borderBottomRightRadius: 220,
+    borderBottomLeftRadius: 70,
+    transform: [{ rotate: '-12deg' }],
+  },
+  desktopRingBlobUltra: {
+    width: 480,
+    height: 560,
+    top: -24,
+    right: -164,
+    backgroundColor: 'rgba(20, 184, 166, 0.18)',
+    borderTopLeftRadius: 120,
+    borderTopRightRadius: 190,
+    borderBottomRightRadius: 140,
+    borderBottomLeftRadius: 80,
+    transform: [{ rotate: '7deg' }],
+  },
+  desktopDotsLeftUltra: {
+    width: 152,
+    height: 220,
+    left: 70,
+    top: 320,
+    opacity: 1,
+  },
+  desktopDotsRightUltra: {
+    width: 152,
+    height: 220,
+    right: 66,
+    top: 980,
+    opacity: 1,
+  },
+  desktopCurveAUltra: {
+    width: 2400,
+    height: 940,
+    top: -170,
+    right: -1040,
+    transform: [{ rotate: '-27deg' }],
+    borderLeftColor: 'transparent',
+    borderBottomColor: 'transparent',
+    opacity: 0.38,
+  },
+  desktopCurveBUltra: {
+    width: 2320,
+    height: 900,
+    bottom: -500,
+    left: -1020,
     transform: [{ rotate: '-27deg' }],
     borderRightColor: 'transparent',
     borderTopColor: 'transparent',
