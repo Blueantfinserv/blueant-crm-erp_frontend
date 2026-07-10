@@ -27,13 +27,13 @@ export function DesktopLogin(props: LoginScreenProps) {
         <LogoRow width={logoWidth} height={logoHeight} />
       </View>
 
-      <View style={styles.body}>
-        <View style={styles.left}>
+      <View style={[styles.body, isUltraWide && styles.bodyUltra]}>
+        <View style={[styles.left, isUltraWide && styles.leftUltra]}>
           <View style={styles.brandCopy}>
             <Text style={[styles.title, { fontSize: titleSize, lineHeight: titleSize + 6 }]}>Welcome!</Text>
           </View>
 
-          <View style={styles.infoCards}>
+          <View style={[styles.infoCards, isUltraWide && styles.infoCardsUltra]}>
             <FeatureCard title="Mission" description="Empowering through knowledge" />
             <FeatureCard title="Vision" description="Committed to your long-term success" />
           </View>
@@ -52,7 +52,7 @@ export function DesktopLogin(props: LoginScreenProps) {
         </View>
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, isUltraWide && styles.footerUltra]}>
         <FooterLink label="Help" onPress={props.onHelp} />
         <FooterLink label="Contact" onPress={props.onContact} />
         <FooterLink label="Privacy Policy" onPress={props.onPrivacyPolicy} />
@@ -89,14 +89,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: isUltraWide ? 68 : 24,
+    gap: 24,
     zIndex: 1,
+  },
+  bodyUltra: {
+    gap: 68,
   },
   left: {
     flex: 1,
     justifyContent: 'center',
     gap: 18,
-    transform: [{ translateY: isUltraWide ? -22 : -10 }],
+    transform: [{ translateY: -10 }],
+  },
+  leftUltra: {
+    transform: [{ translateY: -22 }],
   },
   centerMascot: {
     paddingVertical: 10,
@@ -110,39 +116,46 @@ const styles = StyleSheet.create({
   },
   brandCopy: {
     gap: 8,
-    marginTop: isUltraWide ? 0 : 10,
+    marginTop: 10,
   },
   infoCards: {
     width: '100%',
-    maxWidth: isUltraWide ? 760 : 420,
-    gap: isUltraWide ? 24 : 12,
+    maxWidth: 420,
+    gap: 12,
+  },
+  infoCardsUltra: {
+    maxWidth: 760,
+    gap: 24,
   },
   title: {
     color: theme.colors.text,
-    fontSize: isUltraWide ? 42 : 42,
-    lineHeight: isUltraWide ? 68 : 50,
+    fontSize: 42,
+    lineHeight: 50,
     fontWeight: '900',
     letterSpacing: -1.2,
   },
   right: {
-    width: isUltraWide ? 820 : 480,
-    maxWidth: isUltraWide ? 820 : 480,
+    width: 480,
+    maxWidth: 480,
     alignSelf: 'center',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: isUltraWide ? 42 : 20,
+    gap: 20,
     alignItems: 'center',
     zIndex: 1,
   },
+  footerUltra: {
+    gap: 42,
+  },
   footerLink: {
     color: theme.colors.muted,
-    fontSize: isUltraWide ? 16 : 13,
+    fontSize: 13,
     fontWeight: '600',
   },
   footerText: {
     color: theme.colors.subtle,
-    fontSize: isUltraWide ? 16 : 13,
+    fontSize: 13,
   },
 });
