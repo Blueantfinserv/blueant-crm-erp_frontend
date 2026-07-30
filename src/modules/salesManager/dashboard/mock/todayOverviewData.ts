@@ -46,5 +46,10 @@ export const todayOverviewData: readonly TodayOverviewCard[] = [
     iconBackgroundColor: '#F0FDF4',
     cardBackgroundColor: '#F5FCF7',
     featured: true,
+    scoreDetails: {
+      points: 80,
+      rank: 4,
+      previousWeekPoints: 68,
+    },
   },
 ];

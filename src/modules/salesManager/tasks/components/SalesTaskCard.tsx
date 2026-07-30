@@ -1,4 +1,4 @@
-import { memo, useState } from 'react';
+import { memo } from 'react';
 import { GestureResponderEvent, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../../theme/theme';
@@ -9,6 +9,7 @@ type Props = {
   width: `${number}%`;
   index: number;
   onUpdateMeeting?: (task: SalesTask) => void;
+  onOpenDetails?: (task: SalesTask) => void;
 };
 
 const cardTones = [
@@ -18,17 +19,8 @@ const cardTones = [
   { accent: '#16A34A', soft: '#F0FDF4', border: '#DCFCE7' },
 ] as const;
 
-const getInitials = (name: string) =>
-  name
-    .split(' ')
-    .slice(0, 2)
-    .map((part) => part[0])
-    .join('')
-    .toUpperCase();
-
-export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, onUpdateMeeting }: Props) {
+export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, onUpdateMeeting, onOpenDetails }: Props) {
   const tone = cardTones[index % cardTones.length];
-  const [remarksExpanded, setRemarksExpanded] = useState(false);
   const whatsappNumber = task.phone.replace(/\D/g, '');
   const dialerNumber = task.phone.replace(/[^\d+]/g, '');
   const mapsUrl =
@@ -42,9 +34,8 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${task.name}, ${task.meetingStage}. ${remarksExpanded ? 'Hide' : 'Show'} remarks`}
-      accessibilityState={{ expanded: remarksExpanded }}
-      onPress={() => setRemarksExpanded((current) => !current)}
+      accessibilityLabel={`Open details for ${task.name}, ${task.meetingStage}`}
+      onPress={() => onOpenDetails?.(task)}
       style={({ pressed }) => [
         styles.card,
         { flexBasis: width, borderColor: tone.border },
@@ -52,9 +43,6 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
       ]}
     >
       <View style={styles.header}>
-        <View style={[styles.avatar, { backgroundColor: tone.soft }]}>
-          <Text style={[styles.avatarText, { color: tone.accent }]}>{getInitials(task.name)}</Text>
-        </View>
         <View style={styles.identity}>
           <Text numberOfLines={1} style={styles.name}>{task.name}</Text>
           <View style={styles.contactActions}>
@@ -107,24 +95,16 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
       <View style={styles.locationRow}>
         <Icon source="map-marker-outline" size={15} color={tone.accent} />
         <View style={styles.locationCopy}>
-          <Text style={styles.locationLabel}>Meeting location</Text>
           <Text numberOfLines={1} style={styles.location}>{task.locationText}</Text>
         </View>
       </View>
 
-      <View style={[styles.remarks, remarksExpanded && styles.remarksExpanded, { backgroundColor: tone.soft }]}>
+      <View style={[styles.remarks, { backgroundColor: tone.soft }]}>
         <View style={styles.remarksHeader}>
           <Text style={styles.remarksLabel}>Remarks</Text>
-          <View style={styles.remarksHint}>
-            {!remarksExpanded ? <Text style={[styles.tapLabel, { color: tone.accent }]}>View</Text> : null}
-            <Icon
-              source={remarksExpanded ? 'chevron-up' : 'chevron-down'}
-              size={15}
-              color={tone.accent}
-            />
-          </View>
+          <Icon source="arrow-top-right" size={14} color={tone.accent} />
         </View>
-        {remarksExpanded ? <Text style={styles.remarksText}>{task.remarks}</Text> : null}
+        <Text numberOfLines={2} style={styles.remarksText}>{task.remarks}</Text>
       </View>
 
       <View style={styles.footer}>
@@ -176,8 +156,6 @@ const styles = StyleSheet.create({
     opacity: 0.82,
   },
   header: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-  avatar: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 11, fontWeight: '900' },
   identity: {
     minWidth: 0,
     flex: 1,
@@ -215,13 +193,6 @@ const styles = StyleSheet.create({
   stageText: { fontSize: 8, lineHeight: 10, fontWeight: '900' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   locationCopy: { minWidth: 0, flex: 1 },
-  locationLabel: {
-    color: theme.colors.subtle,
-    fontSize: 7,
-    lineHeight: 9,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-  },
   location: { minWidth: 0, flex: 1, color: theme.colors.muted, fontSize: 10, fontWeight: '700' },
   remarks: {
     minHeight: 30,
@@ -230,27 +201,10 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     borderRadius: theme.radius.sm,
   },
-  remarksExpanded: {
-    minHeight: 52,
-    justifyContent: 'flex-start',
-    gap: 3,
-    paddingVertical: 7,
-  },
   remarksHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-  },
-  remarksHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  tapLabel: {
-    fontSize: 7,
-    lineHeight: 10,
-    fontWeight: '900',
-    textTransform: 'uppercase',
   },
   remarksLabel: {
     color: theme.colors.muted,

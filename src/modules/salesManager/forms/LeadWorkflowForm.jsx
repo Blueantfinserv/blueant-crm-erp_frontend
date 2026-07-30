@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +15,7 @@ import { Picker } from "@react-native-picker/picker";
 import { Icon } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
+import * as ImagePicker from "expo-image-picker";
 import MapView, { Marker } from "../../../../PreviewMap";
 
 const LEAD_SOURCES = ["Referral", "Website", "Social Media", "Cold Call", "Walk-in", "Other"];
@@ -25,6 +27,23 @@ const LEAD_STATUSES = [
   "Client Not Interested",
   "Work in Progress",
 ];
+const PROFESSIONS = [
+  "Salaried",
+  "Business Owner",
+  "Self Employed",
+  "Doctor",
+  "Chartered Accountant",
+  "Lawyer",
+  "Engineer",
+  "Teacher",
+  "Government Employee",
+  "Retired",
+];
+const AGE_GROUPS = ["Less than 20", "20–30", "31–40", "41–50", "51–60", "More than 60"];
+const FOLLOW_UP_TIMES = ["9 AM–11 AM", "11 AM–1 PM", "1 PM–3 PM", "3 PM–5 PM", "Late Evening"];
+const QUALIFICATIONS = ["Hot", "Medium", "Cold"];
+const KIDS_OPTIONS = ["No Kids", "1", "2", "2+"];
+const MARITAL_STATUSES = ["Single", "Married", "Divorced", "Widowed"];
 const INITIAL_REGION = {
   latitude: 20.5937,
   longitude: 78.9629,
@@ -38,6 +57,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
   const needsLocationPin = isFirstMeeting && !lead?.hasLocationPin;
   const mapRef = useRef(null);
   const [loading, setLoading] = useState(false);
+  const [imageLoading, setImageLoading] = useState("");
+  const [images, setImages] = useState({
+    visitingCard: null,
+    adBoard: null,
+  });
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [viewedMonth, setViewedMonth] = useState(() => {
     const date = new Date();
@@ -58,6 +82,16 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
     panNumber: "",
     amount: "",
     investmentType: "",
+    leadEmail: "",
+    profession: "",
+    ageGroup: "",
+    bestFollowUpTime: "",
+    leadQualification: "",
+    kids: "",
+    maritalStatus: "",
+    priorInvestment: "",
+    priorInvestmentDetails: "",
+    adviceMode: "",
   });
   const [coordinates, setCoordinates] = useState(
     lead?.hasLocationPin ? lead.coordinates : null
@@ -107,6 +141,29 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
     }
   };
 
+  const chooseImage = async (field, source) => {
+    setImageLoading(field);
+    try {
+      const permission = source === "camera"
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        setErrors((current) => ({ ...current, [field]: "Permission is required to add this image." }));
+        return;
+      }
+      const result = source === "camera"
+        ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.75 })
+        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.75 });
+      if (result.canceled) return;
+      setImages((current) => ({ ...current, [field]: result.assets[0] }));
+      setErrors((current) => ({ ...current, [field]: undefined }));
+    } catch {
+      setErrors((current) => ({ ...current, [field]: "Image could not be selected." }));
+    } finally {
+      setImageLoading("");
+    }
+  };
+
   const validate = () => {
     const nextErrors = {};
     if (isNewLead) {
@@ -126,6 +183,24 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
         if (!form.leadStatus) nextErrors.leadStatus = "Lead status is required.";
         if (form.joinedMode === "With Someone" && !form.joinedWith.trim()) {
           nextErrors.joinedWith = "Person's name is required.";
+        }
+        if (isFirstMeeting) {
+          if (form.leadEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.leadEmail)) {
+            nextErrors.leadEmail = "Enter a valid email address.";
+          }
+          if (!form.profession) nextErrors.profession = "Profession is required.";
+          if (!form.ageGroup) nextErrors.ageGroup = "Age group is required.";
+          if (!form.bestFollowUpTime) nextErrors.bestFollowUpTime = "Follow-up time is required.";
+          if (!form.leadQualification) nextErrors.leadQualification = "Qualification is required.";
+          if (!form.kids) nextErrors.kids = "Select an option.";
+          if (!form.maritalStatus) nextErrors.maritalStatus = "Marital status is required.";
+          if (!form.priorInvestment) nextErrors.priorInvestment = "Select Yes or No.";
+          if (form.priorInvestment === "Yes" && !form.priorInvestmentDetails.trim()) {
+            nextErrors.priorInvestmentDetails = "Add prior investment details.";
+          }
+          if (form.priorInvestment === "Yes" && !form.adviceMode) {
+            nextErrors.adviceMode = "Select Advisor or Alone.";
+          }
         }
         if (form.leadStatus === "Work in Progress" && !form.nextPlanDate) {
           nextErrors.nextPlanDate = "Next plan date is required.";
@@ -152,6 +227,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
       panNumber: form.panNumber.toUpperCase(),
       coordinates,
       hasLocationPin: Boolean(coordinates),
+      images,
     });
     onClose();
   };
@@ -297,6 +373,99 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
                       />
                     ) : null}
                   </Field>
+                  {isFirstMeeting ? (
+                    <View style={styles.profileSection}>
+                      <View style={styles.profileSectionHeader}>
+                        <View style={styles.profileSectionIcon}>
+                          <Icon source="account-heart-outline" size={17} color="#7C3AED" />
+                        </View>
+                        <View>
+                          <Text style={styles.profileSectionTitle}>Lead Profile</Text>
+                          <Text style={styles.profileSectionCaption}>Details for better follow-up and qualification</Text>
+                        </View>
+                      </View>
+
+                      <Field label="Lead Email" error={errors.leadEmail}>
+                        <Input
+                          value={form.leadEmail}
+                          onChangeText={(value) => update("leadEmail", value)}
+                          keyboardType="email-address"
+                          autoCapitalize="none"
+                          placeholder="client@example.com"
+                        />
+                      </Field>
+                      <Field label="Profession" required error={errors.profession}>
+                        <Select value={form.profession} options={PROFESSIONS} onChange={(value) => update("profession", value)} />
+                      </Field>
+                      <Field label="Age Group" required error={errors.ageGroup}>
+                        <Select value={form.ageGroup} options={AGE_GROUPS} onChange={(value) => update("ageGroup", value)} />
+                      </Field>
+                      <Field label="Best Time to Follow Up" required error={errors.bestFollowUpTime}>
+                        <Select value={form.bestFollowUpTime} options={FOLLOW_UP_TIMES} onChange={(value) => update("bestFollowUpTime", value)} />
+                      </Field>
+                      <Field label="Lead Qualification" required error={errors.leadQualification}>
+                        <ChoiceGroup value={form.leadQualification} options={QUALIFICATIONS} onChange={(value) => update("leadQualification", value)} />
+                      </Field>
+                      <Field label="Any Kids" required error={errors.kids}>
+                        <ChoiceGroup value={form.kids} options={KIDS_OPTIONS} onChange={(value) => update("kids", value)} />
+                      </Field>
+                      <Field label="Marital Status" required error={errors.maritalStatus}>
+                        <Select value={form.maritalStatus} options={MARITAL_STATUSES} onChange={(value) => update("maritalStatus", value)} />
+                      </Field>
+                      <ImageQuestion
+                        label="Visiting Card Image"
+                        image={images.visitingCard}
+                        loading={imageLoading === "visitingCard"}
+                        error={errors.visitingCard}
+                        onCamera={() => chooseImage("visitingCard", "camera")}
+                        onGallery={() => chooseImage("visitingCard", "gallery")}
+                      />
+                      <ImageQuestion
+                        label="Ad Board Image"
+                        image={images.adBoard}
+                        loading={imageLoading === "adBoard"}
+                        error={errors.adBoard}
+                        onCamera={() => chooseImage("adBoard", "camera")}
+                        onGallery={() => chooseImage("adBoard", "gallery")}
+                      />
+                      <Field label="Any Prior Investment" required error={errors.priorInvestment}>
+                        <ChoiceGroup
+                          value={form.priorInvestment}
+                          options={["Yes", "No"]}
+                          onChange={(value) => {
+                            update("priorInvestment", value);
+                            if (value === "No") {
+                              update("priorInvestmentDetails", "");
+                              update("adviceMode", "");
+                            }
+                          }}
+                        />
+                        {form.priorInvestment === "Yes" ? (
+                          <>
+                            <Input
+                              value={form.priorInvestmentDetails}
+                              onChangeText={(value) => {
+                                const words = value.trim().split(/\s+/).filter(Boolean);
+                                if (words.length <= 20) update("priorInvestmentDetails", value);
+                              }}
+                              multiline
+                              style={[styles.textarea, styles.followupInput]}
+                              placeholder="Describe prior investments in up to 20 words"
+                            />
+                            <Text style={styles.wordCount}>
+                              {form.priorInvestmentDetails.trim().split(/\s+/).filter(Boolean).length}/20 words
+                            </Text>
+                            {errors.priorInvestmentDetails ? <Text style={styles.error}>{errors.priorInvestmentDetails}</Text> : null}
+                          </>
+                        ) : null}
+                      </Field>
+                      {form.priorInvestment === "Yes" ? (
+                        <Field label="Investment Guidance" required error={errors.adviceMode} last>
+                          <ChoiceGroup value={form.adviceMode} options={["Advisor", "Alone"]} onChange={(value) => update("adviceMode", value)} />
+                        </Field>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </>
               ) : null}
 
@@ -502,6 +671,38 @@ function LocationField({ optional, coordinates, error, loading, mapRef, onCaptur
   );
 }
 
+function ImageQuestion({ label, image, loading, error, onCamera, onGallery }) {
+  return (
+    <Field label={label} error={error}>
+      <View style={styles.imagePicker}>
+        {image ? (
+          <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="cover" />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Icon source="image-plus" size={25} color="#A78BFA" />
+            <Text style={styles.imagePlaceholderText}>No image selected</Text>
+          </View>
+        )}
+        <View style={styles.imageActions}>
+          <Pressable disabled={loading} onPress={onCamera} style={styles.imageAction}>
+            <Icon source="camera-outline" size={15} color="#6D28D9" />
+            <Text style={styles.imageActionText}>Camera</Text>
+          </Pressable>
+          <Pressable disabled={loading} onPress={onGallery} style={styles.imageAction}>
+            <Icon source="image-multiple-outline" size={15} color="#6D28D9" />
+            <Text style={styles.imageActionText}>Gallery</Text>
+          </Pressable>
+        </View>
+        {loading ? (
+          <View style={styles.imageLoader}>
+            <ActivityIndicator size="small" color="#7C3AED" />
+          </View>
+        ) : null}
+      </View>
+    </Field>
+  );
+}
+
 function Field({ label, required, error, last, children }) {
   return (
     <View style={[styles.field, last && styles.fieldLast]}>
@@ -642,6 +843,44 @@ const styles = StyleSheet.create({
   autofillValue: { marginTop: 3, color: "#4C1D95", fontSize: 13, fontWeight: "900" },
   conditionalCard: { marginBottom: 16, padding: 14, borderWidth: 1, borderColor: "#BFDBFE", borderRadius: 14, backgroundColor: "#F8FBFF" },
   conditionalTitle: { marginBottom: 13, color: "#1D4ED8", fontSize: 13, fontWeight: "900" },
+  profileSection: {
+    marginBottom: 16, padding: 16, borderWidth: 1, borderColor: "#E9D5FF",
+    borderRadius: 16, backgroundColor: "#FCFAFF",
+  },
+  profileSectionHeader: {
+    flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 16,
+    paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#F1E8FF",
+  },
+  profileSectionIcon: {
+    width: 34, height: 34, alignItems: "center", justifyContent: "center",
+    borderRadius: 11, backgroundColor: "#F3E8FF",
+  },
+  profileSectionTitle: { color: "#4C1D95", fontSize: 13, fontWeight: "900" },
+  profileSectionCaption: { marginTop: 2, color: "#8B7AA8", fontSize: 9, fontWeight: "600" },
+  imagePicker: {
+    position: "relative", overflow: "hidden", borderWidth: 1, borderColor: "#E3E2EE",
+    borderRadius: 13, backgroundColor: "#FFFFFF",
+  },
+  imagePreview: { width: "100%", height: 120 },
+  imagePlaceholder: {
+    height: 86, alignItems: "center", justifyContent: "center", gap: 4,
+    backgroundColor: "#FAF8FF",
+  },
+  imagePlaceholderText: { color: "#9386AA", fontSize: 9, fontWeight: "700" },
+  imageActions: {
+    flexDirection: "row", gap: 8, padding: 8, borderTopWidth: 1,
+    borderTopColor: "#F1EDF7",
+  },
+  imageAction: {
+    minHeight: 34, flex: 1, flexDirection: "row", alignItems: "center",
+    justifyContent: "center", gap: 5, borderRadius: 9, backgroundColor: "#F5F3FF",
+  },
+  imageActionText: { color: "#6D28D9", fontSize: 10, fontWeight: "900" },
+  imageLoader: {
+    ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.78)",
+  },
+  wordCount: { marginTop: 5, color: "#9386AA", fontSize: 9, fontWeight: "700", textAlign: "right" },
   map: { width: "100%", height: 190, overflow: "hidden", borderRadius: 10 },
   locationFooter: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
   coordinates: { minWidth: 0, flex: 1 },

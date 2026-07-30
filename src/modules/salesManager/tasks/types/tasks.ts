@@ -18,4 +18,15 @@ export interface SalesTask {
   lastUpdated: string;
   nextFollowUpDate: string;
   schedule: TaskScheduleFilter;
+  email?: string;
+  profession?: string;
+  ageGroup?: string;
+  priorInvestment?: 'Yes' | 'No';
+  adviceMode?: 'Advisor' | 'Alone';
+  kids?: string;
+  bestFollowUpTime?: string;
+  leadQualification?: 'Hot' | 'Medium' | 'Cold';
+  maritalStatus?: string;
+  visitingCardImage?: string;
+  adBoardImage?: string;
 }

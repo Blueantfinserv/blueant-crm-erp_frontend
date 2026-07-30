@@ -2,19 +2,6 @@ import { SalesActivityCard } from '../types/dashboard';
 
 export const salesActivityData: readonly SalesActivityCard[] = [
   {
-    id: 'leads-collected',
-    type: 'summary',
-    title: 'Lead Collected',
-    icon: 'account-plus-outline',
-    accentColor: '#2563EB',
-    cardBackgroundColor: '#F8FBFF',
-    values: [
-      { label: 'Today', value: 12 },
-      { label: 'This Week', value: 48 },
-      { label: 'This Month', value: 164 },
-    ],
-  },
-  {
     id: 'clients-created',
     type: 'summary',
     title: 'Client Created',

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Path, Svg } from 'react-native-svg';
 import { shellColors } from '../constants/shellColors';
@@ -28,9 +28,13 @@ export function TopNavigation({
 }: Props) {
   const { width } = useWindowDimensions();
   const isCompact = width < 768;
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [openMenu, setOpenMenu] = useState<'navigation' | 'profile' | null>(null);
 
-  const closeMenu = () => setMenuOpen(false);
+  const closeMenu = () => setOpenMenu(null);
+
+  useEffect(() => {
+    setOpenMenu(null);
+  }, [activeTab]);
 
   const handleProfilePress = () => {
     onProfilePress?.();
@@ -66,7 +70,10 @@ export function TopNavigation({
 
       {isCompact ? (
         <View style={styles.actions}>
-          <Pressable onPress={() => setMenuOpen((current) => !current)} style={[styles.iconButton, styles.hamburgerButton]}>
+          <Pressable
+            onPress={() => setOpenMenu((current) => current === 'navigation' ? null : 'navigation')}
+            style={[styles.iconButton, styles.hamburgerButton]}
+          >
             <View style={styles.hamburgerLines}>
               <View style={styles.hamburgerLine} />
               <View style={styles.hamburgerLine} />
@@ -76,7 +83,10 @@ export function TopNavigation({
           <Pressable onPress={onNotificationsPress} style={[styles.iconButton, styles.iconButtonCompact]}>
             <Text style={styles.icon}>🔔</Text>
           </Pressable>
-          <Pressable onPress={() => setMenuOpen((current) => !current)} style={[styles.iconButton, styles.iconButtonCompact]}>
+          <Pressable
+            onPress={() => setOpenMenu((current) => current === 'profile' ? null : 'profile')}
+            style={[styles.iconButton, styles.iconButtonCompact]}
+          >
             <Text style={styles.icon}>👤</Text>
           </Pressable>
         </View>
@@ -98,33 +108,35 @@ export function TopNavigation({
           <Pressable onPress={onNotificationsPress} style={styles.iconButton}>
             <Text style={styles.icon}>🔔</Text>
           </Pressable>
-          <Pressable onPress={() => setMenuOpen((current) => !current)} style={styles.iconButton}>
+          <Pressable
+            onPress={() => setOpenMenu((current) => current === 'profile' ? null : 'profile')}
+            style={styles.iconButton}
+          >
             <Text style={styles.icon}>👤</Text>
           </Pressable>
         </View>
       ) : null}
 
-      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={closeMenu}>
+      <Modal visible={openMenu !== null} transparent animationType="fade" onRequestClose={closeMenu}>
         <Pressable style={styles.modalBackdrop} onPress={closeMenu}>
           <View style={styles.dropdown}>
-            {isCompact ? (
+            {openMenu === 'navigation' ? (
               <>
                 {tabs.map((tab) => {
                   const active = tab.key === activeTab;
                   return (
-                    <Pressable key={tab.key} onPress={() => onTabPress(tab)} style={styles.dropdownItem}>
+                    <Pressable
+                      key={tab.key}
+                      onPress={() => {
+                        onTabPress(tab);
+                        closeMenu();
+                      }}
+                      style={styles.dropdownItem}
+                    >
                       <Text style={[styles.dropdownLabel, active && styles.dropdownLabelActive]}>{tab.label}</Text>
                     </Pressable>
                   );
                 })}
-                <View style={styles.dropdownDivider} />
-                <Pressable onPress={handleProfilePress} style={styles.dropdownItem}>
-                  <Text style={styles.dropdownLabel}>My Profile</Text>
-                </Pressable>
-                <View style={styles.dropdownDivider} />
-                <Pressable onPress={handleLogout} style={styles.dropdownItem}>
-                  <Text style={[styles.dropdownLabel, styles.logoutLabel]}>Logout</Text>
-                </Pressable>
               </>
             ) : (
               <>

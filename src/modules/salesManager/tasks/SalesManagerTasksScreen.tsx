@@ -77,9 +77,10 @@ function FilterDropdown<T extends string>({
 type Props = {
   onCreateNewLead?: () => void;
   onUpdateMeeting?: (lead: SalesTask) => void;
+  onOpenLeadDetails?: (lead: SalesTask) => void;
 };
 
-export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting }: Props) {
+export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const [search, setSearch] = useState('');
@@ -200,6 +201,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting }: Pr
                   width={cardWidth}
                   index={index}
                   onUpdateMeeting={onUpdateMeeting}
+                  onOpenDetails={onOpenLeadDetails}
                 />
               ))}
             </View>

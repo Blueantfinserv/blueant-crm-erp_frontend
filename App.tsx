@@ -32,6 +32,7 @@ import type { DashboardListCard } from './src/modules/salesManager/dashboard/typ
 import { SalesManagerTasksScreen } from './src/modules/salesManager/tasks/SalesManagerTasksScreen';
 import LeadWorkflowForm from './src/modules/salesManager/forms/LeadWorkflowForm';
 import type { SalesTask } from './src/modules/salesManager/tasks/types/tasks';
+import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/SalesManagerLeadDetailScreen';
 
 registerTranslation('en', en);
 
@@ -44,6 +45,7 @@ type ScreenState =
   | 'dashboard'
   | 'reports'
   | 'dashboard-list'
+  | 'sales-task-details'
   | 'coming-soon'
   | NavigationRoute;
 
@@ -108,6 +110,7 @@ function AppShell() {
     type: 'new-lead' | 'first-meeting' | 'followup-meeting';
     lead?: SalesTask;
   } | null>(null);
+  const [selectedSalesTask, setSelectedSalesTask] = useState<SalesTask | null>(null);
   const screenHistory = useRef<ScreenState[]>([]);
   const fade = useRef(new Animated.Value(0)).current;
 
@@ -145,7 +148,7 @@ function AppShell() {
     if (screen === 'reports') setActiveTab('reports');
     if (screen === 'users-roles') setActiveTab('users-roles');
     if (screen === 'team-mapping') setActiveTab('team-mapping');
-    if (screen === 'leads' || screen === 'lead-details' || screen === 'add-followup') setActiveTab('all-tasks');
+    if (screen === 'leads' || screen === 'lead-details' || screen === 'add-followup' || screen === 'sales-task-details') setActiveTab('all-tasks');
     if (screen === 'coming-soon') setActiveTab('dashboard');
   }, [screen]);
 
@@ -437,10 +440,44 @@ function AppShell() {
                   type: lead.meetingStage === '1st Meeting' ? 'first-meeting' : 'followup-meeting',
                   lead,
                 })}
+                onOpenLeadDetails={(lead) => {
+                  setSelectedSalesTask(lead);
+                  navigate('sales-task-details');
+                }}
               />
             ) : (
               <LeadScreen onOpenLeadDetails={() => navigate('lead-details')} />
             )}
+          </ErpShell>
+        );
+      case 'sales-task-details':
+        if (!selectedSalesTask) return null;
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            contentScrollable={false}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              navigate('dashboard');
+            }}
+          >
+            <SalesManagerLeadDetailScreen
+              lead={selectedSalesTask}
+              onBack={goBack}
+              onUpdateMeeting={(lead) => setLeadForm({
+                type: lead.meetingStage === '1st Meeting' ? 'first-meeting' : 'followup-meeting',
+                lead,
+              })}
+            />
           </ErpShell>
         );
       case 'lead-details':
@@ -523,7 +560,7 @@ function AppShell() {
       default:
         return null;
     }
-  }, [activeModule, activeTab, auth, comingSoonModule, followups, message, screen, selectedDashboardListId]);
+  }, [activeModule, activeTab, auth, comingSoonModule, followups, message, screen, selectedDashboardListId, selectedSalesTask]);
 
   return (
     <SafeAreaView style={styles.root}>
