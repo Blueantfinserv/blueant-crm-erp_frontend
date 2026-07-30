@@ -1,12 +1,13 @@
 import { createContext, useContext } from 'react';
 import { AuthState } from '../types/auth';
 import { AuthService } from '../services/AuthService';
+import { ForgotPasswordCredentials, LoginCredentials, RegisterCredentials, ResetPasswordCredentials } from '../types/auth';
 
 export type AuthContextValue = AuthState & {
-  login: () => Promise<void>;
-  activateAccount: () => Promise<void>;
-  forgotPassword: () => Promise<void>;
-  resetPassword: () => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<void>;
+  createAccount: (credentials: RegisterCredentials) => Promise<void>;
+  forgotPassword: (credentials: ForgotPasswordCredentials) => Promise<void>;
+  resetPassword: (credentials: ResetPasswordCredentials) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -22,17 +23,17 @@ export const useAuth = () => {
 
 export const createAuthContextValue = (state: AuthState, service: AuthService): AuthContextValue => ({
   ...state,
-  login: async () => {
-    await service.login();
+  login: async (credentials) => {
+    await service.login(credentials);
   },
-  activateAccount: async () => {
-    await service.activateAccount();
+  createAccount: async (credentials) => {
+    await service.createAccount(credentials);
   },
-  forgotPassword: async () => {
-    await service.forgotPassword();
+  forgotPassword: async (credentials) => {
+    await service.forgotPassword(credentials);
   },
-  resetPassword: async () => {
-    await service.resetPassword();
+  resetPassword: async (credentials) => {
+    await service.resetPassword(credentials);
   },
   logout: async () => {
     await service.logout();

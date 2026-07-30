@@ -1,0 +1,50 @@
+import { TodayOverviewCard } from '../types/dashboard';
+
+export const todayOverviewData: readonly TodayOverviewCard[] = [
+  {
+    id: 'todays-meetings',
+    title: "Today's Meetings",
+    value: 5,
+    icon: 'calendar-today',
+    accentColor: '#2563EB',
+    iconBackgroundColor: '#EFF6FF',
+    cardBackgroundColor: '#F8FBFF',
+  },
+  {
+    id: 'pending-meetings',
+    title: 'Pending Meetings',
+    value: 14,
+    icon: 'calendar-clock',
+    accentColor: '#F59E0B',
+    iconBackgroundColor: '#FFFBEB',
+    cardBackgroundColor: '#FFFCF5',
+  },
+  {
+    id: 'pending-client-creation',
+    title: 'Pending Client Creation',
+    value: 3,
+    icon: 'account-plus-outline',
+    accentColor: '#8B5CF6',
+    iconBackgroundColor: '#F5F3FF',
+    cardBackgroundColor: '#FAF8FF',
+  },
+  {
+    id: 'pending-documents',
+    title: 'Pending Documents',
+    value: 6,
+    icon: 'file-document-outline',
+    accentColor: '#F97316',
+    iconBackgroundColor: '#FFF7ED',
+    cardBackgroundColor: '#FFFAF5',
+  },
+  {
+    id: 'current-score',
+    title: 'Current Score',
+    value: '80 Points',
+    icon: 'star-four-points-outline',
+    accentColor: '#16A34A',
+    iconBackgroundColor: '#F0FDF4',
+    cardBackgroundColor: '#F5FCF7',
+    featured: true,
+  },
+];

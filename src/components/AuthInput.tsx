@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
 import { theme } from '../theme/theme';
+import { ValidationMessage } from './ValidationMessage';
 
 type Props = TextInputProps & {
   label: string;
@@ -23,9 +24,11 @@ export const AuthInput = forwardRef<TextInput, Props>(function AuthInput({ label
         ref={ref}
         placeholderTextColor={theme.colors.subtle}
         style={[styles.input, error && styles.inputError, style]}
+        accessibilityLabel={props.accessibilityLabel ?? label}
+        accessibilityHint={props.accessibilityHint}
         {...props}
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <ValidationMessage message={error} />
     </View>
   );
 });

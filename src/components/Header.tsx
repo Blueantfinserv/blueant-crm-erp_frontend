@@ -5,7 +5,7 @@ type Props = { title: string; subtitle?: string; onBack?: () => void };
 export function Header({ title, subtitle, onBack }: Props) {
   return (
     <View style={styles.wrap}>
-      {onBack ? <Pressable onPress={onBack} hitSlop={10}><Text style={styles.back}>Back</Text></Pressable> : <View style={styles.backSpace} />}
+      {onBack ? <Pressable onPress={onBack} hitSlop={10} accessibilityRole="button" accessibilityLabel="Back">{<Text style={styles.back}>Back</Text>}</Pressable> : <View style={styles.backSpace} />}
       <View style={styles.copy}>
         <Text style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}

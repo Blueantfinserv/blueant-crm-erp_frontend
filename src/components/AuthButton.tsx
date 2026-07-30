@@ -12,11 +12,17 @@ type Props = {
 
 export function AuthButton({ title, onPress, variant = 'primary', disabled, loading, style }: Props) {
   return (
-    <Pressable onPress={onPress} disabled={disabled || loading} style={({ pressed }) => [styles.base, styles[variant], pressed && styles.pressed, disabled && styles.disabled, style]}>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled || loading}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: Boolean(disabled || loading), busy: Boolean(loading) }}
+      style={({ pressed }) => [styles.base, styles[variant], pressed && styles.pressed, disabled && styles.disabled, style]}
+    >
       <View style={styles.content}>
         {loading ? <ActivityIndicator color={variant === 'secondary' ? theme.colors.primary : theme.colors.surface} /> : null}
         <Text style={[styles.text, variant === 'secondary' && styles.secondaryText, variant === 'ghost' && styles.ghostText]}>{title}</Text>
-        {variant === 'primary' && !loading ? <Text style={styles.arrow}>→</Text> : null}
+        {variant === 'primary' && !loading ? <Text style={styles.arrow}>{'\u2192'}</Text> : null}
       </View>
     </Pressable>
   );

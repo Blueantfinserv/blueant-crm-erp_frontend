@@ -2,11 +2,13 @@ import { useWindowDimensions } from 'react-native';
 import { MobileLogin } from './login/MobileLogin';
 import { DesktopLogin } from './login/DesktopLogin';
 import { TabletLogin } from './login/TabletLogin';
+import { LoginFormValues } from '../../utils/authValidation';
 
 type Props = {
-  onLogin: () => void;
-  onActivateAccount: () => void;
+  onLogin: (credentials: LoginFormValues) => Promise<void> | void;
+  onCreateAccount: (credentials: { email: string; password: string; confirmPassword: string }) => Promise<void> | void;
   onForgotPassword: () => void;
+  onForgotPasswordSubmit: (credentials: { email: string }) => Promise<void> | void;
   onHelp: () => void;
   onContact: () => void;
   onPrivacyPolicy: () => void;

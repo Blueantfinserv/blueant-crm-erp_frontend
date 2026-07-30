@@ -18,6 +18,7 @@ import { privacyPolicySections } from '../data/privacyPolicy';
 import { termsSections } from '../data/terms';
 
 const brandAsset = require('../../assets/blueAnt.png');
+const lastUpdatedText = 'Last Updated: 09 July 2026';
 
 export type LegalPageKind = 'help' | 'contact' | 'privacyPolicy' | 'terms';
 
@@ -279,7 +280,7 @@ export function LegalDocsLayout({
 
               <View style={styles.contentMetaRow}>
                 <Text style={styles.contentKicker}>Documentation</Text>
-                <Text style={styles.contentUpdated}>Last Updated: 09 July 2026</Text>
+                <Text style={styles.contentUpdated}>{lastUpdatedText}</Text>
               </View>
 
               {content}

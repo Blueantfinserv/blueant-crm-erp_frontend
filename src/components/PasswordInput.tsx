@@ -1,21 +1,29 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { forwardRef, useState } from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { AuthInput } from './AuthInput';
 import { theme } from '../theme/theme';
 
 type Props = React.ComponentProps<typeof AuthInput>;
 
-export function PasswordInput(props: Props) {
+export const PasswordInput = forwardRef<TextInput, Props>(function PasswordInput(props, ref) {
   const [show, setShow] = useState(false);
   return (
     <View style={styles.wrap}>
-      <AuthInput {...props} labelBadge="🔒" secureTextEntry={!show} />
-      <Pressable onPress={() => setShow((value) => !value)} hitSlop={10} style={styles.toggle}>
+      <AuthInput {...props} ref={ref} labelBadge={'\u{1F512}'} secureTextEntry={!show} />
+      <Pressable
+        onPress={() => setShow((value) => !value)}
+        hitSlop={10}
+        accessibilityRole="button"
+        accessibilityLabel={show ? 'Hide password' : 'Show password'}
+        accessibilityHint="Toggles password visibility"
+        accessibilityState={{ expanded: show }}
+        style={styles.toggle}
+      >
         <Text style={styles.toggleText}>{show ? 'Hide' : 'Show'}</Text>
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrap: { position: 'relative' },

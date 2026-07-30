@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, SafeAreaView, StatusBar, StyleSheet } from 'react-native';
+import { Animated, Easing, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet } from 'react-native';
+import { PaperProvider } from 'react-native-paper';
+import { en, registerTranslation } from 'react-native-paper-dates';
 import { AuthProvider } from './src/context/AuthProvider';
 import { useAuth } from './src/context/AuthContext';
 import { SplashScreen } from './src/screens/auth/SplashScreen';
@@ -10,20 +12,85 @@ import { ResetPasswordScreen } from './src/screens/auth/ResetPasswordScreen';
 import { theme } from './src/theme/theme';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
+import { AuthRole, ForgotPasswordCredentials, RegisterCredentials, ResetPasswordCredentials } from './src/types/auth';
+import { LoginFormValues } from './src/utils/authValidation';
+import { getRoleNavigationConfig } from './src/navigation/navigationConfig';
+import { LeadScreen } from './src/modules/leads/LeadScreen';
+import { LeadDetailsScreen } from './src/modules/leads/details/LeadDetailsScreen';
+import { AddFollowupScreen } from './src/modules/leads/followup/FollowupScreen';
+import { followupItems as defaultFollowupItems, type FollowupItem } from './src/modules/leads/details/leadDetailsData';
+import { TeamMappingScreen } from './src/modules/teamMapping/TeamMappingScreen';
+import { UsersRolesScreen } from './src/modules/usersRoles/UsersRolesScreen';
+import { ReportsScreen } from './src/modules/reports/ReportsScreen';
+import type { NavigationRoute } from './src/navigation/navigationConfig';
+import { AppShell as ErpShell } from './src/layout/AppShell';
+import type { ModuleItem, ModuleKey, TopTabItem, TopTabKey } from './src/layout/navigationTypes';
+import { ComingSoon } from './src/components/ComingSoon';
+import { DashboardListScreen } from './src/modules/salesManager/dashboard/components/DashboardListScreen';
+import { dashboardListsData } from './src/modules/salesManager/dashboard/mock/dashboardListsData';
+import type { DashboardListCard } from './src/modules/salesManager/dashboard/types/dashboard';
+import { SalesManagerTasksScreen } from './src/modules/salesManager/tasks/SalesManagerTasksScreen';
+import LeadWorkflowForm from './src/modules/salesManager/forms/LeadWorkflowForm';
+import type { SalesTask } from './src/modules/salesManager/tasks/types/tasks';
+
+registerTranslation('en', en);
 
 type ScreenState =
   | 'splash'
   | 'login'
-  | 'activateAccount'
+  | 'createAccount'
   | 'forgotPassword'
   | 'resetPassword'
-  | 'dashboard';
+  | 'dashboard'
+  | 'reports'
+  | 'dashboard-list'
+  | 'coming-soon'
+  | NavigationRoute;
+
+const baseTopTabs: TopTabItem[] = [
+  { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
+  { key: 'reports', label: 'Reports', route: 'reports' },
+  { key: 'team-mapping', label: 'Team Mapping', route: 'team-mapping' },
+  { key: 'users-roles', label: 'Users & Roles', route: 'users-roles' },
+  { key: 'all-tasks', label: 'All Tasks', route: 'leads' },
+  { key: 'more', label: 'More', route: 'lead-details' },
+];
+
+const baseModuleItems: ModuleItem[] = [
+  { key: 'sales', label: 'Sales', icon: 'SA', route: 'dashboard' },
+  { key: 'new-onboarding', label: 'New Onboarding', icon: 'NO', route: 'coming-soon' },
+  { key: 'rm-crm', label: 'RM & CRM', icon: 'RC', route: 'coming-soon' },
+  { key: 'helpdesk', label: 'Helpdesk', icon: 'HD', route: 'coming-soon' },
+  { key: 'accounts', label: 'Accounts', icon: 'AC', route: 'coming-soon' },
+  { key: 'hr', label: 'HR', icon: 'HR', route: 'coming-soon' },
+];
+
+const getTopTabsForRole = (role: AuthRole | null | undefined): TopTabItem[] => {
+  if (role === 'SALES_MANAGER') {
+    return [
+      { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
+      { key: 'all-tasks', label: 'Your Task', route: 'leads' },
+    ];
+  }
+
+  return baseTopTabs;
+};
+
+const getModuleItemsForRole = (role: AuthRole | null | undefined): ModuleItem[] => {
+  if (role === 'SALES_MANAGER') {
+    return [];
+  }
+
+  return baseModuleItems;
+};
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <PaperProvider>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </PaperProvider>
   );
 }
 
@@ -32,6 +99,16 @@ function AppShell() {
   const [screen, setScreen] = useState<ScreenState>('splash');
   const [message, setMessage] = useState<string | null>(null);
   const [legalPage, setLegalPage] = useState<LegalPageKind | null>(null);
+  const [followups, setFollowups] = useState<FollowupItem[]>(defaultFollowupItems);
+  const [activeTab, setActiveTab] = useState<TopTabKey>('dashboard');
+  const [activeModule, setActiveModule] = useState<ModuleKey>('sales');
+  const [comingSoonModule, setComingSoonModule] = useState<string>('Module');
+  const [selectedDashboardListId, setSelectedDashboardListId] = useState<DashboardListCard['id'] | null>(null);
+  const [leadForm, setLeadForm] = useState<{
+    type: 'new-lead' | 'first-meeting' | 'followup-meeting';
+    lead?: SalesTask;
+  } | null>(null);
+  const screenHistory = useRef<ScreenState[]>([]);
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -52,14 +129,40 @@ function AppShell() {
   }, [screen]);
 
   useEffect(() => {
-    if (auth.isAuthenticated) {
+    if (auth.isAuthenticated && auth.user?.role) {
       setScreen('dashboard');
     }
-  }, [auth.isAuthenticated]);
+  }, [auth.isAuthenticated, auth.user?.role]);
+
+  useEffect(() => {
+    if (auth.user?.role === 'SALES_MANAGER') {
+      setActiveModule('sales');
+    }
+  }, [auth.user?.role]);
+
+  useEffect(() => {
+    if (screen === 'dashboard' || screen === 'dashboard-list') setActiveTab('dashboard');
+    if (screen === 'reports') setActiveTab('reports');
+    if (screen === 'users-roles') setActiveTab('users-roles');
+    if (screen === 'team-mapping') setActiveTab('team-mapping');
+    if (screen === 'leads' || screen === 'lead-details' || screen === 'add-followup') setActiveTab('all-tasks');
+    if (screen === 'coming-soon') setActiveTab('dashboard');
+  }, [screen]);
 
   const navigate = (next: ScreenState) => {
     setMessage(null);
+    if (screen !== next) {
+      screenHistory.current.push(screen);
+    }
     setScreen(next);
+  };
+
+  const goBack = () => {
+    setMessage(null);
+    const previous = screenHistory.current.pop();
+    if (previous) {
+      setScreen(previous);
+    }
   };
 
   const openLegalPage = (next: LegalPageKind) => {
@@ -79,16 +182,37 @@ function AppShell() {
     }
   };
 
+  const handleLogout = () => {
+    void runAction(() => auth.logout(), 'login');
+  };
+
   const content = useMemo(() => {
+    const roleNavigation = getRoleNavigationConfig(auth.user?.role);
+    const topTabs = getTopTabsForRole(auth.user?.role);
+    const moduleItems = getModuleItemsForRole(auth.user?.role);
+    const currentDate = new Intl.DateTimeFormat('en-US', {
+      weekday: 'long',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    }).format(new Date());
+
     switch (screen) {
       case 'splash':
         return <SplashScreen />;
       case 'login':
         return (
           <LoginScreen
-            onLogin={() => runAction(() => auth.login())}
+            onLogin={(credentials: LoginFormValues) => {
+              void runAction(() => auth.login(credentials));
+            }}
             onForgotPassword={() => navigate('forgotPassword')}
-            onActivateAccount={() => navigate('activateAccount')}
+            onForgotPasswordSubmit={(credentials: ForgotPasswordCredentials) => {
+              void runAction(() => auth.forgotPassword(credentials));
+            }}
+            onCreateAccount={(credentials) => {
+              void runAction(() => auth.createAccount(credentials), 'dashboard');
+            }}
             onHelp={() => openLegalPage('help')}
             onContact={() => openLegalPage('contact')}
             onPrivacyPolicy={() => openLegalPage('privacyPolicy')}
@@ -98,11 +222,13 @@ function AppShell() {
             successMessage={auth.success}
           />
         );
-      case 'activateAccount':
+      case 'createAccount':
         return (
           <CreateAccountScreen
             onBack={() => navigate('login')}
-            onCreateAccount={() => runAction(() => auth.activateAccount())}
+            onCreateAccount={(credentials: RegisterCredentials) => {
+              void runAction(() => auth.createAccount(credentials), 'login');
+            }}
             onLogin={() => navigate('login')}
             loading={auth.isLoading || auth.isRefreshing}
             errorMessage={message ?? auth.error}
@@ -112,7 +238,9 @@ function AppShell() {
         return (
           <ForgotPasswordScreen
             onBack={() => navigate('login')}
-            onSendResetLink={() => runAction(() => auth.forgotPassword(), 'resetPassword')}
+            onSendResetLink={(credentials: ForgotPasswordCredentials) => {
+              void runAction(() => auth.forgotPassword(credentials));
+            }}
             loading={auth.isLoading || auth.isRefreshing}
             errorMessage={message ?? auth.error}
             onSuccess={() => navigate('login')}
@@ -124,19 +252,278 @@ function AppShell() {
             onBack={() => navigate('login')}
             loading={auth.isLoading || auth.isRefreshing}
             errorMessage={message ?? auth.error}
-            onUpdatePassword={() => runAction(() => auth.resetPassword(), 'login')}
+            onUpdatePassword={(credentials: ResetPasswordCredentials) => {
+              void runAction(() => auth.resetPassword(credentials), 'login');
+            }}
           />
         );
       case 'dashboard':
         return (
-          <DashboardScreen
-            onLogout={() => runAction(() => auth.logout(), 'login')}
-          />
+          <ErpShell
+            currentDate={currentDate}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              if (module.key === 'sales') {
+                navigate('dashboard');
+                return;
+              }
+              setComingSoonModule(module.label);
+              navigate('coming-soon');
+            }}
+          >
+            {activeModule === 'sales' ? (
+              <DashboardScreen
+                role={roleNavigation.role}
+                title={roleNavigation.title}
+                subtitle={roleNavigation.subtitle}
+                menuItems={roleNavigation.menuItems}
+                user={auth.user}
+                onMenuItemPress={(item) => navigate(item.route)}
+                onLogout={() => runAction(() => auth.logout(), 'login')}
+                onOpenDashboardList={(listId) => {
+                  setSelectedDashboardListId(listId);
+                  navigate('dashboard-list');
+                }}
+                onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
+              />
+            ) : (
+              <ComingSoon title={comingSoonModule} />
+            )}
+          </ErpShell>
+        );
+      case 'dashboard-list': {
+        const selectedList = dashboardListsData.find((list) => list.id === selectedDashboardListId);
+        if (!selectedList) {
+          return null;
+        }
+
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            contentScrollable={false}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              navigate('dashboard');
+            }}
+          >
+            <DashboardListScreen list={selectedList} userName={auth.user?.fullName ?? 'Salesperson'} onBack={goBack} />
+          </ErpShell>
+        );
+      }
+      case 'reports':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              if (module.key === 'sales') {
+                navigate('reports');
+                return;
+              }
+              setComingSoonModule(module.label);
+              navigate('coming-soon');
+            }}
+          >
+            <ReportsScreen />
+          </ErpShell>
+        );
+      case 'users-roles':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              if (module.key === 'sales') {
+                navigate('dashboard');
+                return;
+              }
+              setComingSoonModule(module.label);
+              navigate('coming-soon');
+            }}
+          >
+            <UsersRolesScreen />
+          </ErpShell>
+        );
+      case 'team-mapping':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              if (module.key === 'sales') {
+                navigate('dashboard');
+                return;
+              }
+              setComingSoonModule(module.label);
+              navigate('coming-soon');
+            }}
+          >
+            <TeamMappingScreen />
+          </ErpShell>
+        );
+      case 'leads':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            contentScrollable={auth.user?.role !== 'SALES_MANAGER'}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              if (module.key === 'sales') {
+                navigate('dashboard');
+                return;
+              }
+              setComingSoonModule(module.label);
+              navigate('coming-soon');
+            }}
+          >
+            {auth.user?.role === 'SALES_MANAGER' ? (
+              <SalesManagerTasksScreen
+                onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
+                onUpdateMeeting={(lead) => setLeadForm({
+                  type: lead.meetingStage === '1st Meeting' ? 'first-meeting' : 'followup-meeting',
+                  lead,
+                })}
+              />
+            ) : (
+              <LeadScreen onOpenLeadDetails={() => navigate('lead-details')} />
+            )}
+          </ErpShell>
+        );
+      case 'lead-details':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              if (module.key === 'sales') {
+                navigate('dashboard');
+                return;
+              }
+              setComingSoonModule(module.label);
+              navigate('coming-soon');
+            }}
+          >
+            <LeadDetailsScreen onBack={goBack} followups={followups} onAddFollowup={() => navigate('add-followup')} />
+          </ErpShell>
+        );
+      case 'add-followup':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => {
+              setActiveTab(tab.key);
+              navigate(tab.route);
+            }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              if (module.key === 'sales') {
+                navigate('dashboard');
+                return;
+              }
+              setComingSoonModule(module.label);
+              navigate('coming-soon');
+            }}
+          >
+            <AddFollowupScreen
+              onCancel={goBack}
+              onSave={(followup) => {
+                setFollowups((current) => [followup, ...current]);
+              }}
+            />
+          </ErpShell>
+        );
+      case 'coming-soon':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onLogout={handleLogout}
+            onModulePress={(module) => {
+              setActiveModule(module.key);
+              if (module.key === 'sales') {
+                navigate('dashboard');
+                return;
+              }
+              setComingSoonModule(module.label);
+              navigate('coming-soon');
+            }}
+          >
+            <ComingSoon title={comingSoonModule} />
+          </ErpShell>
         );
       default:
         return null;
     }
-  }, [auth, message, screen]);
+  }, [activeModule, activeTab, auth, comingSoonModule, followups, message, screen, selectedDashboardListId]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -148,6 +535,25 @@ function AppShell() {
           onClose={() => setLegalPage(null)}
           onNavigate={(next) => setLegalPage(next)}
         />
+        <Modal
+          transparent
+          visible={Boolean(leadForm)}
+          animationType="fade"
+          onRequestClose={() => setLeadForm(null)}
+        >
+          <Pressable style={styles.newLeadBackdrop} onPress={() => setLeadForm(null)}>
+            <Pressable style={styles.newLeadModal} onPress={() => {}}>
+              {leadForm ? (
+                <LeadWorkflowForm
+                  key={`${leadForm.type}-${leadForm.lead?.id ?? 'new'}`}
+                  type={leadForm.type}
+                  lead={leadForm.lead}
+                  onClose={() => setLeadForm(null)}
+                />
+              ) : null}
+            </Pressable>
+          </Pressable>
+        </Modal>
       </Animated.View>
     </SafeAreaView>
   );
@@ -160,5 +566,28 @@ const styles = StyleSheet.create({
   },
   animatedShell: {
     flex: 1,
+  },
+  newLeadBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: 'rgba(15, 23, 42, 0.58)',
+  },
+  newLeadModal: {
+    width: '100%',
+    maxWidth: 470,
+    height: '92%',
+    maxHeight: 900,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.42)',
+    borderRadius: 20,
+    backgroundColor: '#F8FAFC',
+    shadowColor: '#000000',
+    shadowOpacity: 0.3,
+    shadowRadius: 34,
+    shadowOffset: { width: 0, height: 16 },
+    elevation: 20,
   },
 });

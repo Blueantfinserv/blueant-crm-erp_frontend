@@ -1,22 +1,71 @@
+import { useState } from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { AuthButton } from '../../components/AuthButton';
 import { AuthInput } from '../../components/AuthInput';
+import { FormAlert } from '../../components/FormAlert';
 import { Header } from '../../components/Header';
 import { PasswordInput } from '../../components/PasswordInput';
 import { ScreenWrapper } from '../../components/ScreenWrapper';
 import { theme } from '../../theme/theme';
-type Props = { onBack: () => void; onCreateAccount: () => void; onLogin: () => void; loading: boolean; errorMessage: string | null };
+import { RegisterCredentials } from '../../types/auth';
+import { validateConfirmPassword, validateEmail, validatePassword } from '../../utils/authValidation';
+
+type Props = {
+  onBack: () => void;
+  onCreateAccount: (credentials: RegisterCredentials) => void | Promise<void>;
+  onLogin: () => void;
+  loading: boolean;
+  errorMessage: string | null;
+};
+
 export function CreateAccountScreen({ onBack, onCreateAccount, onLogin, loading, errorMessage }: Props) {
+  const [values, setValues] = useState<RegisterCredentials>({
+    email: '',
+    password: '',
+    confirmPassword: '',
+  });
+  const [touched, setTouched] = useState({ email: false, password: false, confirmPassword: false });
+
+  const emailError = touched.email ? validateEmail(values.email) || undefined : undefined;
+  const passwordError = touched.password ? validatePassword(values.password) || undefined : undefined;
+  const confirmPasswordError = touched.confirmPassword ? validateConfirmPassword(values.password, values.confirmPassword) || undefined : undefined;
+
   return (
     <ScreenWrapper>
       <View style={styles.page}>
-        <Header title="Activate Account" subtitle="Create your password to activate your employee account" onBack={onBack} />
+        <Header title="Create Account" subtitle="Set up your BlueAnt ERP account" onBack={onBack} />
         <View style={styles.card}>
-          <AuthInput label="Employee ID" placeholder="Enter employee ID" />
-          <PasswordInput label="Create Password" placeholder="Create password" />
-          <PasswordInput label="Confirm Password" placeholder="Confirm password" />
-          {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
-          <AuthButton title="Activate Account" onPress={onCreateAccount} loading={loading} />
+          <AuthInput
+            label="Email"
+            placeholder="Enter email"
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            value={values.email}
+            onChangeText={(text) => setValues((current) => ({ ...current, email: text }))}
+            onBlur={() => setTouched((current) => ({ ...current, email: true }))}
+            error={emailError}
+          />
+          <PasswordInput
+            label="Password"
+            placeholder="Create password"
+            autoComplete="new-password"
+            value={values.password}
+            onChangeText={(text) => setValues((current) => ({ ...current, password: text }))}
+            onBlur={() => setTouched((current) => ({ ...current, password: true }))}
+            error={passwordError}
+          />
+          <PasswordInput
+            label="Confirm Password"
+            placeholder="Confirm password"
+            autoComplete="new-password"
+            value={values.confirmPassword}
+            onChangeText={(text) => setValues((current) => ({ ...current, confirmPassword: text }))}
+            onBlur={() => setTouched((current) => ({ ...current, confirmPassword: true }))}
+            error={confirmPasswordError}
+          />
+          {errorMessage ? <FormAlert message={errorMessage} /> : null}
+          <AuthButton title="Create Account" onPress={() => void onCreateAccount(values)} loading={loading} />
           <Text onPress={onLogin} style={styles.link}>Already have account? Login</Text>
         </View>
       </View>

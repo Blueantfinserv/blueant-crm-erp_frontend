@@ -30,6 +30,9 @@
     },
     "experiments": {
       "baseUrl": "/Login"
-    }
+    },
+    "plugins": [
+      "@react-native-community/datetimepicker"
+    ]
   }
 }

@@ -1,0 +1,18 @@
+export const shellColors = {
+  topBarBackground: '#E8EEFF',
+  topBarBorder: '#D0DCF6',
+  topBarSurface: '#F6F8FF',
+  topBarSurfaceBorder: '#D8E1F7',
+  topBarAccent: 'rgba(37, 99, 235, 0.14)',
+  topBarAccentBorder: 'rgba(37, 99, 235, 0.26)',
+  sidebarBackground: '#E6EEFF',
+  sidebarBorder: '#C6D4F5',
+  sidebarSurface: '#EEF2FF',
+  sidebarSurfaceBorder: '#C9D6F6',
+  sidebarAccent: 'rgba(37, 99, 235, 0.12)',
+  sidebarAccentBorder: 'rgba(37, 99, 235, 0.24)',
+  topBlobPrimary: 'rgba(73, 130, 252, 0.17)',
+  topBlobSecondary: 'rgba(73, 130, 252, 0.09)',
+  sidebarBlobPrimary: 'rgba(214, 142, 255, 0.24)',
+  sidebarBlobSecondary: 'rgba(178, 66, 243, 0.16)',
+} as const;

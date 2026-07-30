@@ -1,0 +1,85 @@
+import { ReportPreviewData } from '../reportPreview/types';
+
+export const yearReport: ReportPreviewData = {
+  variant: 'year',
+  header: {
+    title: 'Annual Sales Performance',
+    durationLabel: '1 Year',
+    generatedLabel: 'Generated on 28 Jul 2026',
+  },
+  kpis: [
+    { label: 'Top Performer', value: 'Abhijeet', hint: 'Best overall annual output', tone: 'peach' },
+    { label: 'Total Points', value: '142,400', hint: 'Aggregated across the full year', tone: 'blue' },
+    { label: 'Average Points / Month', value: '11,867', hint: '12-month average', tone: 'green' },
+    { label: 'Highest Quarter', value: 'Q3', hint: '37,420 points achieved', tone: 'pink' },
+    { label: 'Active Employees', value: '14', hint: 'Core sales force across the year', tone: 'mint' },
+  ],
+  trend: {
+    title: '12 Month Trend Chart',
+    subtitle: 'Rolling monthly performance across the year',
+    points: [
+      { label: 'Jan', value: 9800, color: '#fb8e5d' },
+      { label: 'Feb', value: 10200, color: '#60a5fa' },
+      { label: 'Mar', value: 11140, color: '#4ade80' },
+      { label: 'Apr', value: 10920, color: '#f472b6' },
+      { label: 'May', value: 11830, color: '#a855f7' },
+      { label: 'Jun', value: 12140, color: '#14b8a6' },
+      { label: 'Jul', value: 12780, color: '#fb8e5d' },
+      { label: 'Aug', value: 13220, color: '#60a5fa' },
+      { label: 'Sep', value: 13860, color: '#4ade80' },
+      { label: 'Oct', value: 13540, color: '#f472b6' },
+      { label: 'Nov', value: 14120, color: '#a855f7' },
+      { label: 'Dec', value: 14640, color: '#14b8a6' },
+    ],
+  },
+  quarterSummary: {
+    title: 'Quarter Summary',
+    rows: [
+      { quarter: 'Q1', points: 31140, meetings: 2120, clients: 460, topPerformer: 'Abhijeet' },
+      { quarter: 'Q2', points: 34710, meetings: 2360, clients: 518, topPerformer: 'Atul' },
+      { quarter: 'Q3', points: 37420, meetings: 2480, clients: 560, topPerformer: 'Rajat' },
+      { quarter: 'Q4', points: 39130, meetings: 2620, clients: 602, topPerformer: 'Rakesh' },
+    ],
+  },
+  monthTopPerformers: {
+    title: 'Month Wise Top Performer',
+    rows: [
+      { period: 'Jan', name: 'Abhijeet', points: 1840 },
+      { period: 'Feb', name: 'Atul', points: 1920 },
+      { period: 'Mar', name: 'Rajat', points: 2010 },
+      { period: 'Apr', name: 'Ameet', points: 2140 },
+      { period: 'May', name: 'Sunny', points: 2330 },
+      { period: 'Jun', name: 'Rakesh', points: 2280 },
+      { period: 'Jul', name: 'Tejprakash', points: 2380 },
+      { period: 'Aug', name: 'Satyam', points: 2440 },
+      { period: 'Sep', name: 'Abhay', points: 2510 },
+      { period: 'Oct', name: 'Garv', points: 2470 },
+      { period: 'Nov', name: 'Harsh.P', points: 2620 },
+      { period: 'Dec', name: 'Ameet', points: 2690 },
+    ],
+  },
+  leaderboard: {
+    title: 'Leaderboard',
+    rows: [
+      { rank: 1, name: 'Abhijeet', points: 14230 },
+      { rank: 2, name: 'Atul', points: 13940 },
+      { rank: 3, name: 'Rajat', points: 13680 },
+      { rank: 4, name: 'Rakesh', points: 13420 },
+      { rank: 5, name: 'Sunny', points: 13160 },
+      { rank: 6, name: 'Ameet', points: 12920 },
+      { rank: 7, name: 'Satyam', points: 12780 },
+      { rank: 8, name: 'Tejprakash', points: 12540 },
+      { rank: 9, name: 'Abhay', points: 12310 },
+      { rank: 10, name: 'Garv', points: 12100 },
+    ],
+  },
+  insights: {
+    title: 'AI Insights',
+    bullets: [
+      'Q3 was the most productive quarter, showing strong momentum in both meetings and client conversions.',
+      'The annual trend is consistently upward, with only minor mid-year softening.',
+      'Harsh.P and Ameet showed the best late-year acceleration in monthly output.',
+      'The year ended with a healthy balance of points growth and client creation efficiency.',
+    ],
+  },
+};

@@ -1,18 +1,22 @@
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BackgroundCurves } from '../../../components/BackgroundCurves';
 import { FeatureCard, LoginCard, LogoRow, LoginScreenProps } from './LoginShared';
 import { theme } from '../../../theme/theme';
 import { FooterLink } from '../../../components/LegalPage';
+
+const mascotAsset = require('../../../../assets/download.gif');
 
 export function TabletLogin(props: LoginScreenProps) {
   const { width, height } = useWindowDimensions();
   const currentYear = new Date().getFullYear();
   const isLargeTablet = width >= 900;
 
-  const logoWidth = Math.min(208, Math.max(168, width * 0.22));
-  const logoHeight = Math.min(62, Math.max(52, height * 0.06));
-  const cardWidth = Math.min(isLargeTablet ? 440 : 400, Math.max(360, width * 0.42));
-  const titleSize = isLargeTablet ? 34 : 30;
+  const logoWidth = Math.min(190, Math.max(160, width * 0.195));
+  const logoHeight = Math.min(56, Math.max(46, height * 0.052));
+  const cardWidth = Math.min(isLargeTablet ? 360 : 340, Math.max(300, width * 0.34));
+  const titleSize = isLargeTablet ? 30 : 27;
+  const mascotWidth = Math.min(170, Math.max(140, width * 0.165));
+  const mascotHeight = Math.min(220, Math.max(180, height * 0.31));
 
   return (
     <View style={styles.screen}>
@@ -40,8 +44,12 @@ export function TabletLogin(props: LoginScreenProps) {
           </View>
         </View>
 
+        <View style={[styles.mascotWrap, { width: mascotWidth, height: mascotHeight }]}>
+          <Image source={mascotAsset} style={styles.mascot} resizeMode="contain" />
+        </View>
+
         <View style={[styles.right, { width: cardWidth, maxWidth: cardWidth }]}>
-          <LoginCard {...props} />
+          <LoginCard {...props} density="compact" />
         </View>
       </View>
 
@@ -83,7 +91,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 22,
+    gap: 10,
     minHeight: 0,
   },
 
@@ -93,20 +101,32 @@ const styles = StyleSheet.create({
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 12,
-    top: -10,
+    gap: 10,
+    top: -2,
   },
 
   copyBlock: {
     width: '100%',
     gap: 4,
-    top: -40,
+    top: -12,
   },
   infoCards: {
     width: '100%',
-    maxWidth: 320,
-    gap: 10,
-    top: -30,
+    maxWidth: 270,
+    gap: 7,
+    top: -10,
+  },
+
+  mascotWrap: {
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'visible',
+  },
+
+  mascot: {
+    width: '100%',
+    height: '100%',
   },
 
   title: {

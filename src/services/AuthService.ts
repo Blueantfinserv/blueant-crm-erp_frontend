@@ -1,26 +1,44 @@
-import { authApi } from '../api/auth';
+import { authApi, AuthApiError } from '../api/auth';
 import { SecureStorageService } from './SecureStorageService';
-import { AuthResponse, AuthState, AuthUser } from '../types/auth';
+import {
+  AuthResponse,
+  AuthState,
+  AuthUser,
+  ForgotPasswordCredentials,
+  LoginCredentials,
+  RegisterCredentials,
+  ResetPasswordCredentials,
+} from '../types/auth';
 
 type Listener = (state: AuthState) => void;
 
 const initialState: AuthState = {
   user: null,
+  rememberMe: true,
   isAuthenticated: false,
   isLoading: false,
   isRefreshing: false,
+  sessionExpiresAt: null,
   error: null,
   success: null,
 };
 
-const createSuccessState = (response: AuthResponse): AuthState => ({
+const createAuthState = (response: AuthResponse, rememberMe: boolean): Partial<AuthState> => ({
   user: response.user,
+  rememberMe,
   isAuthenticated: true,
   isLoading: false,
   isRefreshing: false,
+  sessionExpiresAt: Date.now() + response.tokens.expiresIn * 1000,
   error: null,
   success: response.message,
 });
+
+const toMessage = (error: unknown, fallback: string) => {
+  if (error instanceof AuthApiError) return error.message;
+  if (error instanceof Error) return error.message;
+  return fallback;
+};
 
 export class AuthService {
   private state = initialState;
@@ -43,75 +61,132 @@ export class AuthService {
     this.emit();
   }
 
+  private async persistSession(response: AuthResponse, rememberMe: boolean) {
+    await SecureStorageService.saveToken(response.tokens, response.user, rememberMe);
+    this.setState(createAuthState(response, rememberMe));
+  }
+
   async bootstrap() {
-    this.setState({ isLoading: true });
-    const [token, user] = await Promise.all([SecureStorageService.getToken(), SecureStorageService.getUserData()]);
+    this.setState({ isLoading: true, error: null });
+    const [token, user, refreshToken, rememberMe] = await Promise.all([
+      SecureStorageService.getToken(),
+      SecureStorageService.getUserData(),
+      SecureStorageService.getRefreshToken(),
+      SecureStorageService.getRememberMe(),
+    ]);
+
+    if (!token || !user) {
+      this.setState({
+        ...initialState,
+        isLoading: false,
+        rememberMe,
+      });
+      return;
+    }
+
+    const sessionExpiresAt = Date.now() + 15 * 60 * 1000;
     this.setState({
       user,
-      isAuthenticated: Boolean(token && user),
+      rememberMe,
+      isAuthenticated: true,
       isLoading: false,
+      isRefreshing: false,
+      sessionExpiresAt,
     });
+
+    if (refreshToken) {
+      void this.refreshSession();
+    }
   }
 
-  async login(): Promise<AuthResponse> {
+  async login(credentials: LoginCredentials): Promise<AuthResponse> {
     this.setState({ isLoading: true, error: null, success: null });
     try {
-      const response = await authApi.login();
-      await SecureStorageService.saveToken(response.tokens, response.user);
-      this.setState(createSuccessState(response));
+      const response = await authApi.login(credentials);
+      await this.persistSession(response, credentials.rememberMe);
       return response;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Login failed.';
-      this.setState({ isLoading: false, error: message });
+      this.setState({
+        isLoading: false,
+        error: toMessage(error, 'Login failed.'),
+      });
       throw error;
     }
   }
 
-  async activateAccount(): Promise<AuthResponse> {
+  async createAccount(credentials: RegisterCredentials): Promise<AuthResponse> {
     this.setState({ isLoading: true, error: null, success: null });
     try {
-      const response = await authApi.activateAccount();
-      await SecureStorageService.saveToken(response.tokens, response.user);
-      this.setState(createSuccessState(response));
+      const response = await authApi.register(credentials);
+      await this.persistSession(response, true);
       return response;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Account activation failed.';
-      this.setState({ isLoading: false, error: message });
+      this.setState({
+        isLoading: false,
+        error: toMessage(error, 'Account activation failed.'),
+      });
       throw error;
     }
   }
 
-  async forgotPassword() {
+  async forgotPassword(credentials: ForgotPasswordCredentials) {
     this.setState({ isLoading: true, error: null, success: null });
     try {
-      const response = await authApi.forgotPassword();
+      const response = await authApi.forgotPassword(credentials);
       this.setState({ isLoading: false, success: response.message });
       return response;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Forgot password failed.';
-      this.setState({ isLoading: false, error: message });
+      this.setState({
+        isLoading: false,
+        error: toMessage(error, 'Forgot password failed.'),
+      });
       throw error;
     }
   }
 
-  async resetPassword() {
+  async resetPassword(credentials: ResetPasswordCredentials) {
     this.setState({ isLoading: true, error: null, success: null });
     try {
-      const response = await authApi.resetPassword();
+      const response = await authApi.resetPassword(credentials);
       this.setState({ isLoading: false, success: response.message });
       return response;
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Reset password failed.';
-      this.setState({ isLoading: false, error: message });
+      this.setState({
+        isLoading: false,
+        error: toMessage(error, 'Reset password failed.'),
+      });
       throw error;
+    }
+  }
+
+  async refreshSession() {
+    const refreshToken = await SecureStorageService.getRefreshToken();
+    if (!refreshToken) {
+      return;
+    }
+
+    this.setState({ isRefreshing: true, error: null });
+    try {
+      const response = await authApi.refreshToken(refreshToken);
+      const rememberMe = await SecureStorageService.getRememberMe();
+      await this.persistSession(response, rememberMe);
+      this.setState({ isRefreshing: false });
+    } catch (error) {
+      this.setState({
+        isRefreshing: false,
+        error: toMessage(error, 'Session refresh failed.'),
+      });
     }
   }
 
   async logout() {
     this.setState({ isLoading: true, error: null, success: null });
-    await authApi.logout();
-    await SecureStorageService.removeToken();
-    this.setState({ ...initialState, isLoading: false, success: 'Logged out successfully.' });
+    try {
+      await authApi.logout();
+    } finally {
+      await SecureStorageService.removeToken();
+      this.setState({ ...initialState, isLoading: false, success: 'Logged out successfully.' });
+    }
   }
 
   getState() {
@@ -122,11 +197,12 @@ export class AuthService {
 export const authService = new AuthService();
 
 export type AuthServiceApi = {
-  login: () => Promise<AuthResponse>;
-  activateAccount: () => Promise<AuthResponse>;
-  forgotPassword: () => Promise<{ message: string }>;
-  resetPassword: () => Promise<{ message: string }>;
-  logout: () => Promise<void>;
+  login: (credentials: LoginCredentials) => Promise<AuthResponse>;
+  createAccount: (credentials: RegisterCredentials) => Promise<AuthResponse>;
+  forgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
+  resetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
+  refreshToken: (refreshToken: string) => Promise<AuthResponse>;
+  logout: () => Promise<{ success: boolean; message: string }>;
 };
 
 export type { AuthUser, AuthResponse };

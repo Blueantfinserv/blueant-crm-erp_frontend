@@ -5,9 +5,11 @@ import { AuthState } from '../types/auth';
 
 const initialState: AuthState = {
   user: null,
+  rememberMe: true,
   isAuthenticated: false,
   isLoading: true,
   isRefreshing: false,
+  sessionExpiresAt: null,
   error: null,
   success: null,
 };
