@@ -7,6 +7,7 @@ import {
   validateConfirmPassword,
   validateEmail,
   validateLoginForm,
+  validateEmployeeCode,
   validatePassword,
   validateRegisterForm,
   validateStrongPassword,
@@ -47,9 +48,9 @@ export function LoginCard({
 }: LoginCardProps) {
   const [remember, setRemember] = useState(true);
   const [mode, setMode] = useState<'login' | 'createAccount'>('login');
-  const [values, setValues] = useState<LoginFormValues>({ email: '', password: '', rememberMe: true });
+  const [values, setValues] = useState<LoginFormValues>({ employeeCode: '', password: '', rememberMe: true });
   const [createAccountValues, setCreateAccountValues] = useState({ email: '', password: '', confirmPassword: '' });
-  const [touched, setTouched] = useState({ email: false, password: false });
+  const [touched, setTouched] = useState({ employeeCode: false, password: false });
   const [createAccountTouched, setCreateAccountTouched] = useState({ email: false, password: false, confirmPassword: false });
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [createAccountAttemptedSubmit, setCreateAccountAttemptedSubmit] = useState(false);
@@ -64,7 +65,7 @@ export function LoginCard({
 
   const isCompact = height < 860;
   const isDense = density === 'compact';
-  const emailError = (touched.email || attemptedSubmit) ? validateEmail(values.email) || undefined : undefined;
+  const employeeCodeError = (touched.employeeCode || attemptedSubmit) ? validateEmployeeCode(values.employeeCode) || undefined : undefined;
   const passwordError = (touched.password || attemptedSubmit) ? validatePassword(values.password) || undefined : undefined;
   const createAccountEmailError = (createAccountTouched.email || createAccountAttemptedSubmit) ? validateEmail(createAccountValues.email) || undefined : undefined;
   const createAccountPasswordError = (createAccountTouched.password || createAccountAttemptedSubmit) ? validateStrongPassword(createAccountValues.password) || undefined : undefined;
@@ -74,7 +75,7 @@ export function LoginCard({
   const handleSubmit = async () => {
     setAttemptedSubmit(true);
     const nextErrors = validateLoginForm(values);
-    if (nextErrors.email || nextErrors.password) return;
+    if (nextErrors.employeeCode || nextErrors.password) return;
     await onLogin({ ...values, rememberMe: remember });
   };
 
@@ -122,13 +123,13 @@ export function LoginCard({
             successMessage={successMessage}
             values={values}
             remember={remember}
-            emailError={emailError}
+            employeeCodeError={employeeCodeError}
             passwordError={passwordError}
             emailRef={emailRef}
             passwordRef={passwordRef}
-            onEmailChange={(text) => setValues((current) => ({ ...current, email: text }))}
+            onEmployeeCodeChange={(text) => setValues((current) => ({ ...current, employeeCode: text }))}
             onPasswordChange={(text) => setValues((current) => ({ ...current, password: text }))}
-            onEmailBlur={() => setTouched((current) => ({ ...current, email: true }))}
+            onEmployeeCodeBlur={() => setTouched((current) => ({ ...current, employeeCode: true }))}
             onPasswordBlur={() => setTouched((current) => ({ ...current, password: true }))}
             onRememberChange={setRemember}
             onForgotPassword={() => setForgotVisible(true)}

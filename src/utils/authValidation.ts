@@ -1,13 +1,21 @@
 export type LoginFormValues = {
-  email: string;
+  employeeCode: string;
   password: string;
   rememberMe: boolean;
 };
 
 export type LoginFieldErrors = {
-  email?: string;
+  employeeCode?: string;
   password?: string;
   confirmPassword?: string;
+};
+
+export const validateEmployeeCode = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return 'Employee Code is required.';
+  if (trimmed.length < 3) return 'Employee Code must be at least 3 characters.';
+  if (trimmed.length > 30) return 'Employee Code must not exceed 30 characters.';
+  return '';
 };
 
 export const validateEmail = (value: string) => {
@@ -43,7 +51,7 @@ export const validateResetToken = (value: string) => {
   return '';
 };
 
-export const validateRegisterForm = (values: Pick<LoginFormValues, 'email' | 'password'> & { confirmPassword: string }) => {
+export const validateRegisterForm = (values: { email: string; password: string; confirmPassword: string }) => {
   const email = validateEmail(values.email);
   const password = validateStrongPassword(values.password);
   const confirmPassword = validateConfirmPassword(values.password, values.confirmPassword);
@@ -54,11 +62,11 @@ export const validateRegisterForm = (values: Pick<LoginFormValues, 'email' | 'pa
   };
 };
 
-export const validateLoginForm = (values: Pick<LoginFormValues, 'email' | 'password'>): LoginFieldErrors => {
-  const email = validateEmail(values.email);
+export const validateLoginForm = (values: Pick<LoginFormValues, 'employeeCode' | 'password'>): LoginFieldErrors => {
+  const employeeCode = validateEmployeeCode(values.employeeCode);
   const password = validatePassword(values.password);
   return {
-    ...(email ? { email } : null),
+    ...(employeeCode ? { employeeCode } : null),
     ...(password ? { password } : null),
   };
 };

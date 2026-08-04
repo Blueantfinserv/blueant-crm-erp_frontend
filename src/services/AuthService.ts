@@ -3,6 +3,7 @@ import { SecureStorageService } from './SecureStorageService';
 import {
   AuthResponse,
   AuthState,
+  AuthTokens,
   AuthUser,
   ForgotPasswordCredentials,
   LoginCredentials,
@@ -68,14 +69,14 @@ export class AuthService {
 
   async bootstrap() {
     this.setState({ isLoading: true, error: null });
-    const [token, user, refreshToken, rememberMe] = await Promise.all([
-      SecureStorageService.getToken(),
+    const [user, refreshToken, rememberMe] = await Promise.all([
       SecureStorageService.getUserData(),
       SecureStorageService.getRefreshToken(),
       SecureStorageService.getRememberMe(),
     ]);
 
-    if (!token || !user) {
+    if (!refreshToken || !user) {
+      await SecureStorageService.removeToken();
       this.setState({
         ...initialState,
         isLoading: false,
@@ -84,19 +85,12 @@ export class AuthService {
       return;
     }
 
-    const sessionExpiresAt = Date.now() + 15 * 60 * 1000;
     this.setState({
       user,
       rememberMe,
-      isAuthenticated: true,
-      isLoading: false,
-      isRefreshing: false,
-      sessionExpiresAt,
+      isRefreshing: true,
     });
-
-    if (refreshToken) {
-      void this.refreshSession();
-    }
+    await this.refreshSession();
   }
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
@@ -169,10 +163,33 @@ export class AuthService {
     try {
       const response = await authApi.refreshToken(refreshToken);
       const rememberMe = await SecureStorageService.getRememberMe();
-      await this.persistSession(response, rememberMe);
-      this.setState({ isRefreshing: false });
-    } catch (error) {
+      const user = this.state.user ?? await SecureStorageService.getUserData();
+      if (!user) {
+        throw new AuthApiError('Stored user session is unavailable.', 'SESSION_UNAVAILABLE');
+      }
+      const tokens: AuthTokens = {
+        accessToken: response.accessToken,
+        refreshToken: response.refreshToken,
+        expiresIn: response.expiresIn,
+        tokenType: response.tokenType,
+        refreshTokenExpiry: response.refreshTokenExpiry,
+        sessionId: response.sessionId,
+      };
+      await SecureStorageService.saveToken(tokens, user, rememberMe);
       this.setState({
+        user,
+        rememberMe,
+        isAuthenticated: true,
+        isLoading: false,
+        isRefreshing: false,
+        sessionExpiresAt: Date.now() + response.expiresIn * 1000,
+        error: null,
+      });
+    } catch (error) {
+      await SecureStorageService.removeToken();
+      this.setState({
+        ...initialState,
+        isLoading: false,
         isRefreshing: false,
         error: toMessage(error, 'Session refresh failed.'),
       });
@@ -182,7 +199,10 @@ export class AuthService {
   async logout() {
     this.setState({ isLoading: true, error: null, success: null });
     try {
-      await authApi.logout();
+      const refreshToken = await SecureStorageService.getRefreshToken();
+      if (refreshToken) {
+        await authApi.logout(refreshToken);
+      }
     } finally {
       await SecureStorageService.removeToken();
       this.setState({ ...initialState, isLoading: false, success: 'Logged out successfully.' });
@@ -201,8 +221,8 @@ export type AuthServiceApi = {
   createAccount: (credentials: RegisterCredentials) => Promise<AuthResponse>;
   forgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   resetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
-  refreshToken: (refreshToken: string) => Promise<AuthResponse>;
-  logout: () => Promise<{ success: boolean; message: string }>;
+  refreshToken: (refreshToken: string) => Promise<import('../types/auth').RefreshTokenResponseData>;
+  logout: (refreshToken: string) => Promise<{ success: boolean; message: string }>;
 };
 
 export type { AuthUser, AuthResponse };

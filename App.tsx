@@ -36,6 +36,16 @@ import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/S
 
 registerTranslation('en', en);
 
+// TODO: Remove this development override once Sales Manager test accounts are available from the backend.
+const ENABLE_DEV_SALES_MANAGER_ROLE_OVERRIDE = true;
+
+const getUiRole = (backendRole: AuthRole | null | undefined): AuthRole | null | undefined => {
+  if (__DEV__ && ENABLE_DEV_SALES_MANAGER_ROLE_OVERRIDE && backendRole === 'SUPER_ADMIN') {
+    return 'SALES_MANAGER';
+  }
+  return backendRole;
+};
+
 type ScreenState =
   | 'splash'
   | 'login'
@@ -98,6 +108,7 @@ export default function App() {
 
 function AppShell() {
   const auth = useAuth();
+  const uiRole = getUiRole(auth.user?.role);
   const [screen, setScreen] = useState<ScreenState>('splash');
   const [message, setMessage] = useState<string | null>(null);
   const [legalPage, setLegalPage] = useState<LegalPageKind | null>(null);
@@ -138,10 +149,10 @@ function AppShell() {
   }, [auth.isAuthenticated, auth.user?.role]);
 
   useEffect(() => {
-    if (auth.user?.role === 'SALES_MANAGER') {
+    if (uiRole === 'SALES_MANAGER') {
       setActiveModule('sales');
     }
-  }, [auth.user?.role]);
+  }, [uiRole]);
 
   useEffect(() => {
     if (screen === 'dashboard' || screen === 'dashboard-list') setActiveTab('dashboard');
@@ -190,9 +201,9 @@ function AppShell() {
   };
 
   const content = useMemo(() => {
-    const roleNavigation = getRoleNavigationConfig(auth.user?.role);
-    const topTabs = getTopTabsForRole(auth.user?.role);
-    const moduleItems = getModuleItemsForRole(auth.user?.role);
+    const roleNavigation = getRoleNavigationConfig(uiRole);
+    const topTabs = getTopTabsForRole(uiRole);
+    const moduleItems = getModuleItemsForRole(uiRole);
     const currentDate = new Intl.DateTimeFormat('en-US', {
       weekday: 'long',
       month: 'short',
@@ -413,7 +424,7 @@ function AppShell() {
         return (
           <ErpShell
             currentDate={currentDate}
-            contentScrollable={auth.user?.role !== 'SALES_MANAGER'}
+            contentScrollable={uiRole !== 'SALES_MANAGER'}
             tabs={topTabs}
             activeTab={activeTab}
             onLogout={handleLogout}
@@ -433,7 +444,7 @@ function AppShell() {
               navigate('coming-soon');
             }}
           >
-            {auth.user?.role === 'SALES_MANAGER' ? (
+            {uiRole === 'SALES_MANAGER' ? (
               <SalesManagerTasksScreen
                 onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
                 onUpdateMeeting={(lead) => setLeadForm({
@@ -560,7 +571,7 @@ function AppShell() {
       default:
         return null;
     }
-  }, [activeModule, activeTab, auth, comingSoonModule, followups, message, screen, selectedDashboardListId, selectedSalesTask]);
+  }, [activeModule, activeTab, auth, comingSoonModule, followups, message, screen, selectedDashboardListId, selectedSalesTask, uiRole]);
 
   return (
     <SafeAreaView style={styles.root}>

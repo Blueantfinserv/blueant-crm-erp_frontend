@@ -17,13 +17,13 @@ type LoginFormSectionProps = {
   successMessage: string | null;
   values: LoginFormValues;
   remember: boolean;
-  emailError?: string;
+  employeeCodeError?: string;
   passwordError?: string;
   emailRef: RefObject<TextInput | null>;
   passwordRef: RefObject<TextInput | null>;
-  onEmailChange: (value: string) => void;
+  onEmployeeCodeChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
-  onEmailBlur: () => void;
+  onEmployeeCodeBlur: () => void;
   onPasswordBlur: () => void;
   onRememberChange: (value: boolean) => void;
   onForgotPassword: () => void;
@@ -38,13 +38,13 @@ export function LoginFormSection({
   successMessage,
   values,
   remember,
-  emailError,
+  employeeCodeError,
   passwordError,
   emailRef,
   passwordRef,
-  onEmailChange,
+  onEmployeeCodeChange,
   onPasswordChange,
-  onEmailBlur,
+  onEmployeeCodeBlur,
   onPasswordBlur,
   onRememberChange,
   onForgotPassword,
@@ -57,19 +57,19 @@ export function LoginFormSection({
       {successMessage ? <FormAlert message={successMessage} tone="success" /> : null}
       <AuthInput
         ref={emailRef}
-        label="Email"
-        labelBadge={'\u2709'}
-        placeholder="Enter your email"
-        value={values.email}
-        onChangeText={onEmailChange}
-        onBlur={onEmailBlur}
-        keyboardType="email-address"
+        label="Employee Code"
+        labelBadge={'\u{1F464}'}
+        placeholder="Enter your employee code"
+        value={values.employeeCode}
+        onChangeText={onEmployeeCodeChange}
+        onBlur={onEmployeeCodeBlur}
+        keyboardType="default"
         autoCapitalize="none"
-        autoComplete="email"
-        textContentType="emailAddress"
+        autoComplete="username"
+        textContentType="username"
         returnKeyType="next"
         onSubmitEditing={() => passwordRef.current?.focus()}
-        error={emailError}
+        error={employeeCodeError}
       />
       <PasswordInput
         ref={passwordRef}

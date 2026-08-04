@@ -1,4 +1,11 @@
-export type AuthRole = 'SUPER_ADMIN' | 'ADMIN' | 'LEADER' | 'TEAM_LEADER' | 'SALES_MANAGER';
+export const AUTH_ROLES = ['SUPER_ADMIN', 'ADMIN', 'LEADER', 'TEAM_LEADER', 'SALES_MANAGER'] as const;
+
+export type AuthRole = (typeof AUTH_ROLES)[number];
+
+export const normalizeAuthRole = (value: string): AuthRole | null => {
+  const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, '_');
+  return AUTH_ROLES.find((role) => role === normalized) ?? null;
+};
 
 export type AuthPermission = string;
 
@@ -13,9 +20,17 @@ export type AuthUser = {
 };
 
 export type LoginCredentials = {
-  email: string;
+  employeeCode: string;
   password: string;
   rememberMe: boolean;
+};
+
+export type LoginRequest = LoginCredentials & {
+  deviceId?: string;
+  deviceName?: string;
+  deviceType?: string;
+  browser?: string;
+  operatingSystem?: string;
 };
 
 export type RegisterCredentials = {
@@ -38,6 +53,9 @@ export type AuthTokens = {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
+  tokenType?: string;
+  refreshTokenExpiry?: string;
+  sessionId?: string;
 };
 
 export type AuthResponse = {
@@ -45,6 +63,62 @@ export type AuthResponse = {
   message: string;
   user: AuthUser;
   tokens: AuthTokens;
+};
+
+export type ApiSuccessResponse<T> = {
+  success: boolean;
+  status: number;
+  message: string;
+  timestamp: string;
+  path: string;
+  data: T;
+};
+
+export type LoginResponseData = {
+  userId: number;
+  employeeCode: string;
+  fullName: string;
+  email: string;
+  mobileNumber?: string;
+  profileImage?: string;
+  role: string;
+  department?: string;
+  designation?: string;
+  team?: string;
+  reportingManager?: string;
+  permissions?: string[];
+  accessToken: string;
+  refreshToken: string;
+  tokenType?: string;
+  expiresIn: number;
+  refreshTokenExpiry?: string;
+  status?: string;
+  firstLogin?: boolean;
+  passwordExpired?: boolean;
+  accountLocked?: boolean;
+  enabled?: boolean;
+  loginAt?: string;
+  sessionId?: string;
+};
+
+export type RefreshTokenRequest = {
+  refreshToken: string;
+  deviceId?: string;
+};
+
+export type RefreshTokenResponseData = {
+  accessToken: string;
+  refreshToken: string;
+  tokenType?: string;
+  expiresIn: number;
+  refreshTokenExpiry?: string;
+  sessionId?: string;
+};
+
+export type LogoutRequest = {
+  refreshToken: string;
+  logoutFromAllDevices?: boolean;
+  deviceId?: string;
 };
 
 export type AuthState = {

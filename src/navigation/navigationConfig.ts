@@ -74,6 +74,9 @@ const roleNavigationConfig: Record<AuthRole, RoleNavigationConfig> = {
   },
 };
 
-export const getRoleNavigationConfig = (role: AuthRole | null | undefined): RoleNavigationConfig => {
-  return role ? roleNavigationConfig[role] : roleNavigationConfig.LEADER;
+export const getRoleNavigationConfig = (role: AuthRole | string | null | undefined): RoleNavigationConfig => {
+  if (role && role in roleNavigationConfig) {
+    return roleNavigationConfig[role as AuthRole];
+  }
+  return roleNavigationConfig.LEADER;
 };

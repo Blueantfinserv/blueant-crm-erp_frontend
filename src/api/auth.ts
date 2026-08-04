@@ -1,12 +1,88 @@
 import {
   AuthResponse,
+  ApiSuccessResponse,
   AuthRole,
   AuthUser,
   ForgotPasswordCredentials,
   LoginCredentials,
+  LoginRequest,
+  LoginResponseData,
+  LogoutRequest,
+  normalizeAuthRole,
+  RefreshTokenRequest,
+  RefreshTokenResponseData,
   RegisterCredentials,
   ResetPasswordCredentials,
 } from '../types/auth';
+import { Platform } from 'react-native';
+import { SecureStorageService } from '../services/SecureStorageService';
+
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://blueant-crm-erp.up.railway.app/api';
+
+const getDeviceMetadata = async () => {
+  const navigatorInfo = typeof navigator === 'undefined' ? null : navigator;
+  const operatingSystem = Platform.OS === 'web'
+    ? (navigatorInfo?.platform || 'web')
+    : Platform.OS;
+
+  return {
+    deviceId: await SecureStorageService.getOrCreateDeviceId(),
+    deviceName: (navigatorInfo?.platform || `${Platform.OS} device`).slice(0, 150),
+    deviceType: (Platform.OS === 'web' ? 'WEB' : Platform.OS.toUpperCase()).slice(0, 50),
+    browser: (navigatorInfo?.userAgent || 'native-app').slice(0, 100),
+    operatingSystem: operatingSystem.slice(0, 100),
+  };
+};
+
+const request = async <T>(path: string, init: RequestInit): Promise<ApiSuccessResponse<T>> => {
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        ...init.headers,
+      },
+    });
+  } catch {
+    throw new AuthApiError('Network request failed. Please try again.', 'NETWORK_ERROR');
+  }
+
+  const payload = await response.json().catch(() => null) as ApiSuccessResponse<T> | null;
+  if (!response.ok || !payload?.success) {
+    throw new AuthApiError(payload?.message || `Authentication request failed (${response.status}).`, String(response.status));
+  }
+  return payload;
+};
+
+const toAuthResponse = (response: ApiSuccessResponse<LoginResponseData>): AuthResponse => {
+  const role = normalizeAuthRole(response.data.role);
+  if (!role) {
+    throw new AuthApiError(`Unsupported account role: ${response.data.role}`, 'UNSUPPORTED_ROLE');
+  }
+
+  return {
+    success: response.success,
+    message: response.message,
+    user: {
+      id: response.data.userId,
+      employeeId: response.data.employeeCode,
+      fullName: response.data.fullName,
+      email: response.data.email,
+      role,
+      permissions: response.data.permissions,
+    },
+    tokens: {
+      accessToken: response.data.accessToken,
+      refreshToken: response.data.refreshToken,
+      expiresIn: response.data.expiresIn,
+      tokenType: response.data.tokenType,
+      refreshTokenExpiry: response.data.refreshTokenExpiry,
+      sessionId: response.data.sessionId,
+    },
+  };
+};
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -101,12 +177,18 @@ const simulateNetwork = async (shouldFail = false) => {
 
 export const authApi = {
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
-    await simulateNetwork(false);
-    const account = resolveAccount(credentials.email);
-    if (!account || account.password !== credentials.password) {
-      throw new AuthApiError('Invalid credentials.', 'INVALID_CREDENTIALS');
-    }
-    return buildResponse(account, 'Login Successful');
+    const device = await getDeviceMetadata();
+    const body: LoginRequest = {
+      employeeCode: credentials.employeeCode.trim(),
+      password: credentials.password,
+      ...device,
+      rememberMe: credentials.rememberMe,
+    };
+    const response = await request<LoginResponseData>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return toAuthResponse(response);
   },
 
   register: async (credentials: RegisterCredentials): Promise<AuthResponse> => {
@@ -159,18 +241,27 @@ export const authApi = {
     };
   },
 
-  refreshToken: async (refreshToken: string): Promise<AuthResponse> => {
-    await simulateNetwork(false);
-    const role = accounts.find((account) => refreshToken.includes(account.role))?.role ?? 'LEADER';
-    const account = accounts.find((item) => item.role === role) ?? accounts[2];
-    return buildResponse(account, 'Session refreshed successfully.');
+  refreshToken: async (refreshToken: string) => {
+    const deviceId = await SecureStorageService.getOrCreateDeviceId();
+    const body: RefreshTokenRequest = { refreshToken, deviceId };
+    const response = await request<RefreshTokenResponseData>('/auth/refresh-token', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return response.data;
   },
 
-  logout: async (): Promise<{ success: boolean; message: string }> => {
-    await simulateNetwork(false);
-    return {
-      success: true,
-      message: 'Logged out successfully.',
+  logout: async (refreshToken: string): Promise<{ success: boolean; message: string }> => {
+    const deviceId = await SecureStorageService.getOrCreateDeviceId();
+    const body: LogoutRequest = {
+      refreshToken,
+      logoutFromAllDevices: false,
+      deviceId,
     };
+    const response = await request<Record<string, never>>('/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+    return { success: response.success, message: response.message };
   },
 };
