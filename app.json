@@ -29,7 +29,7 @@
       "output": "single"
     },
     "experiments": {
-      "baseUrl": "/Login"
+      "baseUrl": "/blueant-crm-erp_frontend"
     },
     "plugins": [
       "@react-native-community/datetimepicker",
