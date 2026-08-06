@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import {
@@ -8,9 +8,84 @@ import {
   taskStageOptions,
   taskTypeOptions,
 } from './mock/taskFilterOptions';
-import { salesTasksData } from './mock/salesTasksData';
 import { SalesTaskCard } from './components/SalesTaskCard';
 import type { SalesTask } from './types/tasks';
+import { leadSearchService } from '../../../services/LeadSearchService';
+import { leadService } from '../../../services/LeadService';
+import type { LeadResponse, LeadSearchState, LeadStage } from '../../../types/lead';
+
+const leadStageToMeetingStage: Partial<Record<LeadStage, SalesTask['meetingStage']>> = {
+  LEAD_CREATED: '1st Meeting',
+  LEAD_ASSIGNED: '1st Meeting',
+  DUPLICATE_CHECK: '1st Meeting',
+  FIRST_CONTACT: '1st Meeting',
+  INTRO_MEETING: '1st Meeting',
+  INTRO_MEETING_SCHEDULED: '1st Meeting',
+  INTRO_MEETING_COMPLETED: '1st Meeting',
+  FOLLOW_UP: '2nd Meeting',
+  NEED_ANALYSIS: '3rd Meeting',
+  PRODUCT_DISCUSSION: '4th Meeting',
+  PROPOSAL_SHARED: '5th Meeting',
+  DOCUMENT_COLLECTION: '6th Meeting',
+  INVESTMENT_CONFIRMED: '7th Meeting',
+  SERVICE_REQUEST_CREATED: '8th Meeting',
+  CRM_HANDOVER: '9th Meeting',
+  PC_VERIFICATION: '10th Meeting',
+  CLIENT_ONBOARDED: '10th Meeting',
+  COMPLETED: '10th Meeting',
+};
+
+const formatDate = (dateValue?: string) => {
+  if (!dateValue) return 'Not scheduled';
+  const date = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dateValue;
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+};
+
+const formatTimestamp = (timestamp: string | null) => {
+  if (!timestamp) return 'Not available';
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return timestamp;
+  return date.toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+  });
+};
+
+const getSchedule = (dateValue?: string): SalesTask['schedule'] => {
+  if (!dateValue) return 'Pending';
+  const taskDate = new Date(`${dateValue}T00:00:00`);
+  if (Number.isNaN(taskDate.getTime())) return 'Pending';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const differenceInDays = Math.round((taskDate.getTime() - today.getTime()) / 86_400_000);
+  if (differenceInDays === 0) return 'Today';
+  if (differenceInDays > 0 && differenceInDays <= 3) return 'Future 3 Days';
+  return 'Pending';
+};
+
+const mapLeadToSalesTask = (lead: LeadResponse, index: number, timestamp: string | null): SalesTask => {
+  return {
+    id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId ?? `lead-${index}`),
+    leadId: lead.leadId,
+    name: lead.clientName ?? 'Unnamed lead',
+    phone: lead.mobileNumber ?? '',
+    locationText: lead.location ?? 'Location unavailable',
+    coordinates: { latitude: 0, longitude: 0 },
+    hasLocationPin: false,
+    meetingStage: lead.leadStatus === 'NEW' || lead.leadStage === 'LEAD_CREATED'
+      ? 'LEADS'
+      : lead.leadStage
+        ? leadStageToMeetingStage[lead.leadStage] ?? '1st Meeting'
+        : '1st Meeting',
+    remarks: lead.remarks ?? 'No remarks available.',
+    lastUpdated: formatTimestamp(timestamp),
+    nextFollowUpDate: formatDate(lead.nextPlanDate),
+    schedule: getSchedule(lead.nextPlanDate),
+    email: lead.email,
+    leadSource: lead.leadSource,
+  };
+};
 
 type DropdownProps<T extends string> = {
   value: T;
@@ -88,12 +163,34 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('All Stages');
   const [openDropdown, setOpenDropdown] = useState<'task' | 'stage' | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [leadState, setLeadState] = useState<LeadSearchState>(() => leadSearchService.getState());
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
+  const tasks = useMemo(
+    () => leadState.leads.map((lead, index) => mapLeadToSalesTask(lead, index, leadState.timestamp)),
+    [leadState.leads, leadState.timestamp],
+  );
+
+  useEffect(() => {
+    const unsubscribe = leadSearchService.subscribe(setLeadState);
+    void leadSearchService.loadLeads();
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    let createdLead = leadService.getState().createdLead;
+    return leadService.subscribe((state) => {
+      if (state.createdLead && state.createdLead !== createdLead) {
+        createdLead = state.createdLead;
+        void leadSearchService.loadLeads();
+      }
+    });
+  }, []);
+
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const normalizedPhoneSearch = search.replace(/\D/g, '');
 
-    return salesTasksData.filter((task) => {
+    return tasks.filter((task) => {
       const matchesSearch =
         !normalizedSearch ||
         task.name.toLowerCase().includes(normalizedSearch) ||
@@ -103,7 +200,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
 
       return matchesSearch && matchesTaskType && matchesStage;
     });
-  }, [search, taskStage, taskType]);
+  }, [search, taskStage, taskType, tasks]);
 
   return (
     <View style={styles.page}>
@@ -192,7 +289,18 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
             <Text style={styles.bodyTitle}>Task Pipeline</Text>
             <Text style={styles.bodyCount}>{filteredTasks.length} tasks</Text>
           </View>
-          {filteredTasks.length ? (
+          {leadState.isLoading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={styles.emptyTitle}>Loading tasks</Text>
+            </View>
+          ) : leadState.error ? (
+            <View style={styles.emptyState}>
+              <Icon source="alert-circle-outline" size={30} color="#DC2626" />
+              <Text style={styles.emptyTitle}>Tasks could not be loaded</Text>
+              <Text style={styles.emptyText}>{leadState.error}</Text>
+            </View>
+          ) : filteredTasks.length ? (
             <View style={styles.taskGrid}>
               {filteredTasks.map((task, index) => (
                 <SalesTaskCard

@@ -2,6 +2,7 @@ export const taskTypeOptions = ['All Tasks', 'Today', 'Pending', 'Future 3 Days'
 
 export const taskStageOptions = [
   'All Stages',
+  'LEADS',
   '1st Meeting',
   '2nd Meeting',
   '3rd Meeting',

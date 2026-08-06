@@ -33,6 +33,8 @@ import { SalesManagerTasksScreen } from './src/modules/salesManager/tasks/SalesM
 import LeadWorkflowForm from './src/modules/salesManager/forms/LeadWorkflowForm';
 import type { SalesTask } from './src/modules/salesManager/tasks/types/tasks';
 import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/SalesManagerLeadDetailScreen';
+import { leadService } from './src/services/LeadService';
+import type { CreateLeadRequest } from './src/types/lead';
 
 registerTranslation('en', en);
 
@@ -597,6 +599,12 @@ function AppShell() {
                   type={leadForm.type}
                   lead={leadForm.lead}
                   onClose={() => setLeadForm(null)}
+                  onSubmit={leadForm.type === 'new-lead'
+                    ? async (request: CreateLeadRequest) => {
+                        await leadService.createLead(request);
+                        return leadService.getState().success ?? 'Lead created successfully.';
+                      }
+                    : undefined}
                 />
               ) : null}
             </Pressable>

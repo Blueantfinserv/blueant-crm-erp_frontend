@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -18,8 +18,9 @@ import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
 import MapView, { Marker } from "../../../../PreviewMap";
 
-const LEAD_SOURCES = ["Referral", "Website", "Social Media", "Cold Call", "Walk-in", "Other"];
+const LEAD_SOURCES = ["Referral", "Website", "Walk-in", "Other"];
 const MEETING_STATUSES = ["Meeting Conducted", "Meeting Not Conducted"];
+const JOINED_DESIGNATIONS = ["Admin", "RM", "Leader", "Team Leader", "Sales Manager"];
 const LEAD_STATUSES = [
   "Already BlueAnt Client",
   "Converted Client",
@@ -51,12 +52,15 @@ const INITIAL_REGION = {
   longitudeDelta: 22,
 };
 
-export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () => {} }) {
+export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   const isNewLead = type === "new-lead";
   const isFirstMeeting = type === "first-meeting";
   const needsLocationPin = isFirstMeeting && !lead?.hasLocationPin;
   const mapRef = useRef(null);
   const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submissionError, setSubmissionError] = useState("");
+  const [submissionSuccess, setSubmissionSuccess] = useState("");
   const [imageLoading, setImageLoading] = useState("");
   const [images, setImages] = useState({
     visitingCard: null,
@@ -78,6 +82,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
     leadStatus: "",
     joinedMode: "Alone",
     joinedWith: "",
+    joinedDesignation: "",
     nextPlanDate: "",
     panNumber: "",
     amount: "",
@@ -97,6 +102,12 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
     lead?.hasLocationPin ? lead.coordinates : null
   );
 
+  useEffect(() => {
+    if (!submissionSuccess) return undefined;
+    const timer = setTimeout(onClose, 1000);
+    return () => clearTimeout(timer);
+  }, [onClose, submissionSuccess]);
+
   const title = useMemo(() => {
     if (isNewLead) return "New Lead";
     if (isFirstMeeting) return "1st Meeting Update";
@@ -111,6 +122,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
+    setSubmissionError("");
   };
 
   const captureLocation = async () => {
@@ -173,7 +185,9 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
       if (!form.locationText.trim()) nextErrors.locationText = "Location is required.";
     } else {
-      if (needsLocationPin && !coordinates) nextErrors.coordinates = "Live location is required.";
+      if (needsLocationPin && form.meetingStatus === "Meeting Conducted" && !coordinates) {
+        nextErrors.coordinates = "Live location is required.";
+      }
       if (!form.meetingStatus) nextErrors.meetingStatus = "Meeting status is required.";
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
 
@@ -181,8 +195,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
         if (!form.nextPlanDate) nextErrors.nextPlanDate = "Next plan date is required.";
       } else if (form.meetingStatus === "Meeting Conducted") {
         if (!form.leadStatus) nextErrors.leadStatus = "Lead status is required.";
-        if (form.joinedMode === "With Someone" && !form.joinedWith.trim()) {
+        if (form.joinedMode === "Other" && !form.joinedWith.trim()) {
           nextErrors.joinedWith = "Person's name is required.";
+        }
+        if (form.joinedMode === "Other" && !form.joinedDesignation) {
+          nextErrors.joinedDesignation = "Person designation is required.";
         }
         if (isFirstMeeting) {
           if (form.leadEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.leadEmail)) {
@@ -218,9 +235,9 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
     return Object.keys(nextErrors).length === 0;
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!validate()) return;
-    onSubmit?.({
+    const workflowPayload = {
       type,
       leadId: lead?.id,
       ...form,
@@ -228,8 +245,36 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
       coordinates,
       hasLocationPin: Boolean(coordinates),
       images,
-    });
-    onClose();
+    };
+
+    if (!isNewLead) {
+      onSubmit?.(workflowPayload);
+      onClose();
+      return;
+    }
+
+    const createLeadRequest = {
+      clientName: form.name.trim(),
+      mobileNumber: form.number.replace(/\D/g, ""),
+      location: form.locationText.trim(),
+      leadSource: form.leadSource.trim().toUpperCase().replace(/[\s-]+/g, "_"),
+      remarks: form.remarks.trim(),
+    };
+
+    setSubmissionError("");
+    setSubmitting(true);
+    try {
+      const successMessage = await onSubmit?.(createLeadRequest);
+      setSubmissionSuccess(successMessage || "Lead created successfully.");
+    } catch (error) {
+      const errorMessage =
+        typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
+          ? error.message
+          : "Lead creation failed.";
+      setSubmissionError(errorMessage);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const meetingNotConducted = form.meetingStatus === "Meeting Not Conducted";
@@ -311,15 +356,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
                   placeholder="Area, city or complete address"
                 />
               </Field>
-              <LocationField
-                optional
-                coordinates={coordinates}
-                error={errors.coordinates}
-                loading={loading}
-                mapRef={mapRef}
-                onCapture={captureLocation}
-                onChange={setCoordinates}
-              />
             </>
           ) : (
             <>
@@ -334,17 +370,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
                 </View>
               </View>
 
-              {needsLocationPin ? (
-                <LocationField
-                  coordinates={coordinates}
-                  error={errors.coordinates}
-                  loading={loading}
-                  mapRef={mapRef}
-                  onCapture={captureLocation}
-                  onChange={setCoordinates}
-                />
-              ) : null}
-
               <Field label="Meeting Status" required error={errors.meetingStatus}>
                 <ChoiceGroup
                   value={form.meetingStatus}
@@ -358,21 +383,37 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
                   <Field label="Lead Status" required error={errors.leadStatus}>
                     <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
                   </Field>
-                  <Field label="Joined With" required error={errors.joinedWith}>
+                  <Field label="Joined With" required>
                     <ChoiceGroup
                       value={form.joinedMode}
-                      options={["Alone", "With Someone"]}
-                      onChange={(value) => update("joinedMode", value)}
+                      options={["Alone", "Other"]}
+                      onChange={(value) => {
+                        update("joinedMode", value);
+                        if (value === "Alone") {
+                          update("joinedWith", "");
+                          update("joinedDesignation", "");
+                        }
+                      }}
                     />
-                    {form.joinedMode === "With Someone" ? (
+                  </Field>
+                  {form.joinedMode === "Other" ? (
+                    <>
+                      <Field label="Name of the Person" required error={errors.joinedWith}>
                       <Input
                         value={form.joinedWith}
                         onChangeText={(value) => update("joinedWith", value)}
                         placeholder="Enter person's name"
-                        style={styles.followupInput}
                       />
-                    ) : null}
-                  </Field>
+                      </Field>
+                      <Field label="Person Designation" required error={errors.joinedDesignation}>
+                        <Select
+                          value={form.joinedDesignation}
+                          options={JOINED_DESIGNATIONS}
+                          onChange={(value) => update("joinedDesignation", value)}
+                        />
+                      </Field>
+                    </>
+                  ) : null}
                   {isFirstMeeting ? (
                     <View style={styles.profileSection}>
                       <View style={styles.profileSectionHeader}>
@@ -469,6 +510,18 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
                 </>
               ) : null}
 
+              {meetingConducted ? (
+                <LocationField
+                  optional={!needsLocationPin}
+                  coordinates={coordinates}
+                  error={errors.coordinates}
+                  loading={loading}
+                  mapRef={mapRef}
+                  onCapture={captureLocation}
+                  onChange={setCoordinates}
+                />
+              ) : null}
+
               {form.meetingStatus ? (
                 <Field label="Remarks" required error={errors.remarks}>
                   <Input
@@ -547,7 +600,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
           )}
           </View>
 
-          <Pressable onPress={submit} style={({ pressed }) => [styles.submitPressable, pressed && styles.pressed]}>
+          {isNewLead && submissionError ? (
+            <Text style={styles.error}>{submissionError}</Text>
+          ) : null}
+
+          <Pressable disabled={isNewLead && submitting} onPress={() => void submit()} style={({ pressed }) => [styles.submitPressable, pressed && styles.pressed]}>
             <LinearGradient
               colors={["#4F46E5", "#7C3AED"]}
               start={{ x: 0, y: 0 }}
@@ -555,7 +612,9 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
               style={styles.submit}
             >
               <View style={styles.submitIcon}>
-                <Icon source={isNewLead ? "account-check-outline" : "check-bold"} size={17} color="#5B21B6" />
+                {isNewLead && submitting
+                  ? <ActivityIndicator size="small" color="#5B21B6" />
+                  : <Icon source={isNewLead ? "account-check-outline" : "check-bold"} size={17} color="#5B21B6" />}
               </View>
               <Text style={styles.submitText}>{isNewLead ? "Create Lead" : "Submit Update"}</Text>
               <View style={styles.submitArrow}>
@@ -565,6 +624,16 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit = () =>
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {submissionSuccess ? (
+        <View style={styles.successOverlay}>
+          <View style={styles.successIcon}>
+            <Icon source="check-bold" size={34} color="#FFFFFF" />
+          </View>
+          <Text style={styles.successTitle}>Lead Created</Text>
+          <Text style={styles.successMessage}>{submissionSuccess}</Text>
+        </View>
+      ) : null}
 
     </View>
   );
@@ -888,6 +957,24 @@ const styles = StyleSheet.create({
   locationButton: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingHorizontal: 12, borderRadius: 9, backgroundColor: "#2563EB" },
   locationButtonText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
   error: { marginTop: 5, color: "#DC2626", fontSize: 10, fontWeight: "700" },
+  successOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 28,
+    backgroundColor: "#F0FDF4",
+  },
+  successIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#16A34A",
+  },
+  successTitle: { marginTop: 16, color: "#166534", fontSize: 22, fontWeight: "900" },
+  successMessage: { marginTop: 8, color: "#15803D", fontSize: 13, fontWeight: "700", textAlign: "center" },
   submitPressable: {
     marginTop: 16, overflow: "hidden", borderRadius: 15, shadowColor: "#5B21B6",
     shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 7 }, elevation: 6,

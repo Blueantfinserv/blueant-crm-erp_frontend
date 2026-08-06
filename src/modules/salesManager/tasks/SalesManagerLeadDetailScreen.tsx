@@ -3,6 +3,15 @@ import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import type { SalesTask } from './types/tasks';
 
+const formatLeadSource = (leadSource?: string) => {
+  if (!leadSource) return '------';
+  return leadSource
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 type Props = {
   lead: SalesTask;
   onBack: () => void;
@@ -10,17 +19,19 @@ type Props = {
 };
 
 const infoFields = (lead: SalesTask) => [
-  { label: 'Email', value: lead.email ?? 'Not recorded', icon: 'email-outline' },
-  { label: 'Profession', value: lead.profession ?? 'Not recorded', icon: 'briefcase-outline' },
-  { label: 'Age Group', value: lead.ageGroup ?? 'Not recorded', icon: 'account-clock-outline' },
-  { label: 'Any Prior Investment', value: lead.priorInvestment ?? 'Not recorded', icon: 'chart-line' },
+  { label: 'Lead ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
+  { label: 'Email', value: lead.email ?? '------', icon: 'email-outline' },
+  { label: 'Lead Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
+  { label: 'Profession', value: lead.profession ?? '------', icon: 'briefcase-outline' },
+  { label: 'Age Group', value: lead.ageGroup ?? '------', icon: 'account-clock-outline' },
+  { label: 'Any Prior Investment', value: lead.priorInvestment ?? '------', icon: 'chart-line' },
   ...(lead.priorInvestment === 'Yes'
-    ? [{ label: 'Investment Guidance', value: lead.adviceMode ?? 'Not recorded', icon: 'account-tie-outline' }]
+    ? [{ label: 'Investment Guidance', value: lead.adviceMode ?? '------', icon: 'account-tie-outline' }]
     : []),
-  { label: 'Any Kids', value: lead.kids ?? 'Not recorded', icon: 'account-child-outline' },
-  { label: 'Best Time to Follow Up', value: lead.bestFollowUpTime ?? 'Not recorded', icon: 'clock-check-outline' },
-  { label: 'Lead Qualification', value: lead.leadQualification ?? 'Not recorded', icon: 'fire' },
-  { label: 'Marital Status', value: lead.maritalStatus ?? 'Not recorded', icon: 'account-heart-outline' },
+  { label: 'Any Kids', value: lead.kids ?? '------', icon: 'account-child-outline' },
+  { label: 'Best Time to Follow Up', value: lead.bestFollowUpTime ?? '------', icon: 'clock-check-outline' },
+  { label: 'Lead Qualification', value: lead.leadQualification ?? '------', icon: 'fire' },
+  { label: 'Marital Status', value: lead.maritalStatus ?? '------', icon: 'account-heart-outline' },
 ] as const;
 
 export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: Props) {
