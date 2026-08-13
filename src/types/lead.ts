@@ -114,6 +114,9 @@ export type LeadResponse = {
   assignedEmployeeName?: string;
   nextPlanDate?: string;
   remarks?: string;
+  currentActiveMeeting?: {
+    meetingCode?: string;
+  };
 };
 
 export type ApiResponseLeadResponse = {

@@ -31,14 +31,63 @@ import { dashboardListsData } from './src/modules/salesManager/dashboard/mock/da
 import type { DashboardListCard } from './src/modules/salesManager/dashboard/types/dashboard';
 import { SalesManagerTasksScreen } from './src/modules/salesManager/tasks/SalesManagerTasksScreen';
 import LeadWorkflowForm from './src/modules/salesManager/forms/LeadWorkflowForm';
-import type { SalesTask } from './src/modules/salesManager/tasks/types/tasks';
+import { getTaskLeadIdentifier, type SalesTask } from './src/modules/salesManager/tasks/types/tasks';
 import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/SalesManagerLeadDetailScreen';
 import { leadService } from './src/services/LeadService';
+import { leadSearchService } from './src/services/LeadSearchService';
+import { meetingService } from './src/services/MeetingService';
 import type { CreateLeadRequest } from './src/types/lead';
+import type {
+  CreateMeetingRequest,
+  MeetingFormSubmission,
+  MeetingLeadStatus,
+  MeetingWorkflowRequest,
+} from './src/types/meeting';
 
 registerTranslation('en', en);
 
-// TODO: Remove this development override once Sales Manager test accounts are available from the backend.
+const MEETING_LEAD_STATUS: Record<MeetingFormSubmission['leadStatus'], MeetingLeadStatus> = {
+  'Work In Progress': 'WORK_IN_PROGRESS',
+  'Converted as Client': 'CONVERTED_CLIENT',
+  'Remove This Client': 'CLIENT_REMOVED',
+  'Already Blueant Client': 'ALREADY_CLIENT',
+};
+
+const toCreateMeeting = (form: MeetingFormSubmission, lead: SalesTask): CreateMeetingRequest => {
+  if (!lead.uniqueLeadId) throw new Error('No backend lead identifier is available for this lead.');
+  return {
+    leadId: lead.uniqueLeadId,
+    meetingMode: form.meetingMode === 'Physical' ? 'PHYSICAL' : 'VIRTUAL/ONLINE',
+    meetingDate: form.meetingDate,
+    meetingLocation: lead.locationText,
+    meetingRemarks: form.remarks.trim(),
+  };
+};
+
+const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; workflow: MeetingWorkflowRequest } => {
+  if (!form.meetingCode) throw new Error('No active meeting is available for this lead.');
+  const meetingMode = form.meetingMode === 'Physical' ? 'PHYSICAL' : 'VIRTUAL/ONLINE';
+  return {
+    meetingCode: form.meetingCode,
+    workflow: {
+      meetingDate: form.meetingDate,
+      meetingMode,
+      meetingConducted: 'CONDUCTED',
+      leadStatus: MEETING_LEAD_STATUS[form.leadStatus],
+      aloneWith: form.aloneWith,
+      meetingRemarks: form.remarks.trim(),
+      ...(form.leadStatus === 'Work In Progress' ? { nextPlanDate: form.nextPlanDate } : {}),
+      ...(form.coordinates ? {
+        latitude: form.coordinates.latitude,
+        longitude: form.coordinates.longitude,
+        address: form.address,
+        ...(form.coordinates.accuracy !== undefined ? { accuracy: form.coordinates.accuracy } : {}),
+      } : {}),
+    },
+  };
+};
+
+// TODO: Remove this temporary development override after Sales Manager work is complete.
 const ENABLE_DEV_SALES_MANAGER_ROLE_OVERRIDE = true;
 
 const getUiRole = (backendRole: AuthRole | null | undefined): AuthRole | null | undefined => {
@@ -120,12 +169,38 @@ function AppShell() {
   const [comingSoonModule, setComingSoonModule] = useState<string>('Module');
   const [selectedDashboardListId, setSelectedDashboardListId] = useState<DashboardListCard['id'] | null>(null);
   const [leadForm, setLeadForm] = useState<{
-    type: 'new-lead' | 'first-meeting' | 'followup-meeting';
+    type: 'new-lead' | 'meeting';
     lead?: SalesTask;
   } | null>(null);
   const [selectedSalesTask, setSelectedSalesTask] = useState<SalesTask | null>(null);
   const screenHistory = useRef<ScreenState[]>([]);
   const fade = useRef(new Animated.Value(0)).current;
+
+  const openTaskWorkflowForm = async (task: SalesTask) => {
+    setMessage(null);
+    if (task.taskKind === 'LEAD') {
+      setLeadForm({ type: 'meeting', lead: { ...task, meetingCode: undefined } });
+      return;
+    }
+
+    const leadId = getTaskLeadIdentifier(task);
+    if (!leadId) {
+      setMessage('No backend lead identifier is available for this meeting.');
+      return;
+    }
+    try {
+      const meetingCode = await meetingService.resolveActiveMeetingCode(leadId);
+      if (!meetingCode) {
+        setMessage('No active meeting is available for this lead.');
+        return;
+      }
+      const resolvedTask = { ...task, meetingCode };
+      setSelectedSalesTask((current) => current?.id === task.id ? resolvedTask : current);
+      setLeadForm({ type: 'meeting', lead: resolvedTask });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Active meeting could not be loaded.');
+    }
+  };
 
   useEffect(() => {
     Animated.timing(fade, {
@@ -137,18 +212,21 @@ function AppShell() {
   }, [fade, screen]);
 
   useEffect(() => {
-    if (screen === 'splash') {
-      const timer = setTimeout(() => setScreen('login'), 2400);
-      return () => clearTimeout(timer);
+    if (!auth.isInitialized) {
+      setScreen('splash');
+      return;
     }
-    return undefined;
-  }, [screen]);
-
-  useEffect(() => {
     if (auth.isAuthenticated && auth.user?.role) {
-      setScreen('dashboard');
+      if (screen === 'splash' || screen === 'login') {
+        setScreen('dashboard');
+      }
+      return;
     }
-  }, [auth.isAuthenticated, auth.user?.role]);
+    if (!['login', 'createAccount', 'forgotPassword', 'resetPassword'].includes(screen)) {
+      screenHistory.current = [];
+      setScreen('login');
+    }
+  }, [auth.isAuthenticated, auth.isInitialized, auth.user?.role, screen]);
 
   useEffect(() => {
     if (uiRole === 'SALES_MANAGER') {
@@ -449,10 +527,7 @@ function AppShell() {
             {uiRole === 'SALES_MANAGER' ? (
               <SalesManagerTasksScreen
                 onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
-                onUpdateMeeting={(lead) => setLeadForm({
-                  type: lead.meetingStage === '1st Meeting' ? 'first-meeting' : 'followup-meeting',
-                  lead,
-                })}
+                onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
                 onOpenLeadDetails={(lead) => {
                   setSelectedSalesTask(lead);
                   navigate('sales-task-details');
@@ -486,10 +561,7 @@ function AppShell() {
             <SalesManagerLeadDetailScreen
               lead={selectedSalesTask}
               onBack={goBack}
-              onUpdateMeeting={(lead) => setLeadForm({
-                type: lead.meetingStage === '1st Meeting' ? 'first-meeting' : 'followup-meeting',
-                lead,
-              })}
+              onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
             />
           </ErpShell>
         );
@@ -604,7 +676,34 @@ function AppShell() {
                         await leadService.createLead(request);
                         return leadService.getState().success ?? 'Lead created successfully.';
                       }
-                    : undefined}
+                    : async (form: MeetingFormSubmission) => {
+                          const task = leadForm.lead;
+                          if (!task) throw new Error('Lead task is unavailable.');
+                          const meetingCode = task.taskKind === 'LEAD'
+                            ? await meetingService.createMeeting(toCreateMeeting(form, task))
+                            : form.meetingCode;
+                          const submission = toMeetingWorkflow({ ...form, meetingCode });
+                          const nextMeeting = await meetingService.submitWorkflow(submission.meetingCode, submission.workflow);
+                          await leadSearchService.loadLeads();
+                          if (nextMeeting.meetingCode) {
+                            const synchronizeNextMeeting = (task: SalesTask): SalesTask => ({
+                              ...task,
+                              id: nextMeeting.meetingCode!,
+                              meetingCode: nextMeeting.meetingCode,
+                              meetingNumber: nextMeeting.meetingNumber,
+                              meetingTitle: nextMeeting.meetingTitle,
+                              meetingType: nextMeeting.meetingType,
+                              meetingStatus: nextMeeting.meetingStatus,
+                              taskLabel: nextMeeting.meetingTitle ?? task.taskLabel,
+                            });
+                            setSelectedSalesTask((current) => current ? synchronizeNextMeeting(current) : current);
+                            setLeadForm((current) => current?.type === 'meeting' && current.lead
+                              ? { ...current, lead: synchronizeNextMeeting(current.lead) }
+                              : current);
+                          }
+                          return 'Meeting submitted successfully.';
+                        }
+                  }
                 />
               ) : null}
             </Pressable>

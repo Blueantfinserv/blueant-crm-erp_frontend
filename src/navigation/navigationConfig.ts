@@ -10,7 +10,7 @@ export type NavigationItem = {
 };
 
 export type RoleNavigationConfig = {
-  role: AuthRole;
+  role: AuthRole | null;
   title: string;
   subtitle: string;
   menuItems: NavigationItem[];
@@ -78,5 +78,10 @@ export const getRoleNavigationConfig = (role: AuthRole | string | null | undefin
   if (role && role in roleNavigationConfig) {
     return roleNavigationConfig[role as AuthRole];
   }
-  return roleNavigationConfig.LEADER;
+  return {
+    role: null,
+    title: 'Access unavailable',
+    subtitle: 'Your account role is not configured for this application.',
+    menuItems: [],
+  };
 };

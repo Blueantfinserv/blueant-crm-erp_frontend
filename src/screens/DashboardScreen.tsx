@@ -26,7 +26,7 @@ const teamIcon = require('../../assets/teamcardlogo.png');
 
 type Props = {
   onLogout: () => void;
-  role: AuthRole;
+  role: AuthRole | null;
   title: string;
   subtitle: string;
   menuItems: NavigationItem[];

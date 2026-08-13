@@ -3,37 +3,18 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import {
+  defaultTaskStageOptions,
   TaskStageFilter,
   TaskTypeFilter,
-  taskStageOptions,
   taskTypeOptions,
 } from './mock/taskFilterOptions';
 import { SalesTaskCard } from './components/SalesTaskCard';
 import type { SalesTask } from './types/tasks';
 import { leadSearchService } from '../../../services/LeadSearchService';
 import { leadService } from '../../../services/LeadService';
-import type { LeadResponse, LeadSearchState, LeadStage } from '../../../types/lead';
-
-const leadStageToMeetingStage: Partial<Record<LeadStage, SalesTask['meetingStage']>> = {
-  LEAD_CREATED: '1st Meeting',
-  LEAD_ASSIGNED: '1st Meeting',
-  DUPLICATE_CHECK: '1st Meeting',
-  FIRST_CONTACT: '1st Meeting',
-  INTRO_MEETING: '1st Meeting',
-  INTRO_MEETING_SCHEDULED: '1st Meeting',
-  INTRO_MEETING_COMPLETED: '1st Meeting',
-  FOLLOW_UP: '2nd Meeting',
-  NEED_ANALYSIS: '3rd Meeting',
-  PRODUCT_DISCUSSION: '4th Meeting',
-  PROPOSAL_SHARED: '5th Meeting',
-  DOCUMENT_COLLECTION: '6th Meeting',
-  INVESTMENT_CONFIRMED: '7th Meeting',
-  SERVICE_REQUEST_CREATED: '8th Meeting',
-  CRM_HANDOVER: '9th Meeting',
-  PC_VERIFICATION: '10th Meeting',
-  CLIENT_ONBOARDED: '10th Meeting',
-  COMPLETED: '10th Meeting',
-};
+import type { LeadResponse, LeadSearchState } from '../../../types/lead';
+import { meetingService } from '../../../services/MeetingService';
+import type { MeetingQueueState, MeetingResponse } from '../../../types/meeting';
 
 const formatDate = (dateValue?: string) => {
   if (!dateValue) return 'Not scheduled';
@@ -42,14 +23,11 @@ const formatDate = (dateValue?: string) => {
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
-const formatTimestamp = (timestamp: string | null) => {
+const formatTimestamp = (timestamp?: string | null) => {
   if (!timestamp) return 'Not available';
-  const date = new Date(timestamp);
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(timestamp) ? `${timestamp}T00:00:00` : timestamp);
   if (Number.isNaN(date.getTime())) return timestamp;
-  return date.toLocaleDateString([], {
-    month: 'short',
-    day: 'numeric',
-  });
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
 };
 
 const getSchedule = (dateValue?: string): SalesTask['schedule'] => {
@@ -64,28 +42,56 @@ const getSchedule = (dateValue?: string): SalesTask['schedule'] => {
   return 'Pending';
 };
 
-const mapLeadToSalesTask = (lead: LeadResponse, index: number, timestamp: string | null): SalesTask => {
+const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
   return {
     id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId ?? `lead-${index}`),
+    taskKind: 'LEAD',
+    leadCode: lead.leadCode,
+    uniqueLeadId: lead.uniqueLeadId,
+    meetingCode: lead.currentActiveMeeting?.meetingCode,
     leadId: lead.leadId,
     name: lead.clientName ?? 'Unnamed lead',
     phone: lead.mobileNumber ?? '',
     locationText: lead.location ?? 'Location unavailable',
     coordinates: { latitude: 0, longitude: 0 },
     hasLocationPin: false,
-    meetingStage: lead.leadStatus === 'NEW' || lead.leadStage === 'LEAD_CREATED'
-      ? 'LEADS'
-      : lead.leadStage
-        ? leadStageToMeetingStage[lead.leadStage] ?? '1st Meeting'
-        : '1st Meeting',
+    taskLabel: 'LEADS',
     remarks: lead.remarks ?? 'No remarks available.',
-    lastUpdated: formatTimestamp(timestamp),
+    lastUpdated: 'Not available',
     nextFollowUpDate: formatDate(lead.nextPlanDate),
     schedule: getSchedule(lead.nextPlanDate),
     email: lead.email,
     leadSource: lead.leadSource,
   };
 };
+
+const mapMeetingToSalesTask = (
+  meeting: MeetingResponse,
+  index: number,
+  responseTimestamp: string | null,
+  lead?: LeadResponse,
+): SalesTask => ({
+  id: meeting.meetingCode ?? String(meeting.id ?? `meeting-${index}`),
+  taskKind: 'MEETING',
+  leadCode: meeting.leadCode,
+  meetingCode: meeting.meetingCode,
+  meetingNumber: meeting.meetingNumber,
+  meetingTitle: meeting.meetingTitle,
+  meetingType: meeting.meetingType,
+  meetingStatus: meeting.meetingStatus,
+  uniqueLeadId: lead?.uniqueLeadId,
+  leadId: meeting.leadId ?? lead?.leadId,
+  name: meeting.clientName ?? 'Unnamed client',
+  phone: meeting.mobileNumber ?? '',
+  locationText: meeting.location ?? meeting.meetingLocation ?? meeting.address ?? 'Location unavailable',
+  coordinates: { latitude: meeting.latitude ?? 0, longitude: meeting.longitude ?? 0 },
+  hasLocationPin: meeting.latitude !== undefined && meeting.longitude !== undefined,
+  taskLabel: meeting.meetingTitle ?? '',
+  remarks: meeting.meetingRemarks ?? 'No remarks available.',
+  lastUpdated: formatTimestamp(responseTimestamp),
+  nextFollowUpDate: formatDate(meeting.meetingDate),
+  schedule: getSchedule(meeting.meetingDate),
+});
 
 type DropdownProps<T extends string> = {
   value: T;
@@ -164,15 +170,52 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const [openDropdown, setOpenDropdown] = useState<'task' | 'stage' | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [leadState, setLeadState] = useState<LeadSearchState>(() => leadSearchService.getState());
+  const [meetingState, setMeetingState] = useState<MeetingQueueState>(() => meetingService.getState());
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
   const tasks = useMemo(
-    () => leadState.leads.map((lead, index) => mapLeadToSalesTask(lead, index, leadState.timestamp)),
-    [leadState.leads, leadState.timestamp],
+    () => {
+      const actionableMeetings = meetingState.meetings.filter((meeting) => (
+        meeting.meetingStatus === 'SCHEDULED' && meeting.meetingType !== 'INTRO'
+      ));
+      const meetingTasks = actionableMeetings.map((meeting, index) => {
+        const lead = leadState.leads.find((candidate) => (
+          (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
+          || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
+        ));
+        return mapMeetingToSalesTask(meeting, index, meetingState.timestamp, lead);
+      });
+      const meetingLeadKeys = new Set(meetingTasks.flatMap((task) => [
+        task.leadCode ? `code:${task.leadCode}` : '',
+        task.leadId !== undefined ? `id:${task.leadId}` : '',
+      ]).filter(Boolean));
+      const leadTasks = leadState.leads
+        .filter((lead) => {
+          const keys = [lead.leadCode ? `code:${lead.leadCode}` : '', lead.leadId !== undefined ? `id:${lead.leadId}` : ''].filter(Boolean);
+          return keys.every((key) => !meetingLeadKeys.has(key));
+        })
+        .map(mapLeadToSalesTask);
+      return [...leadTasks, ...meetingTasks];
+    },
+    [leadState.leads, meetingState.meetings, meetingState.timestamp],
   );
+  const taskStageOptions = useMemo(() => [
+    ...defaultTaskStageOptions,
+    ...Array.from(new Set(
+      tasks
+        .filter((task) => task.taskKind === 'MEETING' && task.taskLabel)
+        .map((task) => task.taskLabel),
+    )),
+  ], [tasks]);
 
   useEffect(() => {
     const unsubscribe = leadSearchService.subscribe(setLeadState);
     void leadSearchService.loadLeads();
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = meetingService.subscribe(setMeetingState);
+    void meetingService.loadMeetings();
     return unsubscribe;
   }, []);
 
@@ -196,8 +239,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         task.name.toLowerCase().includes(normalizedSearch) ||
         (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
       const matchesTaskType = taskType === 'All Tasks' || task.schedule === taskType;
-      const matchesStage = taskStage === 'All Stages' || task.meetingStage === taskStage;
-
+      const matchesStage = taskStage === 'All Stages' || task.taskLabel === taskStage;
       return matchesSearch && matchesTaskType && matchesStage;
     });
   }, [search, taskStage, taskType, tasks]);
@@ -289,16 +331,16 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
             <Text style={styles.bodyTitle}>Task Pipeline</Text>
             <Text style={styles.bodyCount}>{filteredTasks.length} tasks</Text>
           </View>
-          {leadState.isLoading ? (
+          {leadState.isLoading || meetingState.isLoading ? (
             <View style={styles.emptyState}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
               <Text style={styles.emptyTitle}>Loading tasks</Text>
             </View>
-          ) : leadState.error ? (
+          ) : leadState.error || meetingState.error ? (
             <View style={styles.emptyState}>
               <Icon source="alert-circle-outline" size={30} color="#DC2626" />
               <Text style={styles.emptyTitle}>Tasks could not be loaded</Text>
-              <Text style={styles.emptyText}>{leadState.error}</Text>
+              <Text style={styles.emptyText}>{leadState.error ?? meetingState.error}</Text>
             </View>
           ) : filteredTasks.length ? (
             <View style={styles.taskGrid}>

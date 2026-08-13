@@ -34,7 +34,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`Open details for ${task.name}, ${task.meetingStage}`}
+      accessibilityLabel={`Open details for ${task.name}, ${task.taskLabel}`}
       onPress={() => onOpenDetails?.(task)}
       style={({ pressed }) => [
         styles.card,
@@ -88,7 +88,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
           </View>
         </View>
         <View style={[styles.stageBadge, { backgroundColor: tone.soft }]}>
-          <Text style={[styles.stageText, { color: tone.accent }]}>{task.meetingStage}</Text>
+          <Text style={[styles.stageText, { color: tone.accent }]}>{task.taskLabel}</Text>
         </View>
       </View>
 

@@ -17,6 +17,7 @@ const initialState: AuthState = {
   user: null,
   rememberMe: true,
   isAuthenticated: false,
+  isInitialized: false,
   isLoading: false,
   isRefreshing: false,
   sessionExpiresAt: null,
@@ -28,6 +29,7 @@ const createAuthState = (response: AuthResponse, rememberMe: boolean): Partial<A
   user: response.user,
   rememberMe,
   isAuthenticated: true,
+  isInitialized: true,
   isLoading: false,
   isRefreshing: false,
   sessionExpiresAt: Date.now() + response.tokens.expiresIn * 1000,
@@ -44,6 +46,8 @@ const toMessage = (error: unknown, fallback: string) => {
 export class AuthService {
   private state = initialState;
   private listeners = new Set<Listener>();
+  private operationGeneration = 0;
+  private refreshPromise: Promise<void> | null = null;
 
   subscribe(listener: Listener) {
     this.listeners.add(listener);
@@ -68,42 +72,60 @@ export class AuthService {
   }
 
   async bootstrap() {
-    this.setState({ isLoading: true, error: null });
-    const [user, refreshToken, rememberMe] = await Promise.all([
-      SecureStorageService.getUserData(),
-      SecureStorageService.getRefreshToken(),
-      SecureStorageService.getRememberMe(),
-    ]);
+    const generation = ++this.operationGeneration;
+    this.setState({ isInitialized: false, isLoading: true, error: null });
+    try {
+      const [user, refreshToken, rememberMe] = await Promise.all([
+        SecureStorageService.getUserData(),
+        SecureStorageService.getRefreshToken(),
+        SecureStorageService.getRememberMe(),
+      ]);
+      if (generation !== this.operationGeneration) return;
 
-    if (!refreshToken || !user) {
+      if (!refreshToken || !user) {
+        await SecureStorageService.removeToken();
+        if (generation !== this.operationGeneration) return;
+        this.setState({
+          ...initialState,
+          isInitialized: true,
+          isLoading: false,
+          rememberMe,
+        });
+        return;
+      }
+
+      this.setState({ user, rememberMe, isRefreshing: true });
+      await this.refreshSession(generation);
+    } catch (error) {
       await SecureStorageService.removeToken();
+      if (generation !== this.operationGeneration) return;
       this.setState({
         ...initialState,
+        isInitialized: true,
         isLoading: false,
-        rememberMe,
+        error: toMessage(error, 'Stored session could not be restored.'),
       });
-      return;
     }
-
-    this.setState({
-      user,
-      rememberMe,
-      isRefreshing: true,
-    });
-    await this.refreshSession();
   }
 
   async login(credentials: LoginCredentials): Promise<AuthResponse> {
+    const generation = ++this.operationGeneration;
     this.setState({ isLoading: true, error: null, success: null });
     try {
+      await this.refreshPromise;
+      if (generation !== this.operationGeneration) {
+        throw new AuthApiError('Login was superseded by another authentication action.', 'STALE_AUTH_OPERATION');
+      }
       const response = await authApi.login(credentials);
+      if (generation !== this.operationGeneration) {
+        throw new AuthApiError('Login was superseded by another authentication action.', 'STALE_AUTH_OPERATION');
+      }
       await this.persistSession(response, credentials.rememberMe);
       return response;
     } catch (error) {
-      this.setState({
-        isLoading: false,
-        error: toMessage(error, 'Login failed.'),
-      });
+      if (generation === this.operationGeneration) {
+        this.setState({ isInitialized: true, isLoading: false, error: toMessage(error, 'Login failed.') });
+      }
       throw error;
     }
   }
@@ -153,15 +175,28 @@ export class AuthService {
     }
   }
 
-  async refreshSession() {
+  async refreshSession(expectedGeneration?: number) {
+    if (this.refreshPromise) return this.refreshPromise;
+    const generation = expectedGeneration ?? this.operationGeneration;
+    this.refreshPromise = this.performRefresh(generation).finally(() => {
+      this.refreshPromise = null;
+    });
+    return this.refreshPromise;
+  }
+
+  private async performRefresh(generation: number) {
     const refreshToken = await SecureStorageService.getRefreshToken();
-    if (!refreshToken) {
+    if (!refreshToken || generation !== this.operationGeneration) {
+      if (generation === this.operationGeneration) {
+        this.setState({ isInitialized: true, isLoading: false, isRefreshing: false });
+      }
       return;
     }
 
     this.setState({ isRefreshing: true, error: null });
     try {
       const response = await authApi.refreshToken(refreshToken);
+      if (generation !== this.operationGeneration) return;
       const rememberMe = await SecureStorageService.getRememberMe();
       const user = this.state.user ?? await SecureStorageService.getUserData();
       if (!user) {
@@ -176,19 +211,26 @@ export class AuthService {
         sessionId: response.sessionId,
       };
       await SecureStorageService.saveToken(tokens, user, rememberMe);
+      if (generation !== this.operationGeneration) {
+        await SecureStorageService.removeToken();
+        return;
+      }
       this.setState({
         user,
         rememberMe,
         isAuthenticated: true,
+        isInitialized: true,
         isLoading: false,
         isRefreshing: false,
         sessionExpiresAt: Date.now() + response.expiresIn * 1000,
         error: null,
       });
     } catch (error) {
+      if (generation !== this.operationGeneration) return;
       await SecureStorageService.removeToken();
       this.setState({
         ...initialState,
+        isInitialized: true,
         isLoading: false,
         isRefreshing: false,
         error: toMessage(error, 'Session refresh failed.'),
@@ -197,15 +239,25 @@ export class AuthService {
   }
 
   async logout() {
+    ++this.operationGeneration;
     this.setState({ isLoading: true, error: null, success: null });
+    let logoutError: unknown;
     try {
       const refreshToken = await SecureStorageService.getRefreshToken();
       if (refreshToken) {
         await authApi.logout(refreshToken);
       }
+    } catch (error) {
+      logoutError = error;
     } finally {
       await SecureStorageService.removeToken();
-      this.setState({ ...initialState, isLoading: false, success: 'Logged out successfully.' });
+      this.setState({
+        ...initialState,
+        isInitialized: true,
+        isLoading: false,
+        success: logoutError ? null : 'Logged out successfully.',
+        error: logoutError ? 'Signed out locally. The server session could not be revoked.' : null,
+      });
     }
   }
 

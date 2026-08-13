@@ -1,8 +1,6 @@
 import {
   AuthResponse,
   ApiSuccessResponse,
-  AuthRole,
-  AuthUser,
   ForgotPasswordCredentials,
   LoginCredentials,
   LoginRequest,
@@ -96,78 +94,6 @@ export class AuthApiError extends Error {
   }
 }
 
-type MockAccount = {
-  email: string;
-  password: string;
-  role: AuthRole;
-  fullName: string;
-  id: number;
-  permissions: string[];
-};
-
-const accounts: MockAccount[] = [
-  {
-    id: 1,
-    fullName: 'Super Admin',
-    email: 'superadmin@erp.com',
-    password: '12345678@aA',
-    role: 'SUPER_ADMIN',
-    permissions: ['*'],
-  },
-  {
-    id: 2,
-    fullName: 'Admin',
-    email: 'admin@erp.com',
-    password: '12345678@bB',
-    role: 'ADMIN',
-    permissions: ['dashboard:view', 'user:view', 'user:create'],
-  },
-  {
-    id: 3,
-    fullName: 'Leader',
-    email: 'leader@erp.com',
-    password: '12345678@cC',
-    role: 'LEADER',
-    permissions: ['lead:view', 'lead:create', 'meeting:view'],
-  },
-  {
-    id: 4,
-    fullName: 'Team Leader',
-    email: 'teamleader@erp.com',
-    password: '12345678@dD',
-    role: 'TEAM_LEADER',
-    permissions: ['lead:view', 'lead:assign', 'team:view'],
-  },
-  {
-    id: 5,
-    fullName: 'Sales Manager',
-    email: 'sm@erp.com',
-    password: '12345678@eE',
-    role: 'SALES_MANAGER',
-    permissions: ['lead:view', 'lead:assign', 'pipeline:view'],
-  },
-];
-
-const buildResponse = (account: MockAccount, message: string): AuthResponse => ({
-  success: true,
-  message,
-  user: {
-    id: account.id,
-    fullName: account.fullName,
-    email: account.email,
-    role: account.role,
-    permissions: account.permissions,
-    provider: 'password',
-  },
-  tokens: {
-    accessToken: `dummy-access-token.${account.role}.${Date.now()}`,
-    refreshToken: `dummy-refresh-token.${account.role}.${Date.now()}`,
-    expiresIn: 900,
-  },
-});
-
-const resolveAccount = (email: string) => accounts.find((account) => account.email.toLowerCase() === email.trim().toLowerCase());
-
 const simulateNetwork = async (shouldFail = false) => {
   await delay(900 + Math.round(Math.random() * 500));
   if (shouldFail) {
@@ -193,11 +119,6 @@ export const authApi = {
 
   register: async (credentials: RegisterCredentials): Promise<AuthResponse> => {
     await simulateNetwork(false);
-    const account = resolveAccount(credentials.email);
-    if (account) {
-      throw new AuthApiError('An account already exists for this email.', 'ACCOUNT_EXISTS');
-    }
-
     return {
       success: true,
       message: 'Registration Successful',
@@ -217,19 +138,11 @@ export const authApi = {
     };
   },
 
-  forgotPassword: async (credentials: ForgotPasswordCredentials): Promise<{ success: boolean; message: string }> => {
+  forgotPassword: async (_credentials: ForgotPasswordCredentials): Promise<{ success: boolean; message: string }> => {
     await simulateNetwork(false);
-    const account = resolveAccount(credentials.email);
-    if (!account) {
-      return {
-        success: true,
-        message: 'If the email exists, a reset link has been sent.',
-      };
-    }
-
     return {
       success: true,
-      message: 'Password reset link has been sent to your registered email.',
+      message: 'If the email exists, a reset link has been sent.',
     };
   },
 

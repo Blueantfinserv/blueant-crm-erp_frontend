@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -15,36 +14,17 @@ import { Picker } from "@react-native-picker/picker";
 import { Icon } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
-import * as ImagePicker from "expo-image-picker";
 import MapView, { Marker } from "../../../../PreviewMap";
 
 const LEAD_SOURCES = ["Referral", "Website", "Walk-in", "Other"];
-const MEETING_STATUSES = ["Meeting Conducted", "Meeting Not Conducted"];
-const JOINED_DESIGNATIONS = ["Admin", "RM", "Leader", "Team Leader", "Sales Manager"];
+const MEETING_MODES = ["Physical", "Virtual"];
+const JOINED_WITH_OPTIONS = ["Alone", "With Someone"];
 const LEAD_STATUSES = [
-  "Already BlueAnt Client",
-  "Converted Client",
+  "Work In Progress",
+  "Converted as Client",
   "Remove This Client",
-  "Client Not Interested",
-  "Work in Progress",
+  "Already Blueant Client",
 ];
-const PROFESSIONS = [
-  "Salaried",
-  "Business Owner",
-  "Self Employed",
-  "Doctor",
-  "Chartered Accountant",
-  "Lawyer",
-  "Engineer",
-  "Teacher",
-  "Government Employee",
-  "Retired",
-];
-const AGE_GROUPS = ["Less than 20", "20–30", "31–40", "41–50", "51–60", "More than 60"];
-const FOLLOW_UP_TIMES = ["9 AM–11 AM", "11 AM–1 PM", "1 PM–3 PM", "3 PM–5 PM", "Late Evening"];
-const QUALIFICATIONS = ["Hot", "Medium", "Cold"];
-const KIDS_OPTIONS = ["No Kids", "1", "2", "2+"];
-const MARITAL_STATUSES = ["Single", "Married", "Divorced", "Widowed"];
 const INITIAL_REGION = {
   latitude: 20.5937,
   longitude: 78.9629,
@@ -52,20 +32,20 @@ const INITIAL_REGION = {
   longitudeDelta: 22,
 };
 
+const getLocalDate = () => {
+  const now = new Date();
+  const offset = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+};
+
 export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   const isNewLead = type === "new-lead";
-  const isFirstMeeting = type === "first-meeting";
-  const needsLocationPin = isFirstMeeting && !lead?.hasLocationPin;
   const mapRef = useRef(null);
+  const submittingRef = useRef(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [submissionSuccess, setSubmissionSuccess] = useState("");
-  const [imageLoading, setImageLoading] = useState("");
-  const [images, setImages] = useState({
-    visitingCard: null,
-    adBoard: null,
-  });
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [viewedMonth, setViewedMonth] = useState(() => {
     const date = new Date();
@@ -78,29 +58,13 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     leadSource: "",
     remarks: "",
     locationText: lead?.locationText ?? "",
-    meetingStatus: "",
+    meetingMode: "",
+    meetingDate: getLocalDate(),
     leadStatus: "",
-    joinedMode: "Alone",
-    joinedWith: "",
-    joinedDesignation: "",
+    joinedWith: "Alone",
     nextPlanDate: "",
-    panNumber: "",
-    amount: "",
-    investmentType: "",
-    leadEmail: "",
-    profession: "",
-    ageGroup: "",
-    bestFollowUpTime: "",
-    leadQualification: "",
-    kids: "",
-    maritalStatus: "",
-    priorInvestment: "",
-    priorInvestmentDetails: "",
-    adviceMode: "",
   });
-  const [coordinates, setCoordinates] = useState(
-    lead?.hasLocationPin ? lead.coordinates : null
-  );
+  const [coordinates, setCoordinates] = useState(null);
 
   useEffect(() => {
     if (!submissionSuccess) return undefined;
@@ -110,14 +74,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
 
   const title = useMemo(() => {
     if (isNewLead) return "New Lead";
-    if (isFirstMeeting) return "1st Meeting Update";
     return "Meeting Update";
-  }, [isFirstMeeting, isNewLead]);
+  }, [isNewLead]);
   const subtitle = isNewLead
     ? "Capture a fresh opportunity in a few quick steps"
-    : isFirstMeeting
-      ? "Record the first interaction and decide the next move"
-      : "Keep the client journey updated and moving forward";
+    : "Keep the client journey updated and moving forward";
 
   const update = (field, value) => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -139,6 +100,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       const next = {
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy ?? undefined,
       };
       setCoordinates(next);
       setErrors((current) => ({ ...current, coordinates: undefined }));
@@ -153,29 +115,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     }
   };
 
-  const chooseImage = async (field, source) => {
-    setImageLoading(field);
-    try {
-      const permission = source === "camera"
-        ? await ImagePicker.requestCameraPermissionsAsync()
-        : await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        setErrors((current) => ({ ...current, [field]: "Permission is required to add this image." }));
-        return;
-      }
-      const result = source === "camera"
-        ? await ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.75 })
-        : await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 0.75 });
-      if (result.canceled) return;
-      setImages((current) => ({ ...current, [field]: result.assets[0] }));
-      setErrors((current) => ({ ...current, [field]: undefined }));
-    } catch {
-      setErrors((current) => ({ ...current, [field]: "Image could not be selected." }));
-    } finally {
-      setImageLoading("");
-    }
-  };
-
   const validate = () => {
     const nextErrors = {};
     if (isNewLead) {
@@ -185,50 +124,18 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
       if (!form.locationText.trim()) nextErrors.locationText = "Location is required.";
     } else {
-      if (needsLocationPin && form.meetingStatus === "Meeting Conducted" && !coordinates) {
-        nextErrors.coordinates = "Live location is required.";
+      if (lead?.taskKind === "MEETING" && !lead?.meetingCode) {
+        nextErrors.meetingCode = "No active meeting is available for this lead.";
       }
-      if (!form.meetingStatus) nextErrors.meetingStatus = "Meeting status is required.";
+      if (!form.meetingMode) nextErrors.meetingMode = "Meeting mode is required.";
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.meetingDate)) {
+        nextErrors.meetingDate = "Use date format YYYY-MM-DD.";
+      }
+      if (!form.leadStatus) nextErrors.leadStatus = "Lead status is required.";
+      if (!form.joinedWith) nextErrors.joinedWith = "Joined With is required.";
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
-
-      if (form.meetingStatus === "Meeting Not Conducted") {
-        if (!form.nextPlanDate) nextErrors.nextPlanDate = "Next plan date is required.";
-      } else if (form.meetingStatus === "Meeting Conducted") {
-        if (!form.leadStatus) nextErrors.leadStatus = "Lead status is required.";
-        if (form.joinedMode === "Other" && !form.joinedWith.trim()) {
-          nextErrors.joinedWith = "Person's name is required.";
-        }
-        if (form.joinedMode === "Other" && !form.joinedDesignation) {
-          nextErrors.joinedDesignation = "Person designation is required.";
-        }
-        if (isFirstMeeting) {
-          if (form.leadEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.leadEmail)) {
-            nextErrors.leadEmail = "Enter a valid email address.";
-          }
-          if (!form.profession) nextErrors.profession = "Profession is required.";
-          if (!form.ageGroup) nextErrors.ageGroup = "Age group is required.";
-          if (!form.bestFollowUpTime) nextErrors.bestFollowUpTime = "Follow-up time is required.";
-          if (!form.leadQualification) nextErrors.leadQualification = "Qualification is required.";
-          if (!form.kids) nextErrors.kids = "Select an option.";
-          if (!form.maritalStatus) nextErrors.maritalStatus = "Marital status is required.";
-          if (!form.priorInvestment) nextErrors.priorInvestment = "Select Yes or No.";
-          if (form.priorInvestment === "Yes" && !form.priorInvestmentDetails.trim()) {
-            nextErrors.priorInvestmentDetails = "Add prior investment details.";
-          }
-          if (form.priorInvestment === "Yes" && !form.adviceMode) {
-            nextErrors.adviceMode = "Select Advisor or Alone.";
-          }
-        }
-        if (form.leadStatus === "Work in Progress" && !form.nextPlanDate) {
-          nextErrors.nextPlanDate = "Next plan date is required.";
-        }
-        if (form.leadStatus === "Converted Client") {
-          if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(form.panNumber.trim().toUpperCase())) {
-            nextErrors.panNumber = "Enter a valid PAN number.";
-          }
-          if (!form.amount || Number(form.amount) <= 0) nextErrors.amount = "Valid amount is required.";
-          if (!form.investmentType) nextErrors.investmentType = "Select SIP or Lumpsum.";
-        }
+      if (form.leadStatus === "Work In Progress" && !form.nextPlanDate) {
+        nextErrors.nextPlanDate = "Next plan date is required.";
       }
     }
     setErrors(nextErrors);
@@ -236,22 +143,20 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   };
 
   const submit = async () => {
+    if (submittingRef.current) return;
     if (!validate()) return;
-    const workflowPayload = {
-      type,
-      leadId: lead?.id,
-      ...form,
-      panNumber: form.panNumber.toUpperCase(),
+    const meetingPayload = {
+      leadId: lead?.uniqueLeadId,
+      meetingCode: lead?.meetingCode,
+      meetingMode: form.meetingMode,
+      meetingDate: form.meetingDate,
+      leadStatus: form.leadStatus,
+      aloneWith: form.joinedWith === "Alone" ? "SELF" : "SOMEONE",
+      remarks: form.remarks.trim(),
+      nextPlanDate: form.leadStatus === "Work In Progress" ? form.nextPlanDate : "",
       coordinates,
-      hasLocationPin: Boolean(coordinates),
-      images,
+      address: form.locationText.trim(),
     };
-
-    if (!isNewLead) {
-      onSubmit?.(workflowPayload);
-      onClose();
-      return;
-    }
 
     const createLeadRequest = {
       clientName: form.name.trim(),
@@ -262,26 +167,24 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     };
 
     setSubmissionError("");
+    submittingRef.current = true;
     setSubmitting(true);
     try {
-      const successMessage = await onSubmit?.(createLeadRequest);
-      setSubmissionSuccess(successMessage || "Lead created successfully.");
+      const successMessage = await onSubmit?.(isNewLead ? createLeadRequest : meetingPayload);
+      setSubmissionSuccess(successMessage || (isNewLead ? "Lead created successfully." : "Meeting submitted successfully."));
     } catch (error) {
       const errorMessage =
         typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
           ? error.message
-          : "Lead creation failed.";
+          : isNewLead ? "Lead creation failed." : "Meeting submission failed.";
       setSubmissionError(errorMessage);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };
 
-  const meetingNotConducted = form.meetingStatus === "Meeting Not Conducted";
-  const meetingConducted = form.meetingStatus === "Meeting Conducted";
-  const showNextPlanDate =
-    meetingNotConducted || (meetingConducted && form.leadStatus === "Work in Progress");
-  const showConversion = meetingConducted && form.leadStatus === "Converted Client";
+  const showNextPlanDate = form.leadStatus === "Work In Progress";
 
   return (
     <View style={styles.screen}>
@@ -302,7 +205,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
             />
           </View>
           <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>{isNewLead ? "Lead creation" : lead?.meetingStage}</Text>
+            <Text style={styles.eyebrow}>{isNewLead ? "Lead creation" : lead?.taskLabel}</Text>
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.subtitle}>{subtitle}</Text>
           </View>
@@ -370,169 +273,28 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                 </View>
               </View>
 
-              <Field label="Meeting Status" required error={errors.meetingStatus}>
-                <ChoiceGroup
-                  value={form.meetingStatus}
-                  options={MEETING_STATUSES}
-                  onChange={(value) => update("meetingStatus", value)}
+              {errors.meetingCode ? <Text style={styles.error}>{errors.meetingCode}</Text> : null}
+              <Field label="Meeting Mode" required error={errors.meetingMode}>
+                <Select value={form.meetingMode} options={MEETING_MODES} onChange={(value) => update("meetingMode", value)} />
+              </Field>
+              <Field label="Meeting Date" required error={errors.meetingDate}>
+                <Input value={form.meetingDate} onChangeText={(value) => update("meetingDate", value)} placeholder="YYYY-MM-DD" />
+              </Field>
+              <Field label="Lead Status" required error={errors.leadStatus}>
+                <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
+              </Field>
+              <Field label="Joined With" required error={errors.joinedWith}>
+                <ChoiceGroup value={form.joinedWith} options={JOINED_WITH_OPTIONS} onChange={(value) => update("joinedWith", value)} />
+              </Field>
+              <Field label="Remarks" required error={errors.remarks}>
+                <Input
+                  value={form.remarks}
+                  onChangeText={(value) => update("remarks", value)}
+                  multiline
+                  style={styles.textarea}
+                  placeholder="Meeting remarks"
                 />
               </Field>
-
-              {meetingConducted ? (
-                <>
-                  <Field label="Lead Status" required error={errors.leadStatus}>
-                    <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
-                  </Field>
-                  <Field label="Joined With" required>
-                    <ChoiceGroup
-                      value={form.joinedMode}
-                      options={["Alone", "Other"]}
-                      onChange={(value) => {
-                        update("joinedMode", value);
-                        if (value === "Alone") {
-                          update("joinedWith", "");
-                          update("joinedDesignation", "");
-                        }
-                      }}
-                    />
-                  </Field>
-                  {form.joinedMode === "Other" ? (
-                    <>
-                      <Field label="Name of the Person" required error={errors.joinedWith}>
-                      <Input
-                        value={form.joinedWith}
-                        onChangeText={(value) => update("joinedWith", value)}
-                        placeholder="Enter person's name"
-                      />
-                      </Field>
-                      <Field label="Person Designation" required error={errors.joinedDesignation}>
-                        <Select
-                          value={form.joinedDesignation}
-                          options={JOINED_DESIGNATIONS}
-                          onChange={(value) => update("joinedDesignation", value)}
-                        />
-                      </Field>
-                    </>
-                  ) : null}
-                  {isFirstMeeting ? (
-                    <View style={styles.profileSection}>
-                      <View style={styles.profileSectionHeader}>
-                        <View style={styles.profileSectionIcon}>
-                          <Icon source="account-heart-outline" size={17} color="#7C3AED" />
-                        </View>
-                        <View>
-                          <Text style={styles.profileSectionTitle}>Lead Profile</Text>
-                          <Text style={styles.profileSectionCaption}>Details for better follow-up and qualification</Text>
-                        </View>
-                      </View>
-
-                      <Field label="Lead Email" error={errors.leadEmail}>
-                        <Input
-                          value={form.leadEmail}
-                          onChangeText={(value) => update("leadEmail", value)}
-                          keyboardType="email-address"
-                          autoCapitalize="none"
-                          placeholder="client@example.com"
-                        />
-                      </Field>
-                      <Field label="Profession" required error={errors.profession}>
-                        <Select value={form.profession} options={PROFESSIONS} onChange={(value) => update("profession", value)} />
-                      </Field>
-                      <Field label="Age Group" required error={errors.ageGroup}>
-                        <Select value={form.ageGroup} options={AGE_GROUPS} onChange={(value) => update("ageGroup", value)} />
-                      </Field>
-                      <Field label="Best Time to Follow Up" required error={errors.bestFollowUpTime}>
-                        <Select value={form.bestFollowUpTime} options={FOLLOW_UP_TIMES} onChange={(value) => update("bestFollowUpTime", value)} />
-                      </Field>
-                      <Field label="Lead Qualification" required error={errors.leadQualification}>
-                        <ChoiceGroup value={form.leadQualification} options={QUALIFICATIONS} onChange={(value) => update("leadQualification", value)} />
-                      </Field>
-                      <Field label="Any Kids" required error={errors.kids}>
-                        <ChoiceGroup value={form.kids} options={KIDS_OPTIONS} onChange={(value) => update("kids", value)} />
-                      </Field>
-                      <Field label="Marital Status" required error={errors.maritalStatus}>
-                        <Select value={form.maritalStatus} options={MARITAL_STATUSES} onChange={(value) => update("maritalStatus", value)} />
-                      </Field>
-                      <ImageQuestion
-                        label="Visiting Card Image"
-                        image={images.visitingCard}
-                        loading={imageLoading === "visitingCard"}
-                        error={errors.visitingCard}
-                        onCamera={() => chooseImage("visitingCard", "camera")}
-                        onGallery={() => chooseImage("visitingCard", "gallery")}
-                      />
-                      <ImageQuestion
-                        label="Ad Board Image"
-                        image={images.adBoard}
-                        loading={imageLoading === "adBoard"}
-                        error={errors.adBoard}
-                        onCamera={() => chooseImage("adBoard", "camera")}
-                        onGallery={() => chooseImage("adBoard", "gallery")}
-                      />
-                      <Field label="Any Prior Investment" required error={errors.priorInvestment}>
-                        <ChoiceGroup
-                          value={form.priorInvestment}
-                          options={["Yes", "No"]}
-                          onChange={(value) => {
-                            update("priorInvestment", value);
-                            if (value === "No") {
-                              update("priorInvestmentDetails", "");
-                              update("adviceMode", "");
-                            }
-                          }}
-                        />
-                        {form.priorInvestment === "Yes" ? (
-                          <>
-                            <Input
-                              value={form.priorInvestmentDetails}
-                              onChangeText={(value) => {
-                                const words = value.trim().split(/\s+/).filter(Boolean);
-                                if (words.length <= 20) update("priorInvestmentDetails", value);
-                              }}
-                              multiline
-                              style={[styles.textarea, styles.followupInput]}
-                              placeholder="Describe prior investments in up to 20 words"
-                            />
-                            <Text style={styles.wordCount}>
-                              {form.priorInvestmentDetails.trim().split(/\s+/).filter(Boolean).length}/20 words
-                            </Text>
-                            {errors.priorInvestmentDetails ? <Text style={styles.error}>{errors.priorInvestmentDetails}</Text> : null}
-                          </>
-                        ) : null}
-                      </Field>
-                      {form.priorInvestment === "Yes" ? (
-                        <Field label="Investment Guidance" required error={errors.adviceMode} last>
-                          <ChoiceGroup value={form.adviceMode} options={["Advisor", "Alone"]} onChange={(value) => update("adviceMode", value)} />
-                        </Field>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </>
-              ) : null}
-
-              {meetingConducted ? (
-                <LocationField
-                  optional={!needsLocationPin}
-                  coordinates={coordinates}
-                  error={errors.coordinates}
-                  loading={loading}
-                  mapRef={mapRef}
-                  onCapture={captureLocation}
-                  onChange={setCoordinates}
-                />
-              ) : null}
-
-              {form.meetingStatus ? (
-                <Field label="Remarks" required error={errors.remarks}>
-                  <Input
-                    value={form.remarks}
-                    onChangeText={(value) => update("remarks", value)}
-                    multiline
-                    style={styles.textarea}
-                    placeholder="Meeting remarks"
-                  />
-                </Field>
-              ) : null}
 
               {showNextPlanDate ? (
                 <Field label="Next Plan Date" required error={errors.nextPlanDate}>
@@ -568,43 +330,24 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                 </Field>
               ) : null}
 
-              {showConversion ? (
-                <View style={styles.conditionalCard}>
-                  <Text style={styles.conditionalTitle}>Conversion Details</Text>
-                  <Field label="Client PAN Number" required error={errors.panNumber}>
-                    <Input
-                      value={form.panNumber}
-                      onChangeText={(value) => update("panNumber", value.toUpperCase().slice(0, 10))}
-                      autoCapitalize="characters"
-                      placeholder="ABCDE1234F"
-                    />
-                  </Field>
-                  <Field label="Amount" required error={errors.amount}>
-                    <Input
-                      value={form.amount}
-                      onChangeText={(value) => update("amount", value.replace(/[^\d.]/g, ""))}
-                      keyboardType="decimal-pad"
-                      placeholder="Investment amount"
-                    />
-                  </Field>
-                  <Field label="Investment Type" required error={errors.investmentType} last>
-                    <ChoiceGroup
-                      value={form.investmentType}
-                      options={["SIP", "Lumpsum"]}
-                      onChange={(value) => update("investmentType", value)}
-                    />
-                  </Field>
-                </View>
-              ) : null}
+              <LocationField
+                optional
+                coordinates={coordinates}
+                error={errors.coordinates}
+                loading={loading}
+                mapRef={mapRef}
+                onCapture={captureLocation}
+                onChange={setCoordinates}
+              />
             </>
           )}
           </View>
 
-          {isNewLead && submissionError ? (
+          {submissionError ? (
             <Text style={styles.error}>{submissionError}</Text>
           ) : null}
 
-          <Pressable disabled={isNewLead && submitting} onPress={() => void submit()} style={({ pressed }) => [styles.submitPressable, pressed && styles.pressed]}>
+          <Pressable disabled={submitting} onPress={() => void submit()} style={({ pressed }) => [styles.submitPressable, pressed && styles.pressed]}>
             <LinearGradient
               colors={["#4F46E5", "#7C3AED"]}
               start={{ x: 0, y: 0 }}
@@ -612,7 +355,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
               style={styles.submit}
             >
               <View style={styles.submitIcon}>
-                {isNewLead && submitting
+                {submitting
                   ? <ActivityIndicator size="small" color="#5B21B6" />
                   : <Icon source={isNewLead ? "account-check-outline" : "check-bold"} size={17} color="#5B21B6" />}
               </View>
@@ -630,7 +373,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
           <View style={styles.successIcon}>
             <Icon source="check-bold" size={34} color="#FFFFFF" />
           </View>
-          <Text style={styles.successTitle}>Lead Created</Text>
+          <Text style={styles.successTitle}>{isNewLead ? "Lead Created" : "Meeting Updated"}</Text>
           <Text style={styles.successMessage}>{submissionSuccess}</Text>
         </View>
       ) : null}
@@ -735,38 +478,6 @@ function LocationField({ optional, coordinates, error, loading, mapRef, onCaptur
             </>
           )}
         </Pressable>
-      </View>
-    </Field>
-  );
-}
-
-function ImageQuestion({ label, image, loading, error, onCamera, onGallery }) {
-  return (
-    <Field label={label} error={error}>
-      <View style={styles.imagePicker}>
-        {image ? (
-          <Image source={{ uri: image.uri }} style={styles.imagePreview} resizeMode="cover" />
-        ) : (
-          <View style={styles.imagePlaceholder}>
-            <Icon source="image-plus" size={25} color="#A78BFA" />
-            <Text style={styles.imagePlaceholderText}>No image selected</Text>
-          </View>
-        )}
-        <View style={styles.imageActions}>
-          <Pressable disabled={loading} onPress={onCamera} style={styles.imageAction}>
-            <Icon source="camera-outline" size={15} color="#6D28D9" />
-            <Text style={styles.imageActionText}>Camera</Text>
-          </Pressable>
-          <Pressable disabled={loading} onPress={onGallery} style={styles.imageAction}>
-            <Icon source="image-multiple-outline" size={15} color="#6D28D9" />
-            <Text style={styles.imageActionText}>Gallery</Text>
-          </Pressable>
-        </View>
-        {loading ? (
-          <View style={styles.imageLoader}>
-            <ActivityIndicator size="small" color="#7C3AED" />
-          </View>
-        ) : null}
       </View>
     </Field>
   );
@@ -910,46 +621,6 @@ const styles = StyleSheet.create({
   autofillItem: { minWidth: 0, flex: 1 },
   autofillLabel: { color: "#64748B", fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
   autofillValue: { marginTop: 3, color: "#4C1D95", fontSize: 13, fontWeight: "900" },
-  conditionalCard: { marginBottom: 16, padding: 14, borderWidth: 1, borderColor: "#BFDBFE", borderRadius: 14, backgroundColor: "#F8FBFF" },
-  conditionalTitle: { marginBottom: 13, color: "#1D4ED8", fontSize: 13, fontWeight: "900" },
-  profileSection: {
-    marginBottom: 16, padding: 16, borderWidth: 1, borderColor: "#E9D5FF",
-    borderRadius: 16, backgroundColor: "#FCFAFF",
-  },
-  profileSectionHeader: {
-    flexDirection: "row", alignItems: "center", gap: 9, marginBottom: 16,
-    paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: "#F1E8FF",
-  },
-  profileSectionIcon: {
-    width: 34, height: 34, alignItems: "center", justifyContent: "center",
-    borderRadius: 11, backgroundColor: "#F3E8FF",
-  },
-  profileSectionTitle: { color: "#4C1D95", fontSize: 13, fontWeight: "900" },
-  profileSectionCaption: { marginTop: 2, color: "#8B7AA8", fontSize: 9, fontWeight: "600" },
-  imagePicker: {
-    position: "relative", overflow: "hidden", borderWidth: 1, borderColor: "#E3E2EE",
-    borderRadius: 13, backgroundColor: "#FFFFFF",
-  },
-  imagePreview: { width: "100%", height: 120 },
-  imagePlaceholder: {
-    height: 86, alignItems: "center", justifyContent: "center", gap: 4,
-    backgroundColor: "#FAF8FF",
-  },
-  imagePlaceholderText: { color: "#9386AA", fontSize: 9, fontWeight: "700" },
-  imageActions: {
-    flexDirection: "row", gap: 8, padding: 8, borderTopWidth: 1,
-    borderTopColor: "#F1EDF7",
-  },
-  imageAction: {
-    minHeight: 34, flex: 1, flexDirection: "row", alignItems: "center",
-    justifyContent: "center", gap: 5, borderRadius: 9, backgroundColor: "#F5F3FF",
-  },
-  imageActionText: { color: "#6D28D9", fontSize: 10, fontWeight: "900" },
-  imageLoader: {
-    ...StyleSheet.absoluteFillObject, alignItems: "center", justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.78)",
-  },
-  wordCount: { marginTop: 5, color: "#9386AA", fontSize: 9, fontWeight: "700", textAlign: "right" },
   map: { width: "100%", height: 190, overflow: "hidden", borderRadius: 10 },
   locationFooter: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
   coordinates: { minWidth: 0, flex: 1 },

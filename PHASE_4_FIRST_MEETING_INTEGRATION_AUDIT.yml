@@ -1,0 +1,438 @@
+report:
+  title: "Phase 4 - First Meeting Integration Audit"
+  scope: "Analysis only"
+  code_modified: false
+
+  business_workflow:
+    sequence:
+      - "A New Lead is created."
+      - "The lead immediately appears in Your Tasks with the LEADS badge."
+      - "Update Form opens the First Meeting form."
+      - "Submitting creates the first meeting and updates the lead workflow."
+      - "The same card remains and its badge changes to 1st Meeting."
+      - "Future meetings update the same card to 2nd Meeting, 3rd Meeting, and so on."
+    card_removal_rules:
+      remove_when_lead_status_is:
+        - "CONVERTED"
+        - "NOT_INTERESTED"
+        - "REMOVED"
+      retain_when_lead_status_is:
+        - "WORK_IN_PROGRESS"
+    architectural_observation: >-
+      The workflow is lead-centric. The lead remains the identity behind the task
+      card, while meetings are child records and must not determine whether a new
+      lead initially appears in Your Tasks.
+
+  swagger_endpoint_selection:
+    meeting_creation:
+      method: "POST"
+      path: "/v1/meetings"
+      summary: "Create a new meeting"
+      operation_id: "createMeeting"
+      request_dto: "CreateMeetingRequest"
+      success_status: 201
+      verdict: >-
+        This is the exact Swagger endpoint that explicitly creates a new meeting.
+    scheduling_endpoint:
+      method: "POST"
+      path: "/v1/meetings/schedule"
+      summary: "Schedule a meeting"
+      operation_id: "scheduleMeeting"
+      request_dto: "CreateMeetingRequest"
+      success_status: 201
+      issue: >-
+        Swagger uses the same DTO as meeting creation but does not explain the
+        behavioral difference. It cannot safely be selected for recording a
+        conducted or not-conducted first meeting without backend clarification.
+    workflow_update:
+      method: "POST"
+      path: "/v1/meetings/{meetingCode}/workflow-update"
+      summary: "Update meeting outcome and optionally schedule a follow-up (sales workflow)"
+      operation_id: "processMeetingWorkflow"
+      request_dto: "MeetingWorkflowRequest"
+      success_status: 200
+      required_path_parameter: "meetingCode"
+      issue: >-
+        This endpoint cannot independently create the first meeting because a
+        LEADS-stage lead has no existing meetingCode.
+    lead_status_update:
+      method: "PATCH"
+      path: "/v1/leads/status"
+      request_dto: "UpdateLeadStatusRequest"
+      success_status: 200
+      issue: "It updates lead status and stage but does not create a meeting."
+
+  compatibility_verdict:
+    single_endpoint_available: false
+    conclusion: >-
+      No single documented endpoint clearly creates the first meeting, saves the
+      complete form outcome, updates lead status, advances the card from LEADS to
+      1st Meeting, and returns the updated lead/card state.
+    possible_backend_flows_requiring_confirmation:
+      - steps:
+          - "POST /v1/meetings"
+          - "Use the returned meetingCode with POST /v1/meetings/{meetingCode}/workflow-update"
+          - "Call PATCH /v1/leads/status only if workflow-update does not update the lead"
+      - steps:
+          - "Use an atomic create-and-process-first-meeting endpoint that is not currently documented in Swagger"
+
+  create_meeting_request:
+    required_fields:
+      - field: "leadId"
+        type: "string"
+        format: "uuid"
+      - field: "meetingMode"
+        type: "string"
+        enum: ["PHYSICAL", "ONLINE", "PHONE"]
+      - field: "meetingDate"
+        type: "string"
+        format: "date"
+      - field: "meetingTime"
+        type: "LocalTime"
+      - field: "meetingLocation"
+        type: "string"
+        max_length: 255
+    optional_fields:
+      - field: "agenda"
+        type: "string"
+        max_length: 500
+      - field: "meetingRemarks"
+        type: "string"
+        max_length: 1000
+      - field: "attendees"
+        type: "string"
+        max_length: 500
+      - field: "googleLocation"
+        type: "string"
+        max_length: 255
+      - field: "discussion"
+        type: "string"
+        max_length: 2000
+      - field: "meetingOutcome"
+        type: "enum"
+      - field: "attachment"
+        type: "string"
+        max_length: 500
+      - field: "meetingStatus"
+        type: "enum"
+    meeting_status_enum:
+      - "SCHEDULED"
+      - "COMPLETED"
+      - "RESCHEDULED"
+      - "CANCELLED"
+      - "NO_SHOW"
+    meeting_outcome_enum:
+      - "PENDING"
+      - "INTERESTED"
+      - "FOLLOW_UP_REQUIRED"
+      - "DOCUMENT_PENDING"
+      - "CONVERTED"
+      - "SUCCESS"
+      - "REJECTED"
+      - "NOT_INTERESTED"
+      - "NO_RESPONSE"
+      - "ALREADY_CLIENT"
+      - "REMOVED"
+
+  create_meeting_mapping:
+    - backend_field: "leadId"
+      frontend_field: "lead.id"
+      status: "Potential match"
+      notes: "The endpoint requires uniqueLeadId as a UUID, not the numeric database leadId."
+    - backend_field: "meetingMode"
+      frontend_field: null
+      status: "Missing"
+      notes: "The form does not collect PHYSICAL, ONLINE, or PHONE."
+    - backend_field: "meetingDate"
+      frontend_field: null
+      status: "Missing"
+      notes: "nextPlanDate is a future plan date and is not the current meeting date."
+    - backend_field: "meetingTime"
+      frontend_field: null
+      status: "Missing"
+    - backend_field: "meetingLocation"
+      frontend_field: "form.locationText or lead location"
+      status: "Partial"
+      notes: "The intended source for the current meeting location is unclear."
+    - backend_field: "agenda"
+      frontend_field: null
+      status: "Missing optional field"
+    - backend_field: "meetingRemarks"
+      frontend_field: "form.remarks"
+      status: "Match"
+    - backend_field: "attendees"
+      frontend_field: "joinedMode, joinedWith, joinedDesignation"
+      status: "Partial"
+      notes: "Frontend stores structured values but backend accepts one string."
+    - backend_field: "googleLocation"
+      frontend_field: "coordinates"
+      status: "Contract mismatch"
+      notes: "Frontend stores latitude and longitude; Swagger expects one undocumented string format."
+    - backend_field: "discussion"
+      frontend_field: "form.remarks"
+      status: "Ambiguous"
+      notes: "There is no separate discussion input."
+    - backend_field: "meetingOutcome"
+      frontend_field: "form.leadStatus"
+      status: "Mapping required"
+    - backend_field: "attachment"
+      frontend_field: "images"
+      status: "Contract mismatch"
+      notes: "Frontend has image-picker assets; backend expects a string."
+    - backend_field: "meetingStatus"
+      frontend_field: "form.meetingStatus"
+      status: "Mapping required"
+
+  meeting_workflow_request:
+    swagger_required_fields: []
+    fields:
+      - { field: "meetingDate", type: "date" }
+      - { field: "meetingTime", type: "LocalTime" }
+      - { field: "meetingMode", type: "PHYSICAL | ONLINE | PHONE" }
+      - { field: "meetingConducted", type: "boolean" }
+      - { field: "discussion", type: "string", max_length: 2000 }
+      - { field: "meetingOutcome", type: "meeting outcome enum" }
+      - { field: "meetingRemarks", type: "string", max_length: 1000 }
+      - { field: "completedStage", type: "string", max_length: 50 }
+      - { field: "leadStatus", type: "string", max_length: 50 }
+      - { field: "clientStatus", type: "string", max_length: 50 }
+      - { field: "joinedMeetingWith", type: "string", max_length: 255 }
+      - { field: "aloneWith", type: "string", max_length: 20 }
+      - { field: "personName", type: "string", max_length: 100 }
+      - { field: "position", type: "string", max_length: 100 }
+      - { field: "leaderName", type: "string", max_length: 100 }
+      - { field: "nextPlanDate", type: "date" }
+      - { field: "panNumber", type: "string", max_length: 20 }
+      - { field: "investmentAmount", type: "number" }
+      - { field: "productType", type: "string", max_length: 100 }
+      - { field: "scheduleNextMeeting", type: "boolean" }
+      - { field: "nextMeetingDate", type: "date" }
+      - { field: "nextMeetingTime", type: "LocalTime" }
+
+  workflow_mapping:
+    - { backend_field: "meetingDate", frontend_field: null, status: "Missing" }
+    - { backend_field: "meetingTime", frontend_field: null, status: "Missing" }
+    - { backend_field: "meetingMode", frontend_field: null, status: "Missing" }
+    - backend_field: "meetingConducted"
+      frontend_field: "meetingStatus"
+      status: "Clear mapping"
+      notes: "Meeting Conducted maps to true; Meeting Not Conducted maps to false."
+    - { backend_field: "discussion", frontend_field: null, status: "Missing or ambiguous" }
+    - backend_field: "meetingOutcome"
+      frontend_field: "leadStatus"
+      status: "Mapping required"
+      notes: "Work in Progress has no exact meetingOutcome equivalent."
+    - { backend_field: "meetingRemarks", frontend_field: "remarks", status: "Direct match" }
+    - backend_field: "completedStage"
+      frontend_field: "form type or current stage"
+      status: "Not generated"
+      notes: "Swagger does not document the recognized first-meeting stage value."
+    - { backend_field: "leadStatus", frontend_field: "leadStatus", status: "Label-to-code mapping required" }
+    - { backend_field: "clientStatus", frontend_field: null, status: "Missing" }
+    - { backend_field: "joinedMeetingWith", frontend_field: "joinedMode or joinedWith", status: "Partial" }
+    - { backend_field: "aloneWith", frontend_field: "joinedMode", status: "Partial" }
+    - { backend_field: "personName", frontend_field: "joinedWith", status: "Direct when Other is selected" }
+    - { backend_field: "position", frontend_field: "joinedDesignation", status: "Direct text mapping" }
+    - { backend_field: "leaderName", frontend_field: null, status: "Missing" }
+    - { backend_field: "nextPlanDate", frontend_field: "nextPlanDate", status: "Direct match" }
+    - { backend_field: "panNumber", frontend_field: "panNumber", status: "Direct match" }
+    - { backend_field: "investmentAmount", frontend_field: "amount", status: "String-to-number conversion required" }
+    - { backend_field: "productType", frontend_field: "investmentType", status: "Naming conversion required" }
+    - { backend_field: "scheduleNextMeeting", frontend_field: "possibly derived from nextPlanDate", status: "Not generated; semantics unclear" }
+    - { backend_field: "nextMeetingDate", frontend_field: "possibly nextPlanDate", status: "Ambiguous" }
+    - { backend_field: "nextMeetingTime", frontend_field: null, status: "Missing" }
+
+  lead_status_mapping:
+    - frontend_value: "Already BlueAnt Client"
+      backend_lead_status: "ALREADY_CLIENT"
+      backend_meeting_outcome: "ALREADY_CLIENT"
+    - frontend_value: "Converted Client"
+      backend_lead_status: "CONVERTED"
+      backend_meeting_outcome: "CONVERTED"
+    - frontend_value: "Remove This Client"
+      backend_lead_status: "REMOVED"
+      backend_meeting_outcome: "REMOVED"
+    - frontend_value: "Client Not Interested"
+      backend_lead_status: "NOT_INTERESTED"
+      backend_meeting_outcome: "NOT_INTERESTED"
+    - frontend_value: "Work in Progress"
+      backend_lead_status: "WORK_IN_PROGRESS"
+      backend_meeting_outcome: null
+      issue: >-
+        WORK_IN_PROGRESS is not a valid meetingOutcome. Swagger does not say whether
+        it should use FOLLOW_UP_REQUIRED, INTERESTED, PENDING, or another outcome.
+
+  lead_stage_audit:
+    swagger_meeting_related_stages:
+      - "INTRO_MEETING"
+      - "INTRO_MEETING_SCHEDULED"
+      - "INTRO_MEETING_COMPLETED"
+      - "FOLLOW_UP"
+    frontend_stages:
+      - "LEADS"
+      - "1st Meeting"
+      - "2nd Meeting"
+      - "3rd Meeting and later numbered meetings"
+    issue: >-
+      Swagger does not define numbered lead-stage enum values. MeetingResponse has
+      meetingNumber, but Swagger does not state whether the card badge comes from
+      meetingNumber, leadStage, completedStage, or another field.
+
+  missing_frontend_fields:
+    required_by_create_meeting:
+      - "meetingMode"
+      - "meetingDate"
+      - "meetingTime"
+      - "A definitive meetingLocation source"
+    additional_workflow_fields:
+      - "discussion"
+      - "clientStatus"
+      - "completedStage"
+      - "leaderName"
+      - "scheduleNextMeeting"
+      - "nextMeetingTime"
+
+  frontend_fields_absent_from_meeting_dtos:
+    - "leadEmail"
+    - "profession"
+    - "ageGroup"
+    - "bestFollowUpTime"
+    - "leadQualification"
+    - "kids"
+    - "maritalStatus"
+    - "priorInvestment"
+    - "priorInvestmentDetails"
+    - "adviceMode"
+    - "adBoard image"
+    - "structured latitude"
+    - "structured longitude"
+    - "visitingCard image upload request"
+    conclusion: >-
+      Swagger provides no documented destination in CreateMeetingRequest or
+      MeetingWorkflowRequest for most of the First Meeting Lead Profile section.
+
+  enum_mismatches:
+    meeting_status:
+      - frontend: "Meeting Conducted"
+        likely_backend: "COMPLETED"
+        certainty: "Likely but not explicitly documented"
+      - frontend: "Meeting Not Conducted"
+        possible_backend_values: ["NO_SHOW", "CANCELLED", "RESCHEDULED", "SCHEDULED"]
+        certainty: "Blocking ambiguity"
+    meeting_mode:
+      backend_values: ["PHYSICAL", "ONLINE", "PHONE"]
+      frontend_field_exists: false
+    joined_designation:
+      frontend_values: ["Admin", "RM", "Leader", "Team Leader", "Sales Manager"]
+      backend_contract: "position is unrestricted text"
+    product_type:
+      frontend_values: ["SIP", "Lumpsum"]
+      backend_contract: "Unrestricted string; accepted spelling and casing are undocumented"
+
+  validation_mismatches:
+    frontend_required_but_absent_from_meeting_contract:
+      - "Profession"
+      - "Age group"
+      - "Best follow-up time"
+      - "Lead qualification"
+      - "Kids"
+      - "Marital status"
+      - "Prior-investment answer"
+      - "Prior-investment details when applicable"
+      - "Investment guidance when applicable"
+      - "Other participant name and designation"
+      - "Live location under the current first-meeting condition"
+    backend_required_but_not_collected:
+      - "Meeting mode"
+      - "Current meeting date"
+      - "Current meeting time"
+      - "Backend-formatted meeting location"
+    frontend_missing_swagger_length_checks:
+      meetingLocation: 255
+      agenda: 500
+      meetingRemarks: 1000
+      attendees: 500
+      googleLocation: 255
+      discussion: 2000
+      attachment: 500
+      personName: 100
+      position: 100
+      productType: 100
+      completedStage: 50
+      leadStatus: 50
+    pan_validation:
+      frontend: "Five letters, four digits, and one letter"
+      swagger: "Maximum 20 characters only"
+      result: "Frontend is stricter than Swagger."
+    conditional_rules:
+      frontend:
+        - "nextPlanDate is required when the meeting was not conducted."
+        - "nextPlanDate is required for Work in Progress."
+        - "PAN, amount, and investment type are required for Converted Client."
+      swagger: "MeetingWorkflowRequest marks every property optional and documents no conditional rules."
+
+  existing_frontend_issues:
+    - issue: "LEADS opens the wrong form"
+      evidence: >-
+        App.tsx selects first-meeting only when meetingStage equals 1st Meeting.
+        LEADS therefore opens followup-meeting, contradicting the business workflow.
+    - issue: "No First Meeting submit callback"
+      evidence: >-
+        App.tsx supplies onSubmit only for new-lead. First-meeting and
+        followup-meeting receive undefined.
+    - issue: "Modal closes without awaiting a backend result"
+      evidence: >-
+        Non-new-lead submission optionally invokes onSubmit and immediately calls
+        onClose, so it cannot wait for success or preserve values after failure.
+    - issue: "Lead identifiers use different contracts"
+      evidence: >-
+        CreateMeetingRequest requires a UUID uniqueLeadId, while
+        UpdateLeadStatusRequest requires a numeric int64 leadId. They cannot use
+        one generic identifier interchangeably.
+
+  endpoints_that_do_not_independently_fit:
+    - endpoint: "GET /v1/meetings?status=ACTIVE"
+      reason: "A newly created lead has no meeting, so it cannot drive initial LEADS cards."
+    - endpoint: "POST /v1/meetings/{meetingCode}/workflow-update"
+      reason: "It requires an existing meetingCode and therefore cannot create the first meeting."
+    - endpoint: "PATCH /v1/leads/status"
+      reason: "It changes lead status and stage but does not create a meeting."
+    - endpoint: "POST /v1/meetings/schedule"
+      reason: >-
+        The form records a meeting result, while this endpoint is described as
+        scheduling. Swagger does not document whether it supports completed meetings.
+
+  backend_information_required_before_implementation:
+    - "Is First Meeting submission one backend call or multiple calls?"
+    - "Does POST /v1/meetings automatically advance the lead stage?"
+    - "Does POST /v1/meetings return the meetingCode required by workflow-update?"
+    - "Should create and workflow-update be called sequentially?"
+    - "Is there an atomic first-meeting endpoint missing from Swagger?"
+    - "How does Meeting Not Conducted map to the meetingStatus enum?"
+    - "Which meetingOutcome accompanies WORK_IN_PROGRESS?"
+    - "What completedStage value represents the first meeting?"
+    - "Does the task badge derive from meetingNumber, leadStage, completedStage, or another field?"
+    - "Where are First Meeting Lead Profile fields saved?"
+    - "Do profile fields require a separate lead-update endpoint?"
+    - "How must live coordinates be serialized into googleLocation?"
+    - "Should meetingLocation contain lead address, captured address, or coordinates?"
+    - "How are visiting-card and ad-board files uploaded?"
+    - "Does attachment expect a URL, file ID, base64 value, or another format?"
+    - "What are the formats for joinedMeetingWith, aloneWith, personName, position, and leaderName?"
+    - "Are nextPlanDate and nextMeetingDate different business concepts?"
+    - "Must scheduleNextMeeting be true when a next date is supplied?"
+    - "Are terminal leads automatically excluded from POST /v1/leads/search?"
+    - "Are meeting creation, workflow update, and lead-status update transactional?"
+
+  final_conclusion:
+    meeting_creation_endpoint: "POST /v1/meetings"
+    complete_submission_endpoint_confirmed: false
+    implementation_blocked_by_contract_ambiguity: true
+    summary: >-
+      POST /v1/meetings is the correct documented meeting-creation endpoint, but it
+      is not confirmed as the complete First Meeting workflow endpoint. The current
+      frontend cannot construct all required creation fields, most Lead Profile
+      fields have no documented backend destination, LEADS currently opens the
+      wrong form, and no First Meeting submission callback exists. Backend
+      clarification is required before implementation to avoid invented mappings
+      and partially updated records.

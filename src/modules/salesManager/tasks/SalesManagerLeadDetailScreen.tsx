@@ -1,4 +1,4 @@
-import { Image, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import type { SalesTask } from './types/tasks';
@@ -22,16 +22,6 @@ const infoFields = (lead: SalesTask) => [
   { label: 'Lead ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
   { label: 'Email', value: lead.email ?? '------', icon: 'email-outline' },
   { label: 'Lead Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
-  { label: 'Profession', value: lead.profession ?? '------', icon: 'briefcase-outline' },
-  { label: 'Age Group', value: lead.ageGroup ?? '------', icon: 'account-clock-outline' },
-  { label: 'Any Prior Investment', value: lead.priorInvestment ?? '------', icon: 'chart-line' },
-  ...(lead.priorInvestment === 'Yes'
-    ? [{ label: 'Investment Guidance', value: lead.adviceMode ?? '------', icon: 'account-tie-outline' }]
-    : []),
-  { label: 'Any Kids', value: lead.kids ?? '------', icon: 'account-child-outline' },
-  { label: 'Best Time to Follow Up', value: lead.bestFollowUpTime ?? '------', icon: 'clock-check-outline' },
-  { label: 'Lead Qualification', value: lead.leadQualification ?? '------', icon: 'fire' },
-  { label: 'Marital Status', value: lead.maritalStatus ?? '------', icon: 'account-heart-outline' },
 ] as const;
 
 export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: Props) {
@@ -63,7 +53,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
 
             <View style={[styles.stagePill, isMobile && styles.mobileStagePill]}>
               <View style={styles.stageDot} />
-              <Text style={styles.stagePillText}>{lead.meetingStage}</Text>
+              <Text style={styles.stagePillText}>{lead.taskLabel}</Text>
             </View>
 
             <View style={[styles.heroActions, isMobile && styles.mobileHeroActions]}>
@@ -115,20 +105,6 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 </View>
               ))}
             </View>
-            <View style={[styles.imageGrid, isMobile && styles.mobileImageGrid]}>
-              <LeadImage
-                title="Visiting Card"
-                imageUri={lead.visitingCardImage}
-                icon="card-account-details-outline"
-                compact={isMobile}
-              />
-              <LeadImage
-                title="Ad Board"
-                imageUri={lead.adBoardImage}
-                icon="billboard"
-                compact={isMobile}
-              />
-            </View>
           </View>
 
           <View style={styles.rightColumn}>
@@ -177,25 +153,6 @@ function SectionHeading({ icon, title, subtitle }: { icon: string; title: string
         <Text style={styles.sectionTitle}>{title}</Text>
         <Text style={styles.sectionSubtitle}>{subtitle}</Text>
       </View>
-    </View>
-  );
-}
-
-function LeadImage({ title, imageUri, icon, compact = false }: { title: string; imageUri?: string; icon: string; compact?: boolean }) {
-  return (
-    <View style={[styles.leadImageCard, compact && styles.mobileLeadImageCard]}>
-      <View style={styles.leadImageHeader}>
-        <Icon source={icon} size={15} color="#6D28D9" />
-        <Text style={styles.leadImageTitle}>{title}</Text>
-      </View>
-      {imageUri ? (
-        <Image source={{ uri: imageUri }} style={styles.leadImage} resizeMode="cover" />
-      ) : (
-        <View style={styles.imageEmpty}>
-          <Icon source="image-off-outline" size={24} color="#C4B5FD" />
-          <Text style={styles.imageEmptyText}>Not uploaded</Text>
-        </View>
-      )}
     </View>
   );
 }
@@ -258,15 +215,6 @@ const styles = StyleSheet.create({
   infoCopy: { minWidth: 0, flex: 1 },
   infoLabel: { color: '#94A3B8', fontSize: 8, fontWeight: '800', textTransform: 'uppercase' },
   infoValue: { marginTop: 2, color: '#334155', fontSize: 11, fontWeight: '900' },
-  imageGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 4 },
-  mobileImageGrid: { gap: 7 },
-  leadImageCard: { minWidth: 190, flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#E8E5F1', borderRadius: 13, backgroundColor: '#FBFAFF' },
-  mobileLeadImageCard: { minWidth: 0, flexBasis: '47%', borderRadius: 10 },
-  leadImageHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#EEEAF5' },
-  leadImageTitle: { color: '#4C1D95', fontSize: 10, fontWeight: '900' },
-  leadImage: { width: '100%', height: 130 },
-  imageEmpty: { height: 100, alignItems: 'center', justifyContent: 'center', gap: 5 },
-  imageEmptyText: { color: '#A69BB8', fontSize: 9, fontWeight: '700' },
   locationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 13, backgroundColor: '#FFF7ED' },
   locationCopy: { minWidth: 0, flex: 1 },
   locationText: { color: '#7C2D12', fontSize: 11, lineHeight: 15, fontWeight: '900' },

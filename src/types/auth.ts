@@ -125,6 +125,7 @@ export type AuthState = {
   user: AuthUser | null;
   rememberMe: boolean;
   isAuthenticated: boolean;
+  isInitialized: boolean;
   isLoading: boolean;
   isRefreshing: boolean;
   sessionExpiresAt: number | null;

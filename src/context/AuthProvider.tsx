@@ -7,6 +7,7 @@ const initialState: AuthState = {
   user: null,
   rememberMe: true,
   isAuthenticated: false,
+  isInitialized: false,
   isLoading: true,
   isRefreshing: false,
   sessionExpiresAt: null,
@@ -24,6 +25,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     void authService.bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!state.isAuthenticated || !state.sessionExpiresAt) return undefined;
+    const refreshAt = Math.max(0, state.sessionExpiresAt - Date.now() - 30_000);
+    const timer = setTimeout(() => {
+      void authService.refreshSession();
+    }, Math.min(refreshAt, 2_147_483_647));
+    return () => clearTimeout(timer);
+  }, [state.isAuthenticated, state.sessionExpiresAt]);
 
   const value = useMemo(() => createAuthContextValue(state, authService), [state]);
 

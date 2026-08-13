@@ -1,10 +1,15 @@
-import { TaskStageFilter } from '../mock/taskFilterOptions';
-
 export type TaskScheduleFilter = 'Today' | 'Pending' | 'Future 3 Days';
-export type MeetingStage = Exclude<TaskStageFilter, 'All Stages'>;
 
 export interface SalesTask {
   id: string;
+  taskKind: 'LEAD' | 'MEETING';
+  uniqueLeadId?: string;
+  meetingCode?: string;
+  meetingNumber?: number;
+  meetingTitle?: string;
+  meetingType?: string;
+  meetingStatus?: string;
+  leadCode?: string;
   leadId?: number;
   name: string;
   phone: string;
@@ -14,21 +19,15 @@ export interface SalesTask {
     longitude: number;
   };
   hasLocationPin?: boolean;
-  meetingStage: MeetingStage;
+  taskLabel: string;
   remarks: string;
   lastUpdated: string;
   nextFollowUpDate: string;
   schedule: TaskScheduleFilter;
   email?: string;
   leadSource?: string;
-  profession?: string;
-  ageGroup?: string;
-  priorInvestment?: 'Yes' | 'No';
-  adviceMode?: 'Advisor' | 'Alone';
-  kids?: string;
-  bestFollowUpTime?: string;
-  leadQualification?: 'Hot' | 'Medium' | 'Cold';
-  maritalStatus?: string;
-  visitingCardImage?: string;
-  adBoardImage?: string;
 }
+
+export const getTaskLeadIdentifier = (task: SalesTask) => (
+  task.uniqueLeadId ?? (task.leadId !== undefined ? String(task.leadId) : undefined)
+);
