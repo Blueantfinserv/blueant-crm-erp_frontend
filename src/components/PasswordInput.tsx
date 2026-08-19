@@ -17,7 +17,7 @@ export const PasswordInput = forwardRef<TextInput, Props>(function PasswordInput
         accessibilityLabel={show ? 'Hide password' : 'Show password'}
         accessibilityHint="Toggles password visibility"
         accessibilityState={{ expanded: show }}
-        style={styles.toggle}
+        style={[styles.toggle, props.compact && styles.compactToggle]}
       >
         <Text style={styles.toggleText}>{show ? 'Hide' : 'Show'}</Text>
       </Pressable>
@@ -28,5 +28,6 @@ export const PasswordInput = forwardRef<TextInput, Props>(function PasswordInput
 const styles = StyleSheet.create({
   wrap: { position: 'relative' },
   toggle: { position: 'absolute', right: 16, top: 42 },
+  compactToggle: { top: 29 },
   toggleText: { fontSize: 12, fontWeight: '800', color: theme.colors.primary },
 });

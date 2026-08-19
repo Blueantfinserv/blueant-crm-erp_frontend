@@ -162,6 +162,9 @@ function AppShell() {
   const [selectedSalesTask, setSelectedSalesTask] = useState<SalesTask | null>(null);
   const screenHistory = useRef<ScreenState[]>([]);
   const fade = useRef(new Animated.Value(0)).current;
+  const authenticatedUserKey = auth.isAuthenticated && auth.user
+    ? `${auth.user.role}:${auth.user.id}`
+    : null;
 
   const openTaskWorkflowForm = async (task: SalesTask) => {
     setMessage(null);
@@ -188,6 +191,24 @@ function AppShell() {
       setMessage(error instanceof Error ? error.message : 'Active meeting could not be loaded.');
     }
   };
+
+  useEffect(() => {
+    const assignedUserId = backendRole === 'EMPLOYEE' && typeof auth.user?.id === 'number'
+      ? auth.user.id
+      : null;
+    const employeeCode = backendRole === 'EMPLOYEE'
+      ? auth.user?.employeeId?.trim() || null
+      : null;
+    leadSearchService.setAssignedUserScope(assignedUserId);
+    meetingService.setEmployeeScope(employeeCode);
+    leadService.reset();
+    leadSearchService.reset();
+    meetingService.reset();
+    setFollowups(defaultFollowupItems);
+    setSelectedDashboardListId(null);
+    setSelectedSalesTask(null);
+    setLeadForm(null);
+  }, [authenticatedUserKey, backendRole]);
 
   useEffect(() => {
     Animated.timing(fade, {
@@ -286,10 +307,6 @@ function AppShell() {
           <LoginScreen
             onLogin={(credentials: LoginFormValues) => {
               void runAction(() => auth.login(credentials));
-            }}
-            onForgotPassword={() => navigate('forgotPassword')}
-            onForgotPasswordSubmit={(credentials: ForgotPasswordCredentials) => {
-              void runAction(() => auth.forgotPassword(credentials));
             }}
             onCreateAccount={(credentials) => {
               void runAction(() => auth.createAccount(credentials), 'dashboard');

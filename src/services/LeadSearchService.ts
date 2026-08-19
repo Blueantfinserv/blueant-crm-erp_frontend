@@ -21,6 +21,8 @@ export class LeadSearchService {
   private state = initialState;
   private listeners = new Set<Listener>();
   private hiddenTaskLeadKeys = new Set<string>();
+  private assignedUserId: number | null = null;
+  private requestGeneration = 0;
 
   private getLeadKeys(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
     return [
@@ -52,9 +54,15 @@ export class LeadSearchService {
   }
 
   async loadLeads() {
+    const generation = this.requestGeneration;
+    const assignedUserId = this.assignedUserId;
     this.setState({ isLoading: true, error: null });
     try {
-      const response = await leadSearchApi.search({ page: 0, size: 100 });
+      const response = await leadSearchApi.search({
+        ...(assignedUserId !== null ? { filter: { assignedUserId } } : {}),
+        page: 0,
+        size: 100,
+      });
       const leads = await Promise.all((response.data?.content ?? []).map(async (lead) => {
         const uniqueLeadId = lead.uniqueLeadId?.trim();
         if (!uniqueLeadId) return lead;
@@ -65,20 +73,35 @@ export class LeadSearchService {
           return lead;
         }
       }));
+      if (generation !== this.requestGeneration) return;
+      const scopedLeads = assignedUserId === null
+        ? leads
+        : leads.filter((lead) => lead.assignedUserId === assignedUserId);
       this.setState({
-        leads: leads.filter((lead) => !this.isHiddenTaskLead(lead)),
+        leads: scopedLeads.filter((lead) => !this.isHiddenTaskLead(lead)),
         timestamp: response.timestamp ?? null,
         error: null,
       });
     } catch (error) {
+      if (generation !== this.requestGeneration) return;
       this.setState({ leads: [], timestamp: null, error: toMessage(error) });
     } finally {
-      this.setState({ isLoading: false });
+      if (generation === this.requestGeneration) this.setState({ isLoading: false });
     }
   }
 
   getState() {
     return this.state;
+  }
+
+  setAssignedUserScope(assignedUserId: number | null) {
+    this.assignedUserId = assignedUserId;
+  }
+
+  reset() {
+    this.requestGeneration += 1;
+    this.hiddenTaskLeadKeys.clear();
+    this.setState(initialState);
   }
 
   hideLeadFromTasks(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {

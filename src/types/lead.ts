@@ -136,6 +136,9 @@ export type LeadDetailResponse = LeadResponse;
 
 export type LeadSearchRequest = {
   keyword?: string;
+  filter?: {
+    assignedUserId?: number;
+  };
   page?: number;
   size?: number;
   sortBy?: string;

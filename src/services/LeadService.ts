@@ -61,6 +61,10 @@ export class LeadService {
   getState() {
     return this.state;
   }
+
+  reset() {
+    this.setState(initialState);
+  }
 }
 
 export const leadService = new LeadService();

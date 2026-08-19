@@ -11,6 +11,8 @@ export class MeetingService {
   private submissions = new Set<string>();
   private hiddenTaskLeadKeys = new Set<string>();
   private workflowTimestamps = new Map<string, string>();
+  private employeeCode: string | null = null;
+  private requestGeneration = 0;
 
   private getLeadKeys(lead: { leadId?: number; leadCode?: string }) {
     return [
@@ -28,10 +30,15 @@ export class MeetingService {
   private setState(next: Partial<MeetingQueueState>) { this.state = { ...this.state, ...next }; this.listeners.forEach((listener) => listener(this.state)); }
 
   async loadMeetings() {
+    const generation = this.requestGeneration;
+    const employeeCode = this.employeeCode;
     this.setState({ isLoading: true, error: null });
     try {
       const response = await meetingApi.getMeetings();
-      const meetings = await Promise.all((response.data ?? []).map(async (meeting) => {
+      const scopedMeetings = employeeCode === null
+        ? response.data ?? []
+        : (response.data ?? []).filter((meeting) => meeting.employeeCode === employeeCode);
+      const meetings = await Promise.all(scopedMeetings.map(async (meeting) => {
         const meetingCode = meeting.meetingCode?.trim();
         if (!meetingCode) return meeting;
         try {
@@ -45,9 +52,14 @@ export class MeetingService {
           return workflowUpdatedAt ? { ...meeting, workflowUpdatedAt } : meeting;
         }
       }));
+      if (generation !== this.requestGeneration) return;
       this.setState({ meetings: meetings.filter((meeting) => !this.isHiddenTaskLead(meeting)), timestamp: response.timestamp ?? null, error: null });
-    } catch (error) { this.setState({ meetings: [], timestamp: null, error: toMessage(error) }); }
-    finally { this.setState({ isLoading: false }); }
+    } catch (error) {
+      if (generation === this.requestGeneration) this.setState({ meetings: [], timestamp: null, error: toMessage(error) });
+    }
+    finally {
+      if (generation === this.requestGeneration) this.setState({ isLoading: false });
+    }
   }
 
   async resolveActiveMeetingCode(leadId: string) {
@@ -84,6 +96,18 @@ export class MeetingService {
   hideLeadFromTasks(lead: { leadId?: number; leadCode?: string }) {
     this.getLeadKeys(lead).forEach((key) => this.hiddenTaskLeadKeys.add(key));
     this.setState({ meetings: this.state.meetings.filter((meeting) => !this.isHiddenTaskLead(meeting)) });
+  }
+
+  setEmployeeScope(employeeCode: string | null) {
+    this.employeeCode = employeeCode;
+  }
+
+  reset() {
+    this.requestGeneration += 1;
+    this.submissions.clear();
+    this.hiddenTaskLeadKeys.clear();
+    this.workflowTimestamps.clear();
+    this.setState(initialState);
   }
 }
 

@@ -12,7 +12,7 @@ import {
   validateRegisterForm,
   validateStrongPassword,
 } from '../../../utils/authValidation';
-import { CreateAccountFormSection, ForgotPasswordModalSection, LoginFormSection } from './LoginFormSections';
+import { CreateAccountFormSection, LoginFormSection } from './LoginFormSections';
 
 const brandAsset = require('../../../../assets/blueAnt.png');
 const missionLogoAsset = require('../../../../assets/Mission Logo.png');
@@ -21,8 +21,6 @@ const visionLogoAsset = require('../../../../assets/Vision Logo.png');
 export type LoginScreenProps = {
   onLogin: (credentials: LoginFormValues) => Promise<void> | void;
   onCreateAccount: (credentials: { email: string; password: string; confirmPassword: string }) => Promise<void> | void;
-  onForgotPassword: () => void;
-  onForgotPasswordSubmit: (credentials: { email: string }) => Promise<void> | void;
   onHelp: () => void;
   onContact: () => void;
   onPrivacyPolicy: () => void;
@@ -33,14 +31,12 @@ export type LoginScreenProps = {
 };
 
 type LoginCardProps = Pick<LoginScreenProps, 'onLogin' | 'onCreateAccount' | 'loading' | 'errorMessage' | 'successMessage'> & {
-  onForgotPasswordSubmit: LoginScreenProps['onForgotPasswordSubmit'];
   density?: 'default' | 'compact';
 };
 
 export function LoginCard({
   onLogin,
   onCreateAccount,
-  onForgotPasswordSubmit,
   loading,
   errorMessage,
   successMessage,
@@ -49,16 +45,25 @@ export function LoginCard({
   const [remember, setRemember] = useState(true);
   const [mode, setMode] = useState<'login' | 'createAccount'>('login');
   const [values, setValues] = useState<LoginFormValues>({ employeeCode: '', password: '', rememberMe: true });
-  const [createAccountValues, setCreateAccountValues] = useState({ email: '', password: '', confirmPassword: '' });
+  const [createAccountValues, setCreateAccountValues] = useState({
+    employeeCode: '',
+    password: '',
+    confirmPassword: '',
+    mobileNumber: '',
+    email: '',
+    otp: '',
+  });
   const [touched, setTouched] = useState({ employeeCode: false, password: false });
-  const [createAccountTouched, setCreateAccountTouched] = useState({ email: false, password: false, confirmPassword: false });
+  const [createAccountTouched, setCreateAccountTouched] = useState({
+    employeeCode: false,
+    password: false,
+    confirmPassword: false,
+    mobileNumber: false,
+    email: false,
+    otp: false,
+  });
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [createAccountAttemptedSubmit, setCreateAccountAttemptedSubmit] = useState(false);
-  const [forgotVisible, setForgotVisible] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotTouched, setForgotTouched] = useState(false);
-  const [forgotSent, setForgotSent] = useState(false);
-  const [forgotLoading, setForgotLoading] = useState(false);
   const { height } = useWindowDimensions();
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -67,10 +72,16 @@ export function LoginCard({
   const isDense = density === 'compact';
   const employeeCodeError = (touched.employeeCode || attemptedSubmit) ? validateEmployeeCode(values.employeeCode) || undefined : undefined;
   const passwordError = (touched.password || attemptedSubmit) ? validatePassword(values.password) || undefined : undefined;
+  const createAccountEmployeeCodeError = (createAccountTouched.employeeCode || createAccountAttemptedSubmit) ? validateEmployeeCode(createAccountValues.employeeCode) || undefined : undefined;
   const createAccountEmailError = (createAccountTouched.email || createAccountAttemptedSubmit) ? validateEmail(createAccountValues.email) || undefined : undefined;
   const createAccountPasswordError = (createAccountTouched.password || createAccountAttemptedSubmit) ? validateStrongPassword(createAccountValues.password) || undefined : undefined;
   const createAccountConfirmPasswordError = (createAccountTouched.confirmPassword || createAccountAttemptedSubmit) ? validateConfirmPassword(createAccountValues.password, createAccountValues.confirmPassword) || undefined : undefined;
-  const forgotEmailError = forgotTouched ? validateEmail(forgotEmail) || undefined : undefined;
+  const createAccountMobileNumberError = (createAccountTouched.mobileNumber || createAccountAttemptedSubmit)
+    ? (!/^[6-9]\d{9}$/.test(createAccountValues.mobileNumber.trim()) ? 'Enter a valid 10-digit mobile number.' : undefined)
+    : undefined;
+  const createAccountOtpError = (createAccountTouched.otp || createAccountAttemptedSubmit)
+    ? (!/^\d{6}$/.test(createAccountValues.otp.trim()) ? 'Enter a valid 6-digit OTP.' : undefined)
+    : undefined;
 
   const handleSubmit = async () => {
     setAttemptedSubmit(true);
@@ -82,20 +93,18 @@ export function LoginCard({
   const handleCreateAccountSubmit = async () => {
     setCreateAccountAttemptedSubmit(true);
     const nextErrors = validateRegisterForm(createAccountValues);
-    if (nextErrors.email || nextErrors.password || nextErrors.confirmPassword) return;
-    await onCreateAccount(createAccountValues);
+    if (
+      validateEmployeeCode(createAccountValues.employeeCode)
+      || nextErrors.email
+      || nextErrors.password
+      || nextErrors.confirmPassword
+      || !/^[6-9]\d{9}$/.test(createAccountValues.mobileNumber.trim())
+      || !/^\d{6}$/.test(createAccountValues.otp.trim())
+    ) return;
   };
 
-  const handleForgotSubmit = async () => {
-    setForgotTouched(true);
-    if (validateEmail(forgotEmail)) return;
-    setForgotLoading(true);
-    try {
-      await onForgotPasswordSubmit({ email: forgotEmail });
-      setForgotSent(true);
-    } finally {
-      setForgotLoading(false);
-    }
+  const handleSendOtp = () => {
+    setCreateAccountTouched((current) => ({ ...current, employeeCode: true, mobileNumber: true, email: true }));
   };
 
   return (
@@ -132,9 +141,8 @@ export function LoginCard({
             onEmployeeCodeBlur={() => setTouched((current) => ({ ...current, employeeCode: true }))}
             onPasswordBlur={() => setTouched((current) => ({ ...current, password: true }))}
             onRememberChange={setRemember}
-            onForgotPassword={() => setForgotVisible(true)}
+            onForgotPassword={() => setMode('createAccount')}
             onSubmit={handleSubmit}
-            onSwitchToCreateAccount={() => setMode('createAccount')}
           />
         ) : (
           <CreateAccountFormSection
@@ -142,39 +150,31 @@ export function LoginCard({
             loading={loading}
             errorMessage={errorMessage}
             values={createAccountValues}
+            employeeCodeError={createAccountEmployeeCodeError}
             emailError={createAccountEmailError}
             passwordError={createAccountPasswordError}
             confirmPasswordError={createAccountConfirmPasswordError}
+            mobileNumberError={createAccountMobileNumberError}
+            otpError={createAccountOtpError}
+            onEmployeeCodeChange={(text) => setCreateAccountValues((current) => ({ ...current, employeeCode: text }))}
             onEmailChange={(text) => setCreateAccountValues((current) => ({ ...current, email: text }))}
             onPasswordChange={(text) => setCreateAccountValues((current) => ({ ...current, password: text }))}
             onConfirmPasswordChange={(text) => setCreateAccountValues((current) => ({ ...current, confirmPassword: text }))}
+            onMobileNumberChange={(text) => setCreateAccountValues((current) => ({ ...current, mobileNumber: text.replace(/\D/g, '').slice(0, 10) }))}
+            onOtpChange={(text) => setCreateAccountValues((current) => ({ ...current, otp: text.replace(/\D/g, '').slice(0, 6) }))}
+            onEmployeeCodeBlur={() => setCreateAccountTouched((current) => ({ ...current, employeeCode: true }))}
             onEmailBlur={() => setCreateAccountTouched((current) => ({ ...current, email: true }))}
             onPasswordBlur={() => setCreateAccountTouched((current) => ({ ...current, password: true }))}
             onConfirmPasswordBlur={() => setCreateAccountTouched((current) => ({ ...current, confirmPassword: true }))}
+            onMobileNumberBlur={() => setCreateAccountTouched((current) => ({ ...current, mobileNumber: true }))}
+            onOtpBlur={() => setCreateAccountTouched((current) => ({ ...current, otp: true }))}
+            onSendOtp={handleSendOtp}
             onSubmit={handleCreateAccountSubmit}
             onSwitchToLogin={() => setMode('login')}
           />
         )}
       </View>
 
-      <ForgotPasswordModalSection
-        styles={styles}
-        visible={forgotVisible}
-        sent={forgotSent}
-        loading={forgotLoading}
-        email={forgotEmail}
-        emailError={forgotEmailError}
-        onEmailChange={setForgotEmail}
-        onEmailBlur={() => setForgotTouched(true)}
-        onClose={() => {
-          setForgotVisible(false);
-          setForgotEmail('');
-          setForgotTouched(false);
-          setForgotSent(false);
-          setForgotLoading(false);
-        }}
-        onSubmit={handleForgotSubmit}
-      />
     </View>
   );
 }
@@ -306,6 +306,12 @@ const styles = StyleSheet.create({
   cardTitle: { color: theme.colors.text, fontSize: 24, lineHeight: 29, fontWeight: '800', letterSpacing: -0.5 },
   cardSubtitle: { color: theme.colors.muted, fontSize: 12, lineHeight: 17 },
   form: { gap: 8 },
+  activationForm: { gap: 4 },
+  emailOtpRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  emailOtpInput: { minWidth: 0, flex: 1 },
+  sendOtpButtonWrap: { paddingTop: 24 },
+  sendOtpButton: { minHeight: 36, paddingHorizontal: 10 },
+  activationSubmitButton: { minHeight: 42 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 },
   forgot: { color: theme.colors.primary, fontSize: 13, fontWeight: '700' },
   error: { color: theme.colors.error, fontWeight: '600', fontSize: 13 },

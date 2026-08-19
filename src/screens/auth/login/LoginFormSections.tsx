@@ -28,7 +28,6 @@ type LoginFormSectionProps = {
   onRememberChange: (value: boolean) => void;
   onForgotPassword: () => void;
   onSubmit: () => void;
-  onSwitchToCreateAccount: () => void;
 };
 
 export function LoginFormSection({
@@ -49,7 +48,6 @@ export function LoginFormSection({
   onRememberChange,
   onForgotPassword,
   onSubmit,
-  onSwitchToCreateAccount,
 }: LoginFormSectionProps) {
   return (
     <View style={styles.form}>
@@ -93,16 +91,6 @@ export function LoginFormSection({
       </View>
 
       <AuthButton title={loading ? 'Logging in...' : 'Login'} onPress={onSubmit} loading={loading} />
-
-      <Pressable onPress={onSwitchToCreateAccount} style={({ pressed }) => [styles.activateLink, pressed && styles.linkPressed]}>
-        <Text style={styles.activatePrompt}>First time using BlueAnt ERP?</Text>
-        <View style={styles.secondaryActionPill}>
-          <View style={styles.secondaryActionBadge}>
-            <Text style={styles.secondaryActionBadgeText}>{'\u{1F464}+'}</Text>
-          </View>
-          <Text style={styles.activateAction}>Sign In</Text>
-        </View>
-      </Pressable>
     </View>
   );
 }
@@ -111,16 +99,33 @@ type CreateAccountFormSectionProps = {
   styles: SharedStyles;
   loading: boolean;
   errorMessage: string | null;
-  values: { email: string; password: string; confirmPassword: string };
+  values: {
+    employeeCode: string;
+    password: string;
+    confirmPassword: string;
+    mobileNumber: string;
+    email: string;
+    otp: string;
+  };
+  employeeCodeError?: string;
   emailError?: string;
   passwordError?: string;
   confirmPasswordError?: string;
+  mobileNumberError?: string;
+  otpError?: string;
+  onEmployeeCodeChange: (value: string) => void;
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onConfirmPasswordChange: (value: string) => void;
+  onMobileNumberChange: (value: string) => void;
+  onOtpChange: (value: string) => void;
+  onEmployeeCodeBlur: () => void;
   onEmailBlur: () => void;
   onPasswordBlur: () => void;
   onConfirmPasswordBlur: () => void;
+  onMobileNumberBlur: () => void;
+  onOtpBlur: () => void;
+  onSendOtp: () => void;
   onSubmit: () => void;
   onSwitchToLogin: () => void;
 };
@@ -130,36 +135,47 @@ export function CreateAccountFormSection({
   loading,
   errorMessage,
   values,
+  employeeCodeError,
   emailError,
   passwordError,
   confirmPasswordError,
+  mobileNumberError,
+  otpError,
+  onEmployeeCodeChange,
   onEmailChange,
   onPasswordChange,
   onConfirmPasswordChange,
+  onMobileNumberChange,
+  onOtpChange,
+  onEmployeeCodeBlur,
   onEmailBlur,
   onPasswordBlur,
   onConfirmPasswordBlur,
+  onMobileNumberBlur,
+  onOtpBlur,
+  onSendOtp,
   onSubmit,
   onSwitchToLogin,
 }: CreateAccountFormSectionProps) {
   return (
-    <View style={styles.form}>
+    <View style={[styles.form, styles.activationForm]}>
       {errorMessage ? <FormAlert message={errorMessage} /> : null}
       <AuthInput
-        label="Email"
-        labelBadge={'\u2709'}
-        placeholder="Enter your registered email"
-        value={values.email}
-        onChangeText={onEmailChange}
-        onBlur={onEmailBlur}
-        keyboardType="email-address"
+        compact
+        label="Employee Code"
+        labelBadge={'\u{1F464}'}
+        placeholder="Enter your employee code"
+        value={values.employeeCode}
+        onChangeText={onEmployeeCodeChange}
+        onBlur={onEmployeeCodeBlur}
         autoCapitalize="none"
-        autoComplete="email"
-        error={emailError}
+        autoComplete="username"
+        error={employeeCodeError}
       />
       <PasswordInput
-        label="Create Password"
-        placeholder="Create password"
+        compact
+        label="New Password"
+        placeholder="Enter new password"
         value={values.password}
         onChangeText={onPasswordChange}
         onBlur={onPasswordBlur}
@@ -167,15 +183,60 @@ export function CreateAccountFormSection({
         error={passwordError}
       />
       <PasswordInput
+        compact
         label="Confirm Password"
-        placeholder="Confirm password"
+        placeholder="Confirm new password"
         value={values.confirmPassword}
         onChangeText={onConfirmPasswordChange}
         onBlur={onConfirmPasswordBlur}
         autoComplete="new-password"
         error={confirmPasswordError}
       />
-      <AuthButton title="Create Account" onPress={onSubmit} loading={loading} />
+      <AuthInput
+        compact
+        label="Mobile Number"
+        labelBadge={'\u260E'}
+        placeholder="Enter your mobile number"
+        value={values.mobileNumber}
+        onChangeText={onMobileNumberChange}
+        onBlur={onMobileNumberBlur}
+        keyboardType="phone-pad"
+        autoComplete="tel"
+        error={mobileNumberError}
+      />
+      <View style={styles.emailOtpRow}>
+        <AuthInput
+          compact
+          containerStyle={styles.emailOtpInput}
+          label="Email"
+          labelBadge={'\u2709'}
+          placeholder="Enter your registered email"
+          value={values.email}
+          onChangeText={onEmailChange}
+          onBlur={onEmailBlur}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoComplete="email"
+          error={emailError}
+        />
+        <View style={styles.sendOtpButtonWrap}>
+          <AuthButton title="Send OTP" onPress={onSendOtp} loading={false} style={styles.sendOtpButton} />
+        </View>
+      </View>
+      <AuthInput
+        compact
+        label="OTP"
+        labelBadge={'#'}
+        placeholder="Enter OTP"
+        value={values.otp}
+        onChangeText={onOtpChange}
+        onBlur={onOtpBlur}
+        keyboardType="number-pad"
+        autoComplete="one-time-code"
+        maxLength={6}
+        error={otpError}
+      />
+      <AuthButton title="Submit" onPress={onSubmit} loading={loading} style={styles.activationSubmitButton} />
       <Pressable onPress={onSwitchToLogin} style={({ pressed }) => [styles.activateLink, pressed && styles.linkPressed]}>
         <Text style={styles.activatePrompt}>Already have an account?</Text>
         <Text style={styles.activateAction}>Login</Text>

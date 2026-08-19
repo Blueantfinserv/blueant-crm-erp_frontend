@@ -1,5 +1,5 @@
 import { forwardRef } from 'react';
-import { StyleSheet, Text, TextInput, TextInputProps, View } from 'react-native';
+import { StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 import { theme } from '../theme/theme';
 import { ValidationMessage } from './ValidationMessage';
 
@@ -7,12 +7,14 @@ type Props = TextInputProps & {
   label: string;
   error?: string;
   labelBadge?: string;
+  containerStyle?: ViewStyle;
+  compact?: boolean;
 };
 
-export const AuthInput = forwardRef<TextInput, Props>(function AuthInput({ label, labelBadge, error, style, ...props }, ref) {
+export const AuthInput = forwardRef<TextInput, Props>(function AuthInput({ label, labelBadge, error, style, containerStyle, compact = false, ...props }, ref) {
   return (
-    <View style={styles.block}>
-      <View style={styles.labelRow}>
+    <View style={[styles.block, compact && styles.compactBlock, containerStyle]}>
+      <View style={[styles.labelRow, compact && styles.compactLabelRow]}>
         {labelBadge ? (
           <View style={styles.badge}>
             <Text style={styles.badgeText}>{labelBadge}</Text>
@@ -23,7 +25,7 @@ export const AuthInput = forwardRef<TextInput, Props>(function AuthInput({ label
       <TextInput
         ref={ref}
         placeholderTextColor={theme.colors.subtle}
-        style={[styles.input, error && styles.inputError, style]}
+        style={[styles.input, compact && styles.compactInput, error && styles.inputError, style]}
         accessibilityLabel={props.accessibilityLabel ?? label}
         accessibilityHint={props.accessibilityHint}
         {...props}
@@ -35,7 +37,9 @@ export const AuthInput = forwardRef<TextInput, Props>(function AuthInput({ label
 
 const styles = StyleSheet.create({
   block: { gap: 10 },
+  compactBlock: { gap: 4 },
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  compactLabelRow: { gap: 7 },
   badge: {
     width: 20,
     height: 20,
@@ -65,6 +69,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   },
+  compactInput: { minHeight: 36, borderRadius: 14, paddingHorizontal: 14, fontSize: 14 },
   inputError: { borderColor: theme.colors.error },
   error: { color: theme.colors.error, fontSize: 12, fontWeight: '500' },
 });
