@@ -20,7 +20,7 @@ const commonItems: NavigationItem[] = [
   { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
 ];
 
-const roleNavigationConfig: Record<AuthRole, RoleNavigationConfig> = {
+const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
   SUPER_ADMIN: {
     role: 'SUPER_ADMIN',
     title: 'Super Admin Dashboard',
@@ -72,12 +72,20 @@ const roleNavigationConfig: Record<AuthRole, RoleNavigationConfig> = {
       { key: 'leads', label: 'Leads', route: 'leads' },
     ],
   },
+  EMPLOYEE: {
+    role: 'EMPLOYEE',
+    title: 'Employee Dashboard',
+    subtitle: 'Your assigned work and daily activity overview.',
+    menuItems: [
+      ...commonItems,
+      { key: 'leads', label: 'Leads', route: 'leads' },
+    ],
+  },
 };
 
 export const getRoleNavigationConfig = (role: AuthRole | string | null | undefined): RoleNavigationConfig => {
-  if (role && role in roleNavigationConfig) {
-    return roleNavigationConfig[role as AuthRole];
-  }
+  const configuredRole = role ? roleNavigationConfig[role as AuthRole] : undefined;
+  if (configuredRole) return configuredRole;
   return {
     role: null,
     title: 'Access unavailable',

@@ -1,5 +1,5 @@
 import { SecureStorageService } from '../services/SecureStorageService';
-import { ApiResponseLeadResponse, CreateLeadRequest } from '../types/lead';
+import { ApiResponseLeadResponse, CreateLeadRequest, LeadDetailResponse, LeadResponse } from '../types/lead';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://blueant-crm-erp.up.railway.app/api';
 
@@ -26,7 +26,7 @@ const getBackendMessage = (payload: unknown): string | null => {
   return null;
 };
 
-const request = async (path: string, init: RequestInit): Promise<ApiResponseLeadResponse> => {
+const request = async <T extends LeadResponse>(path: string, init: RequestInit): Promise<ApiResponseLeadResponse<T>> => {
   const accessToken = await SecureStorageService.getToken();
   if (!accessToken) {
     throw new LeadApiError('Authentication token is unavailable.', 'UNAUTHENTICATED');
@@ -51,7 +51,7 @@ const request = async (path: string, init: RequestInit): Promise<ApiResponseLead
   }
 
   const payload: unknown = await response.json().catch(() => null);
-  const leadResponse = payload as ApiResponseLeadResponse | null;
+  const leadResponse = payload as ApiResponseLeadResponse<T> | null;
   if (!response.ok || leadResponse?.success !== true) {
     throw new LeadApiError(
       getBackendMessage(payload) ?? `Lead request failed (${response.status}).`,
@@ -66,9 +66,14 @@ const request = async (path: string, init: RequestInit): Promise<ApiResponseLead
 
 export const leadApi = {
   createLead: async (requestBody: CreateLeadRequest): Promise<ApiResponseLeadResponse> => {
-    return request('/v1/leads', {
+    return request<LeadResponse>('/v1/leads', {
       method: 'POST',
       body: JSON.stringify(requestBody),
+    });
+  },
+  getLeadDetails: async (uniqueLeadId: string): Promise<ApiResponseLeadResponse<LeadDetailResponse>> => {
+    return request<LeadDetailResponse>(`/v1/leads/${encodeURIComponent(uniqueLeadId)}`, {
+      method: 'GET',
     });
   },
 };

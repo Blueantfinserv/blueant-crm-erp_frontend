@@ -3,7 +3,6 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import {
-  defaultTaskStageOptions,
   TaskStageFilter,
   TaskTypeFilter,
   taskTypeOptions,
@@ -16,24 +15,38 @@ import type { LeadResponse, LeadSearchState } from '../../../types/lead';
 import { meetingService } from '../../../services/MeetingService';
 import type { MeetingQueueState, MeetingResponse } from '../../../types/meeting';
 
+const parseBackendCalendarDate = (value?: string | null) => {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return null;
+  const [, year, month, day] = match;
+  return { year: Number(year), month: Number(month), day: Number(day) };
+};
+
+const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
+const LEAD_FILTER_OPTIONS = ['Active Leads', 'Removed Leads'] as const;
+const isHiddenCompletedLead = (status?: LeadResponse['leadStatus'] | MeetingResponse['leadStatus']) => (
+  status === 'ALREADY_CLIENT' || status === 'CONVERTED' || status === 'CONVERTED_CLIENT'
+);
+
 const formatDate = (dateValue?: string) => {
   if (!dateValue) return 'Not scheduled';
-  const date = new Date(`${dateValue}T00:00:00`);
-  if (Number.isNaN(date.getTime())) return dateValue;
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const date = parseBackendCalendarDate(dateValue);
+  if (!date) return dateValue;
+  return `${date.day} ${MONTH_LABELS[date.month - 1]}`;
 };
 
 const formatTimestamp = (timestamp?: string | null) => {
   if (!timestamp) return 'Not available';
-  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(timestamp) ? `${timestamp}T00:00:00` : timestamp);
-  if (Number.isNaN(date.getTime())) return timestamp;
-  return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  const date = parseBackendCalendarDate(timestamp);
+  if (!date) return timestamp;
+  return `${date.day} ${MONTH_LABELS[date.month - 1]}`;
 };
 
 const getSchedule = (dateValue?: string): SalesTask['schedule'] => {
   if (!dateValue) return 'Pending';
-  const taskDate = new Date(`${dateValue}T00:00:00`);
-  if (Number.isNaN(taskDate.getTime())) return 'Pending';
+  const backendDate = parseBackendCalendarDate(dateValue);
+  if (!backendDate) return 'Pending';
+  const taskDate = new Date(backendDate.year, backendDate.month - 1, backendDate.day);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const differenceInDays = Math.round((taskDate.getTime() - today.getTime()) / 86_400_000);
@@ -50,6 +63,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     uniqueLeadId: lead.uniqueLeadId,
     meetingCode: lead.currentActiveMeeting?.meetingCode,
     leadId: lead.leadId,
+    leadStatus: lead.leadStatus,
     name: lead.clientName ?? 'Unnamed lead',
     phone: lead.mobileNumber ?? '',
     locationText: lead.location ?? 'Location unavailable',
@@ -57,7 +71,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     hasLocationPin: false,
     taskLabel: 'LEADS',
     remarks: lead.remarks ?? 'No remarks available.',
-    lastUpdated: 'Not available',
+    lastUpdated: formatTimestamp(lead.audit?.updatedAt ?? lead.audit?.createdAt),
     nextFollowUpDate: formatDate(lead.nextPlanDate),
     schedule: getSchedule(lead.nextPlanDate),
     email: lead.email,
@@ -68,7 +82,6 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
 const mapMeetingToSalesTask = (
   meeting: MeetingResponse,
   index: number,
-  responseTimestamp: string | null,
   lead?: LeadResponse,
 ): SalesTask => ({
   id: meeting.meetingCode ?? String(meeting.id ?? `meeting-${index}`),
@@ -87,8 +100,16 @@ const mapMeetingToSalesTask = (
   coordinates: { latitude: meeting.latitude ?? 0, longitude: meeting.longitude ?? 0 },
   hasLocationPin: meeting.latitude !== undefined && meeting.longitude !== undefined,
   taskLabel: meeting.meetingTitle ?? '',
-  remarks: meeting.meetingRemarks ?? 'No remarks available.',
-  lastUpdated: formatTimestamp(responseTimestamp),
+  remarks: meeting.remarks ?? 'No remarks available.',
+  lastUpdated: formatTimestamp(
+    meeting.workflowUpdatedAt
+      ?? meeting.updatedAt
+      ?? meeting.lastModifiedDate
+      ?? lead?.audit?.updatedAt
+      ?? meeting.createdAt
+      ?? meeting.createdDate
+      ?? lead?.audit?.createdAt,
+  ),
   nextFollowUpDate: formatDate(meeting.meetingDate),
   schedule: getSchedule(meeting.meetingDate),
 });
@@ -96,6 +117,7 @@ const mapMeetingToSalesTask = (
 type DropdownProps<T extends string> = {
   value: T;
   options: readonly T[];
+  compactWidth?: boolean;
   open: boolean;
   onToggle: () => void;
   onSelect: (value: T) => void;
@@ -105,13 +127,14 @@ type DropdownProps<T extends string> = {
 function FilterDropdown<T extends string>({
   value,
   options,
+  compactWidth,
   open,
   onToggle,
   onSelect,
   accessibilityLabel,
 }: DropdownProps<T>) {
   return (
-    <View style={styles.dropdownRoot}>
+    <View style={[styles.dropdownRoot, compactWidth && styles.dropdownRootCompact]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
@@ -166,8 +189,10 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const isMobile = width < 700;
   const [search, setSearch] = useState('');
   const [taskType, setTaskType] = useState<TaskTypeFilter>('All Tasks');
-  const [taskStage, setTaskStage] = useState<TaskStageFilter>('All Stages');
-  const [openDropdown, setOpenDropdown] = useState<'task' | 'stage' | null>(null);
+  const [taskStage, setTaskStage] = useState<TaskStageFilter>('Leads');
+  const [leadFilter, setLeadFilter] = useState<'Active Leads' | 'Removed Leads'>('Active Leads');
+  const [meetingFilter, setMeetingFilter] = useState('All Meetings');
+  const [openDropdown, setOpenDropdown] = useState<'task' | 'lead' | 'meeting' | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [leadState, setLeadState] = useState<LeadSearchState>(() => leadSearchService.getState());
   const [meetingState, setMeetingState] = useState<MeetingQueueState>(() => meetingService.getState());
@@ -177,12 +202,13 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       const actionableMeetings = meetingState.meetings.filter((meeting) => (
         meeting.meetingStatus === 'SCHEDULED' && meeting.meetingType !== 'INTRO'
       ));
-      const meetingTasks = actionableMeetings.map((meeting, index) => {
+      const meetingTasks = actionableMeetings.flatMap((meeting, index) => {
         const lead = leadState.leads.find((candidate) => (
           (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
           || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
         ));
-        return mapMeetingToSalesTask(meeting, index, meetingState.timestamp, lead);
+        if (isHiddenCompletedLead(lead?.leadStatus) || isHiddenCompletedLead(meeting.leadStatus)) return [];
+        return [mapMeetingToSalesTask(meeting, index, lead)];
       });
       const meetingLeadKeys = new Set(meetingTasks.flatMap((task) => [
         task.leadCode ? `code:${task.leadCode}` : '',
@@ -190,23 +216,23 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       ]).filter(Boolean));
       const leadTasks = leadState.leads
         .filter((lead) => {
+          if (isHiddenCompletedLead(lead.leadStatus)) return false;
           const keys = [lead.leadCode ? `code:${lead.leadCode}` : '', lead.leadId !== undefined ? `id:${lead.leadId}` : ''].filter(Boolean);
           return keys.every((key) => !meetingLeadKeys.has(key));
         })
         .map(mapLeadToSalesTask);
       return [...leadTasks, ...meetingTasks];
     },
-    [leadState.leads, meetingState.meetings, meetingState.timestamp],
+    [leadState.leads, meetingState.meetings],
   );
-  const taskStageOptions = useMemo(() => [
-    ...defaultTaskStageOptions,
+  const meetingFilterOptions = useMemo(() => [
+    'All Meetings',
     ...Array.from(new Set(
       tasks
-        .filter((task) => task.taskKind === 'MEETING' && task.taskLabel)
-        .map((task) => task.taskLabel),
+        .filter((task) => task.taskKind === 'MEETING' && Boolean(task.meetingTitle))
+        .map((task) => task.meetingTitle as string),
     )),
   ], [tasks]);
-
   useEffect(() => {
     const unsubscribe = leadSearchService.subscribe(setLeadState);
     void leadSearchService.loadLeads();
@@ -229,6 +255,12 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
     });
   }, []);
 
+  useEffect(() => {
+    if (!meetingFilterOptions.includes(meetingFilter)) {
+      setMeetingFilter('All Meetings');
+    }
+  }, [meetingFilter, meetingFilterOptions]);
+
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const normalizedPhoneSearch = search.replace(/\D/g, '');
@@ -239,10 +271,18 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         task.name.toLowerCase().includes(normalizedSearch) ||
         (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
       const matchesTaskType = taskType === 'All Tasks' || task.schedule === taskType;
-      const matchesStage = taskStage === 'All Stages' || task.taskLabel === taskStage;
-      return matchesSearch && matchesTaskType && matchesStage;
+      const matchesStage = (taskStage === 'Leads' && task.taskKind === 'LEAD')
+        || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
+      const matchesLead = taskStage !== 'Leads'
+        || (leadFilter === 'Removed Leads'
+          ? task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED'
+          : task.leadStatus !== 'REMOVED' && task.leadStatus !== 'NOT_INTERESTED');
+      const matchesMeeting = taskStage !== 'Meetings'
+        || meetingFilter === 'All Meetings'
+        || task.meetingTitle === meetingFilter;
+      return matchesSearch && matchesTaskType && matchesStage && matchesLead && matchesMeeting;
     });
-  }, [search, taskStage, taskType, tasks]);
+  }, [leadFilter, meetingFilter, search, taskStage, taskType, tasks]);
 
   return (
     <View style={styles.page}>
@@ -253,11 +293,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       >
         <View style={styles.stickyHeader}>
           <View style={styles.headerCard}>
-            <View style={styles.heading}>
-              <View style={styles.headingCopy}>
+            <View style={[styles.heading, isMobile && styles.mobileHeading]}>
+              <View style={[styles.headingCopy, isMobile && styles.mobileHeadingCopy]}>
                 <Text style={styles.title}>Your Tasks</Text>
               </View>
-              <View style={styles.headingActions}>
+              <View style={[styles.headingActions, isMobile && styles.mobileHeadingActions]}>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Create new lead"
@@ -302,6 +342,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                 <FilterDropdown
                   value={taskType}
                   options={taskTypeOptions}
+                  compactWidth={isMobile}
                   open={openDropdown === 'task'}
                   onToggle={() => setOpenDropdown((current) => (current === 'task' ? null : 'task'))}
                   onSelect={(value) => {
@@ -310,17 +351,136 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                   }}
                   accessibilityLabel="Filter by task type"
                 />
-                <FilterDropdown
-                  value={taskStage}
-                  options={taskStageOptions}
-                  open={openDropdown === 'stage'}
-                  onToggle={() => setOpenDropdown((current) => (current === 'stage' ? null : 'stage'))}
-                  onSelect={(value) => {
-                    setTaskStage(value);
-                    setOpenDropdown(null);
-                  }}
-                  accessibilityLabel="Filter by task stage"
-                />
+                <View style={[styles.stageTabs, isMobile && styles.mobileStageTabs]}>
+                  <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Filter leads by status"
+                      accessibilityState={{
+                        expanded: openDropdown === 'lead',
+                        selected: taskStage === 'Leads',
+                      }}
+                      onPress={() => {
+                        setTaskStage('Leads');
+                        setOpenDropdown((current) => (current === 'lead' ? null : 'lead'));
+                      }}
+                      style={({ pressed }) => [
+                        styles.stageTab,
+                        styles.leadStageButton,
+                        isMobile && styles.mobileStageButton,
+                        taskStage === 'Leads' && styles.stageTabSelected,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.stageTabText, taskStage === 'Leads' && styles.stageTabTextSelected]}
+                      >
+                        {leadFilter === 'Active Leads' ? 'Leads' : leadFilter}
+                      </Text>
+                      <Icon
+                        source={openDropdown === 'lead' ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={taskStage === 'Leads' ? '#FFFFFF' : theme.colors.muted}
+                      />
+                    </Pressable>
+
+                    {openDropdown === 'lead' ? (
+                      <View style={styles.leadStageMenu}>
+                        {LEAD_FILTER_OPTIONS.map((option) => {
+                          const selected = leadFilter === option;
+                          return (
+                            <Pressable
+                              key={option}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              onPress={() => {
+                                setLeadFilter(option);
+                                setTaskStage('Leads');
+                                setOpenDropdown(null);
+                              }}
+                              style={({ pressed }) => [
+                                styles.dropdownOption,
+                                selected && styles.selectedOption,
+                                pressed && styles.pressed,
+                              ]}
+                            >
+                              <Text style={[styles.optionText, selected && styles.selectedOptionText]}>{option}</Text>
+                              {selected ? <Icon source="check" size={17} color={theme.colors.primary} /> : null}
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+                  </View>
+
+                  <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Filter meetings by backend title"
+                      accessibilityState={{
+                        expanded: openDropdown === 'meeting',
+                        selected: taskStage === 'Meetings',
+                      }}
+                      onPress={() => {
+                        setTaskStage('Meetings');
+                        setOpenDropdown((current) => (current === 'meeting' ? null : 'meeting'));
+                      }}
+                      style={({ pressed }) => [
+                        styles.stageTab,
+                        styles.meetingStageButton,
+                        isMobile && styles.mobileStageButton,
+                        taskStage === 'Meetings' && styles.stageTabSelected,
+                        pressed && styles.pressed,
+                      ]}
+                    >
+                      <Text
+                        numberOfLines={1}
+                        style={[styles.stageTabText, taskStage === 'Meetings' && styles.stageTabTextSelected]}
+                      >
+                        {meetingFilter === 'All Meetings' ? 'Meetings' : meetingFilter}
+                      </Text>
+                      <Icon
+                        source={openDropdown === 'meeting' ? 'chevron-up' : 'chevron-down'}
+                        size={16}
+                        color={taskStage === 'Meetings' ? '#FFFFFF' : theme.colors.muted}
+                      />
+                    </Pressable>
+
+                    {openDropdown === 'meeting' ? (
+                      <ScrollView
+                        style={styles.meetingStageMenu}
+                        contentContainerStyle={styles.dropdownMenuContent}
+                        showsVerticalScrollIndicator
+                        keyboardShouldPersistTaps="handled"
+                      >
+                        {meetingFilterOptions.map((option) => {
+                          const selected = meetingFilter === option;
+                          return (
+                            <Pressable
+                              key={option}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              onPress={() => {
+                                setMeetingFilter(option);
+                                setTaskStage('Meetings');
+                                setOpenDropdown(null);
+                              }}
+                              style={({ pressed }) => [
+                                styles.dropdownOption,
+                                selected && styles.selectedOption,
+                                pressed && styles.pressed,
+                              ]}
+                            >
+                              <Text style={[styles.optionText, selected && styles.selectedOptionText]}>{option}</Text>
+                              {selected ? <Icon source="check" size={17} color={theme.colors.primary} /> : null}
+                            </Pressable>
+                          );
+                        })}
+                      </ScrollView>
+                    ) : null}
+                  </View>
+                </View>
               </View>
             </View>
           </View>
@@ -433,10 +593,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 6,
   },
+  mobileHeading: {
+    flexWrap: 'nowrap',
+    alignItems: 'center',
+    gap: 8,
+  },
   headingCopy: {
     minWidth: 190,
     flex: 1,
     zIndex: 1,
+  },
+  mobileHeadingCopy: {
+    minWidth: 0,
+    flexShrink: 1,
   },
   title: {
     color: theme.colors.text,
@@ -451,6 +620,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     gap: theme.spacing.sm,
     zIndex: 1,
+  },
+  mobileHeadingActions: {
+    flexWrap: 'nowrap',
+    flexShrink: 0,
+    gap: 6,
   },
   secondaryAction: {
     minHeight: 26,
@@ -495,6 +669,7 @@ const styles = StyleSheet.create({
   },
   mobileFilters: {
     flexDirection: 'column',
+    gap: 8,
   },
   searchContainer: {
     minWidth: 220,
@@ -543,6 +718,85 @@ const styles = StyleSheet.create({
   },
   mobileDropdowns: {
     width: '100%',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  stageTabs: {
+    minHeight: 30,
+    flexDirection: 'row',
+    padding: 2,
+    borderWidth: 1,
+    borderColor: '#D8E1EC',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  mobileStageTabs: {
+    flex: 1,
+  },
+  stageTab: {
+    minWidth: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: theme.spacing.sm,
+    borderRadius: 6,
+  },
+  stageTabSelected: {
+    backgroundColor: theme.colors.primary,
+  },
+  stageTabText: {
+    color: theme.colors.muted,
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  stageTabTextSelected: {
+    color: '#FFFFFF',
+  },
+  meetingStageRoot: {
+    position: 'relative',
+    zIndex: 12,
+  },
+  mobileStageRoot: {
+    flex: 1,
+  },
+  mobileStageButton: {
+    width: '100%',
+  },
+  leadStageButton: {
+    minWidth: 84,
+    minHeight: 26,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  leadStageMenu: {
+    position: 'absolute',
+    top: 32,
+    left: 0,
+    width: 150,
+    padding: 3,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 9,
+    backgroundColor: theme.colors.surface,
+    ...theme.shadow.card,
+  },
+  meetingStageButton: {
+    minWidth: 96,
+    minHeight: 26,
+    flexDirection: 'row',
+    gap: 4,
+  },
+  meetingStageMenu: {
+    position: 'absolute',
+    top: 32,
+    right: 0,
+    width: 180,
+    maxHeight: 190,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    borderRadius: 9,
+    backgroundColor: theme.colors.surface,
+    ...theme.shadow.card,
   },
   dropdownRoot: {
     position: 'relative',
@@ -550,6 +804,10 @@ const styles = StyleSheet.create({
     minWidth: 0,
     flexShrink: 1,
     zIndex: 10,
+  },
+  dropdownRootCompact: {
+    width: 112,
+    flexShrink: 0,
   },
   dropdownButton: {
     minHeight: 30,

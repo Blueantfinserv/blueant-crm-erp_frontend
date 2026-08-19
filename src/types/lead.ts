@@ -117,16 +117,22 @@ export type LeadResponse = {
   currentActiveMeeting?: {
     meetingCode?: string;
   };
+  audit?: {
+    createdAt?: string;
+    updatedAt?: string;
+  };
 };
 
-export type ApiResponseLeadResponse = {
+export type ApiResponseLeadResponse<T extends LeadResponse = LeadResponse> = {
   success?: boolean;
   status?: number;
   message?: string;
   timestamp?: string;
   path?: string;
-  data?: LeadResponse;
+  data?: T;
 };
+
+export type LeadDetailResponse = LeadResponse;
 
 export type LeadSearchRequest = {
   keyword?: string;

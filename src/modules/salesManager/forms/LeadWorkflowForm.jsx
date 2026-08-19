@@ -13,8 +13,6 @@ import {
 import { Picker } from "@react-native-picker/picker";
 import { Icon } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Location from "expo-location";
-import MapView, { Marker } from "../../../../PreviewMap";
 
 const LEAD_SOURCES = ["Referral", "Website", "Walk-in", "Other"];
 const MEETING_MODES = ["Physical", "Virtual"];
@@ -22,16 +20,10 @@ const JOINED_WITH_OPTIONS = ["Alone", "With Someone"];
 const LEAD_STATUSES = [
   "Work In Progress",
   "Converted as Client",
+  "Client Not Interested",
   "Remove This Client",
   "Already Blueant Client",
 ];
-const INITIAL_REGION = {
-  latitude: 20.5937,
-  longitude: 78.9629,
-  latitudeDelta: 22,
-  longitudeDelta: 22,
-};
-
 const getLocalDate = () => {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60_000;
@@ -40,9 +32,7 @@ const getLocalDate = () => {
 
 export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   const isNewLead = type === "new-lead";
-  const mapRef = useRef(null);
   const submittingRef = useRef(false);
-  const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [submissionSuccess, setSubmissionSuccess] = useState("");
@@ -64,7 +54,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     joinedWith: "Alone",
     nextPlanDate: "",
   });
-  const [coordinates, setCoordinates] = useState(null);
 
   useEffect(() => {
     if (!submissionSuccess) return undefined;
@@ -84,35 +73,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     setForm((current) => ({ ...current, [field]: value }));
     setErrors((current) => ({ ...current, [field]: undefined }));
     setSubmissionError("");
-  };
-
-  const captureLocation = async () => {
-    setLoading(true);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (!permission.granted) {
-        setErrors((current) => ({ ...current, coordinates: "Location permission is required." }));
-        return;
-      }
-      const position = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
-      const next = {
-        latitude: position.coords.latitude,
-        longitude: position.coords.longitude,
-        accuracy: position.coords.accuracy ?? undefined,
-      };
-      setCoordinates(next);
-      setErrors((current) => ({ ...current, coordinates: undefined }));
-      mapRef.current?.animateToRegion(
-        { ...next, latitudeDelta: 0.008, longitudeDelta: 0.008 },
-        400
-      );
-    } catch {
-      setErrors((current) => ({ ...current, coordinates: "Location could not be captured." }));
-    } finally {
-      setLoading(false);
-    }
   };
 
   const validate = () => {
@@ -154,8 +114,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       aloneWith: form.joinedWith === "Alone" ? "SELF" : "SOMEONE",
       remarks: form.remarks.trim(),
       nextPlanDate: form.leadStatus === "Work In Progress" ? form.nextPlanDate : "",
-      coordinates,
-      address: form.locationText.trim(),
     };
 
     const createLeadRequest = {
@@ -330,15 +288,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                 </Field>
               ) : null}
 
-              <LocationField
-                optional
-                coordinates={coordinates}
-                error={errors.coordinates}
-                loading={loading}
-                mapRef={mapRef}
-                onCapture={captureLocation}
-                onChange={setCoordinates}
-              />
             </>
           )}
           </View>
@@ -448,38 +397,6 @@ function CompactCalendar({ viewedMonth, selectedDate, onChangeMonth, onSelect })
         })}
       </View>
     </View>
-  );
-}
-
-function LocationField({ optional, coordinates, error, loading, mapRef, onCapture, onChange }) {
-  return (
-    <Field label="Live Location Pin" required={!optional} error={error}>
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={coordinates ? { ...coordinates, latitudeDelta: 0.008, longitudeDelta: 0.008 } : INITIAL_REGION}
-        onPress={(event) => onChange(event.nativeEvent.coordinate)}
-      >
-        {coordinates ? (
-          <Marker coordinate={coordinates} draggable onDragEnd={(event) => onChange(event.nativeEvent.coordinate)} />
-        ) : null}
-      </MapView>
-      <View style={styles.locationFooter}>
-        <View style={styles.coordinates}>
-          <Text style={styles.coordinateText}>
-            {coordinates ? `${coordinates.latitude.toFixed(6)}, ${coordinates.longitude.toFixed(6)}` : "No location pinned"}
-          </Text>
-        </View>
-        <Pressable onPress={onCapture} disabled={loading} style={styles.locationButton}>
-          {loading ? <ActivityIndicator size="small" color="#FFFFFF" /> : (
-            <>
-              <Icon source="crosshairs-gps" size={14} color="#FFFFFF" />
-              <Text style={styles.locationButtonText}>Use Live Location</Text>
-            </>
-          )}
-        </Pressable>
-      </View>
-    </Field>
   );
 }
 
@@ -621,12 +538,6 @@ const styles = StyleSheet.create({
   autofillItem: { minWidth: 0, flex: 1 },
   autofillLabel: { color: "#64748B", fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
   autofillValue: { marginTop: 3, color: "#4C1D95", fontSize: 13, fontWeight: "900" },
-  map: { width: "100%", height: 190, overflow: "hidden", borderRadius: 10 },
-  locationFooter: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8 },
-  coordinates: { minWidth: 0, flex: 1 },
-  coordinateText: { color: "#64748B", fontSize: 10, fontWeight: "700" },
-  locationButton: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 5, paddingHorizontal: 12, borderRadius: 9, backgroundColor: "#2563EB" },
-  locationButtonText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
   error: { marginTop: 5, color: "#DC2626", fontSize: 10, fontWeight: "700" },
   successOverlay: {
     ...StyleSheet.absoluteFillObject,

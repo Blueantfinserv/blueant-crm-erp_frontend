@@ -16,9 +16,9 @@ export type MeetingSummary = {
 export type MeetingResponse = MeetingSummary & {
   mobileNumber?: string; employeeCode?: string; employeeName?: string; meetingMode?: MeetingMode;
   meetingLocation?: string; status?: string; address?: string; discussion?: string;
-  meetingRemarks?: string; meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED';
+  remarks?: string; meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED';
   leadStatus?: MeetingLeadStatus; latitude?: number; longitude?: number; locationAccuracy?: number;
-  lastModifiedDate?: string; createdDate?: string; googleMapsUrl?: string;
+  lastModifiedDate?: string; createdDate?: string; workflowUpdatedAt?: string; googleMapsUrl?: string;
 };
 
 export type MeetingDetail = MeetingResponse & { leadId?: number; assignedEmployeeId?: number; agenda?: string };
@@ -33,12 +33,12 @@ export type ScheduleMeetingRequest = {
   leadId: string; meetingMode: MeetingMode; meetingDate: string; meetingTime: LocalTime; meetingLocation: string;
 };
 export type CreateMeetingRequest = Omit<ScheduleMeetingRequest, 'meetingTime'> & {
-  meetingRemarks?: string;
+  remarks?: string;
 };
 export type MeetingWorkflowRequest = {
   leadStatus: MeetingLeadStatus; aloneWith: AloneWith; meetingDate?: string; meetingMode?: MeetingMode;
   meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED';
-  meetingRemarks?: string; nextPlanDate?: string; latitude?: number; longitude?: number; address?: string; accuracy?: number;
+  remarks?: string; nextPlanDate?: string; latitude?: number; longitude?: number; address?: string; accuracy?: number;
 };
 export type MeetingSearchRequest = { keyword?: string };
 export type RescheduleMeetingRequest = { meetingCode: string; meetingDate: string; meetingTime: LocalTime; meetingLocation: string; rescheduleReason: string };
@@ -46,9 +46,8 @@ export type CancelMeetingRequest = { meetingId: number; cancellationReason: stri
 
 export type MeetingFormSubmission = {
   leadId?: string; meetingCode?: string; meetingMode: 'Physical' | 'Virtual'; meetingDate: string;
-  leadStatus: 'Work In Progress' | 'Converted as Client' | 'Remove This Client' | 'Already Blueant Client';
-  aloneWith: AloneWith; nextPlanDate: string; remarks: string; address: string;
-  coordinates: { latitude: number; longitude: number; accuracy?: number } | null;
+  leadStatus: 'Work In Progress' | 'Converted as Client' | 'Client Not Interested' | 'Remove This Client' | 'Already Blueant Client';
+  aloneWith: AloneWith; nextPlanDate: string; remarks: string;
 };
 
 export type MeetingQueueState = { meetings: MeetingResponse[]; timestamp: string | null; isLoading: boolean; error: string | null };

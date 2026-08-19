@@ -1,4 +1,5 @@
 import { leadSearchApi, LeadSearchApiError } from '../api/leadSearch';
+import { leadApi } from '../api/lead';
 import type { LeadSearchState } from '../types/lead';
 
 type Listener = (state: LeadSearchState) => void;
@@ -19,6 +20,19 @@ const toMessage = (error: unknown) => {
 export class LeadSearchService {
   private state = initialState;
   private listeners = new Set<Listener>();
+  private hiddenTaskLeadKeys = new Set<string>();
+
+  private getLeadKeys(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
+    return [
+      lead.leadId !== undefined ? `id:${lead.leadId}` : '',
+      lead.leadCode ? `code:${lead.leadCode}` : '',
+      lead.uniqueLeadId ? `unique:${lead.uniqueLeadId}` : '',
+    ].filter(Boolean);
+  }
+
+  private isHiddenTaskLead(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
+    return this.getLeadKeys(lead).some((key) => this.hiddenTaskLeadKeys.has(key));
+  }
 
   subscribe(listener: Listener) {
     this.listeners.add(listener);
@@ -41,8 +55,18 @@ export class LeadSearchService {
     this.setState({ isLoading: true, error: null });
     try {
       const response = await leadSearchApi.search({ page: 0, size: 100 });
+      const leads = await Promise.all((response.data?.content ?? []).map(async (lead) => {
+        const uniqueLeadId = lead.uniqueLeadId?.trim();
+        if (!uniqueLeadId) return lead;
+        try {
+          const details = (await leadApi.getLeadDetails(uniqueLeadId)).data;
+          return details ? { ...lead, audit: details.audit } : lead;
+        } catch {
+          return lead;
+        }
+      }));
       this.setState({
-        leads: response.data?.content ?? [],
+        leads: leads.filter((lead) => !this.isHiddenTaskLead(lead)),
         timestamp: response.timestamp ?? null,
         error: null,
       });
@@ -55,6 +79,11 @@ export class LeadSearchService {
 
   getState() {
     return this.state;
+  }
+
+  hideLeadFromTasks(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
+    this.getLeadKeys(lead).forEach((key) => this.hiddenTaskLeadKeys.add(key));
+    this.setState({ leads: this.state.leads.filter((candidate) => !this.isHiddenTaskLead(candidate)) });
   }
 }
 

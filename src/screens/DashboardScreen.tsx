@@ -19,6 +19,7 @@ import { dashboardListsData } from '../modules/salesManager/dashboard/mock/dashb
 import { DashboardListCard } from '../modules/salesManager/dashboard/types/dashboard';
 import { ConversionPerformanceSection } from '../modules/salesManager/dashboard/components/ConversionPerformanceSection';
 import { conversionPerformanceData } from '../modules/salesManager/dashboard/mock/conversionPerformanceData';
+import { FrontendExperience, isSalesWorkspaceExperience } from '../navigation/roleExperience';
 const salesIcon = require('../../assets/perfomancecardlogo.png');
 const meetingsIcon = require('../../assets/meetingcardlogo.png');
 const convertedClientIcon = require('../../assets/convertedclientcardlogo.png');
@@ -36,6 +37,7 @@ type Props = {
   onRetryDashboard?: () => void;
   onOpenDashboardList?: (listId: DashboardListCard['id']) => void;
   onCreateNewLead?: () => void;
+  experience: FrontendExperience;
 };
 
 const insightCards = [
@@ -45,7 +47,7 @@ const insightCards = [
   'Reserved for future portfolio health widgets and exception monitoring panels.',
 ];
 
-export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuItems, dashboardState = 'success', onRetryDashboard = () => {}, onOpenDashboardList = () => {}, onCreateNewLead = () => {} }: Props) {
+export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuItems, experience, dashboardState = 'success', onRetryDashboard = () => {}, onOpenDashboardList = () => {}, onCreateNewLead = () => {} }: Props) {
   const { width } = useWindowDimensions();
   const isCompactAnalyticsLayout = width < 768;
   const period = 'Current Week';
@@ -59,8 +61,8 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
     useDashboardDatePicker();
 
   const displayName = user?.fullName ?? 'Executive';
-  const isSuperAdmin = role === 'SUPER_ADMIN';
-  const isSalesManager = role === 'SALES_MANAGER';
+  const isSuperAdmin = experience === 'SUPER_ADMIN';
+  const isSalesWorkspace = isSalesWorkspaceExperience(experience);
   const rows = dashboardPerformanceRows[period];
   const isLoading = dashboardState === 'loading';
   const isEmpty = dashboardState === 'empty';
@@ -70,7 +72,7 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
     return (
       <View style={styles.container}>
         <View style={styles.shell}>
-          {isSalesManager ? (
+          {isSalesWorkspace ? (
             <>
               <TodayOverviewSection cards={todayOverviewData} />
               <SalesActivitySection cards={salesActivityData} onActionPress={(actionId) => {

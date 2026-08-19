@@ -1,3 +1,5 @@
+import type { LeadStatus } from '../../../../types/lead';
+
 export type TaskScheduleFilter = 'Today' | 'Pending' | 'Future 3 Days';
 
 export interface SalesTask {
@@ -11,6 +13,7 @@ export interface SalesTask {
   meetingStatus?: string;
   leadCode?: string;
   leadId?: number;
+  leadStatus?: LeadStatus;
   name: string;
   phone: string;
   locationText: string;

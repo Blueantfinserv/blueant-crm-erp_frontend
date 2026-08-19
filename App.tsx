@@ -15,6 +15,7 @@ import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage'
 import { AuthRole, ForgotPasswordCredentials, RegisterCredentials, ResetPasswordCredentials } from './src/types/auth';
 import { LoginFormValues } from './src/utils/authValidation';
 import { getRoleNavigationConfig } from './src/navigation/navigationConfig';
+import { getRoleExperience, isSalesWorkspaceExperience, type FrontendExperience } from './src/navigation/roleExperience';
 import { LeadScreen } from './src/modules/leads/LeadScreen';
 import { LeadDetailsScreen } from './src/modules/leads/details/LeadDetailsScreen';
 import { AddFollowupScreen } from './src/modules/leads/followup/FollowupScreen';
@@ -49,6 +50,7 @@ registerTranslation('en', en);
 const MEETING_LEAD_STATUS: Record<MeetingFormSubmission['leadStatus'], MeetingLeadStatus> = {
   'Work In Progress': 'WORK_IN_PROGRESS',
   'Converted as Client': 'CONVERTED_CLIENT',
+  'Client Not Interested': 'CLIENT_NOT_INTERESTED',
   'Remove This Client': 'CLIENT_REMOVED',
   'Already Blueant Client': 'ALREADY_CLIENT',
 };
@@ -60,7 +62,7 @@ const toCreateMeeting = (form: MeetingFormSubmission, lead: SalesTask): CreateMe
     meetingMode: form.meetingMode === 'Physical' ? 'PHYSICAL' : 'VIRTUAL/ONLINE',
     meetingDate: form.meetingDate,
     meetingLocation: lead.locationText,
-    meetingRemarks: form.remarks.trim(),
+    remarks: form.remarks.trim(),
   };
 };
 
@@ -75,26 +77,10 @@ const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; 
       meetingConducted: 'CONDUCTED',
       leadStatus: MEETING_LEAD_STATUS[form.leadStatus],
       aloneWith: form.aloneWith,
-      meetingRemarks: form.remarks.trim(),
+      remarks: form.remarks.trim(),
       ...(form.leadStatus === 'Work In Progress' ? { nextPlanDate: form.nextPlanDate } : {}),
-      ...(form.coordinates ? {
-        latitude: form.coordinates.latitude,
-        longitude: form.coordinates.longitude,
-        address: form.address,
-        ...(form.coordinates.accuracy !== undefined ? { accuracy: form.coordinates.accuracy } : {}),
-      } : {}),
     },
   };
-};
-
-// TODO: Remove this temporary development override after Sales Manager work is complete.
-const ENABLE_DEV_SALES_MANAGER_ROLE_OVERRIDE = true;
-
-const getUiRole = (backendRole: AuthRole | null | undefined): AuthRole | null | undefined => {
-  if (__DEV__ && ENABLE_DEV_SALES_MANAGER_ROLE_OVERRIDE && backendRole === 'SUPER_ADMIN') {
-    return 'SALES_MANAGER';
-  }
-  return backendRole;
 };
 
 type ScreenState =
@@ -128,8 +114,8 @@ const baseModuleItems: ModuleItem[] = [
   { key: 'hr', label: 'HR', icon: 'HR', route: 'coming-soon' },
 ];
 
-const getTopTabsForRole = (role: AuthRole | null | undefined): TopTabItem[] => {
-  if (role === 'SALES_MANAGER') {
+const getTopTabsForExperience = (experience: FrontendExperience): TopTabItem[] => {
+  if (isSalesWorkspaceExperience(experience)) {
     return [
       { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
       { key: 'all-tasks', label: 'Your Task', route: 'leads' },
@@ -139,8 +125,8 @@ const getTopTabsForRole = (role: AuthRole | null | undefined): TopTabItem[] => {
   return baseTopTabs;
 };
 
-const getModuleItemsForRole = (role: AuthRole | null | undefined): ModuleItem[] => {
-  if (role === 'SALES_MANAGER') {
+const getModuleItemsForExperience = (experience: FrontendExperience): ModuleItem[] => {
+  if (isSalesWorkspaceExperience(experience)) {
     return [];
   }
 
@@ -159,7 +145,8 @@ export default function App() {
 
 function AppShell() {
   const auth = useAuth();
-  const uiRole = getUiRole(auth.user?.role);
+  const backendRole = auth.user?.role;
+  const experience = getRoleExperience(backendRole);
   const [screen, setScreen] = useState<ScreenState>('splash');
   const [message, setMessage] = useState<string | null>(null);
   const [legalPage, setLegalPage] = useState<LegalPageKind | null>(null);
@@ -229,10 +216,10 @@ function AppShell() {
   }, [auth.isAuthenticated, auth.isInitialized, auth.user?.role, screen]);
 
   useEffect(() => {
-    if (uiRole === 'SALES_MANAGER') {
+    if (isSalesWorkspaceExperience(experience)) {
       setActiveModule('sales');
     }
-  }, [uiRole]);
+  }, [experience]);
 
   useEffect(() => {
     if (screen === 'dashboard' || screen === 'dashboard-list') setActiveTab('dashboard');
@@ -281,9 +268,9 @@ function AppShell() {
   };
 
   const content = useMemo(() => {
-    const roleNavigation = getRoleNavigationConfig(uiRole);
-    const topTabs = getTopTabsForRole(uiRole);
-    const moduleItems = getModuleItemsForRole(uiRole);
+    const roleNavigation = getRoleNavigationConfig(backendRole);
+    const topTabs = getTopTabsForExperience(experience);
+    const moduleItems = getModuleItemsForExperience(experience);
     const currentDate = new Intl.DateTimeFormat('en-US', {
       weekday: 'long',
       month: 'short',
@@ -377,6 +364,7 @@ function AppShell() {
             {activeModule === 'sales' ? (
               <DashboardScreen
                 role={roleNavigation.role}
+                experience={experience}
                 title={roleNavigation.title}
                 subtitle={roleNavigation.subtitle}
                 menuItems={roleNavigation.menuItems}
@@ -504,7 +492,7 @@ function AppShell() {
         return (
           <ErpShell
             currentDate={currentDate}
-            contentScrollable={uiRole !== 'SALES_MANAGER'}
+            contentScrollable={!isSalesWorkspaceExperience(experience)}
             tabs={topTabs}
             activeTab={activeTab}
             onLogout={handleLogout}
@@ -524,7 +512,7 @@ function AppShell() {
               navigate('coming-soon');
             }}
           >
-            {uiRole === 'SALES_MANAGER' ? (
+            {isSalesWorkspaceExperience(experience) ? (
               <SalesManagerTasksScreen
                 onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
                 onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
@@ -645,7 +633,7 @@ function AppShell() {
       default:
         return null;
     }
-  }, [activeModule, activeTab, auth, comingSoonModule, followups, message, screen, selectedDashboardListId, selectedSalesTask, uiRole]);
+  }, [activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, message, screen, selectedDashboardListId, selectedSalesTask]);
 
   return (
     <SafeAreaView style={styles.root}>
@@ -684,6 +672,15 @@ function AppShell() {
                             : form.meetingCode;
                           const submission = toMeetingWorkflow({ ...form, meetingCode });
                           const nextMeeting = await meetingService.submitWorkflow(submission.meetingCode, submission.workflow);
+                          if (form.leadStatus === 'Converted as Client' || form.leadStatus === 'Already Blueant Client') {
+                            const leadIdentity = {
+                              leadId: task.leadId,
+                              leadCode: task.leadCode,
+                              uniqueLeadId: task.uniqueLeadId,
+                            };
+                            leadSearchService.hideLeadFromTasks(leadIdentity);
+                            meetingService.hideLeadFromTasks(leadIdentity);
+                          }
                           await leadSearchService.loadLeads();
                           if (nextMeeting.meetingCode) {
                             const synchronizeNextMeeting = (task: SalesTask): SalesTask => ({
@@ -697,9 +694,6 @@ function AppShell() {
                               taskLabel: nextMeeting.meetingTitle ?? task.taskLabel,
                             });
                             setSelectedSalesTask((current) => current ? synchronizeNextMeeting(current) : current);
-                            setLeadForm((current) => current?.type === 'meeting' && current.lead
-                              ? { ...current, lead: synchronizeNextMeeting(current.lead) }
-                              : current);
                           }
                           return 'Meeting submitted successfully.';
                         }

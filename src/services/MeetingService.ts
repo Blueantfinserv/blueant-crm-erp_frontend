@@ -9,6 +9,19 @@ export class MeetingService {
   private state = initialState;
   private listeners = new Set<Listener>();
   private submissions = new Set<string>();
+  private hiddenTaskLeadKeys = new Set<string>();
+  private workflowTimestamps = new Map<string, string>();
+
+  private getLeadKeys(lead: { leadId?: number; leadCode?: string }) {
+    return [
+      lead.leadId !== undefined ? `id:${lead.leadId}` : '',
+      lead.leadCode ? `code:${lead.leadCode}` : '',
+    ].filter(Boolean);
+  }
+
+  private isHiddenTaskLead(lead: { leadId?: number; leadCode?: string }) {
+    return this.getLeadKeys(lead).some((key) => this.hiddenTaskLeadKeys.has(key));
+  }
 
   subscribe(listener: Listener) { this.listeners.add(listener); listener(this.state); return () => { this.listeners.delete(listener); }; }
   getState() { return this.state; }
@@ -23,11 +36,16 @@ export class MeetingService {
         if (!meetingCode) return meeting;
         try {
           const details = (await meetingApi.getMeeting(meetingCode)).data;
-          return details ? { ...meeting, ...details } : meeting;
+          const merged = details ? { ...meeting, ...details } : meeting;
+          const workflowUpdatedAt = this.workflowTimestamps.get(meetingCode);
+          return workflowUpdatedAt ? { ...merged, workflowUpdatedAt } : merged;
         }
-        catch { return meeting; }
+        catch {
+          const workflowUpdatedAt = this.workflowTimestamps.get(meetingCode);
+          return workflowUpdatedAt ? { ...meeting, workflowUpdatedAt } : meeting;
+        }
       }));
-      this.setState({ meetings, timestamp: response.timestamp ?? null, error: null });
+      this.setState({ meetings: meetings.filter((meeting) => !this.isHiddenTaskLead(meeting)), timestamp: response.timestamp ?? null, error: null });
     } catch (error) { this.setState({ meetings: [], timestamp: null, error: toMessage(error) }); }
     finally { this.setState({ isLoading: false }); }
   }
@@ -51,10 +69,21 @@ export class MeetingService {
     this.submissions.add(code);
     try {
       const response = await meetingApi.submitWorkflowUpdate(code, request);
+      const nextMeetingCode = response.data?.meetingCode?.trim();
+      if (nextMeetingCode && response.timestamp) {
+        this.workflowTimestamps.set(nextMeetingCode, response.timestamp);
+      }
       await this.loadMeetings();
-      return response.data ?? {};
+      return response.data
+        ? { ...response.data, ...(response.timestamp ? { workflowUpdatedAt: response.timestamp } : {}) }
+        : {};
     } catch (error) { throw new Error(toMessage(error)); }
     finally { this.submissions.delete(code); }
+  }
+
+  hideLeadFromTasks(lead: { leadId?: number; leadCode?: string }) {
+    this.getLeadKeys(lead).forEach((key) => this.hiddenTaskLeadKeys.add(key));
+    this.setState({ meetings: this.state.meetings.filter((meeting) => !this.isHiddenTaskLead(meeting)) });
   }
 }
 
