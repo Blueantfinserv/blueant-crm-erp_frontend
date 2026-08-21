@@ -6,8 +6,8 @@ import { ForgotPasswordCredentials, LoginCredentials, RegisterCredentials, Reset
 export type AuthContextValue = AuthState & {
   login: (credentials: LoginCredentials) => Promise<void>;
   createAccount: (credentials: RegisterCredentials) => Promise<void>;
-  forgotPassword: (credentials: ForgotPasswordCredentials) => Promise<void>;
-  resetPassword: (credentials: ResetPasswordCredentials) => Promise<void>;
+  forgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
+  resetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
 };
 
@@ -30,10 +30,10 @@ export const createAuthContextValue = (state: AuthState, service: AuthService): 
     await service.createAccount(credentials);
   },
   forgotPassword: async (credentials) => {
-    await service.forgotPassword(credentials);
+    return service.forgotPassword(credentials);
   },
   resetPassword: async (credentials) => {
-    await service.resetPassword(credentials);
+    return service.resetPassword(credentials);
   },
   logout: async () => {
     await service.logout();

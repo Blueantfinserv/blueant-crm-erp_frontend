@@ -3,10 +3,13 @@ import { MobileLogin } from './login/MobileLogin';
 import { DesktopLogin } from './login/DesktopLogin';
 import { TabletLogin } from './login/TabletLogin';
 import { LoginFormValues } from '../../utils/authValidation';
+import type { ForgotPasswordCredentials, ResetPasswordCredentials } from '../../types/auth';
 
 type Props = {
   onLogin: (credentials: LoginFormValues) => Promise<void> | void;
   onCreateAccount: (credentials: { email: string; password: string; confirmPassword: string }) => Promise<void> | void;
+  onForgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
+  onResetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   onHelp: () => void;
   onContact: () => void;
   onPrivacyPolicy: () => void;

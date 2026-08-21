@@ -9,10 +9,10 @@ import {
   validateLoginForm,
   validateEmployeeCode,
   validatePassword,
-  validateRegisterForm,
   validateStrongPassword,
 } from '../../../utils/authValidation';
 import { CreateAccountFormSection, LoginFormSection } from './LoginFormSections';
+import type { ForgotPasswordCredentials, ResetPasswordCredentials } from '../../../types/auth';
 
 const brandAsset = require('../../../../assets/blueAnt.png');
 const missionLogoAsset = require('../../../../assets/Mission Logo.png');
@@ -21,6 +21,8 @@ const visionLogoAsset = require('../../../../assets/Vision Logo.png');
 export type LoginScreenProps = {
   onLogin: (credentials: LoginFormValues) => Promise<void> | void;
   onCreateAccount: (credentials: { email: string; password: string; confirmPassword: string }) => Promise<void> | void;
+  onForgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
+  onResetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   onHelp: () => void;
   onContact: () => void;
   onPrivacyPolicy: () => void;
@@ -30,13 +32,15 @@ export type LoginScreenProps = {
   successMessage: string | null;
 };
 
-type LoginCardProps = Pick<LoginScreenProps, 'onLogin' | 'onCreateAccount' | 'loading' | 'errorMessage' | 'successMessage'> & {
+type LoginCardProps = Pick<LoginScreenProps, 'onLogin' | 'onCreateAccount' | 'onForgotPassword' | 'onResetPassword' | 'loading' | 'errorMessage' | 'successMessage'> & {
   density?: 'default' | 'compact';
 };
 
 export function LoginCard({
   onLogin,
   onCreateAccount,
+  onForgotPassword,
+  onResetPassword,
   loading,
   errorMessage,
   successMessage,
@@ -64,6 +68,11 @@ export function LoginCard({
   });
   const [attemptedSubmit, setAttemptedSubmit] = useState(false);
   const [createAccountAttemptedSubmit, setCreateAccountAttemptedSubmit] = useState(false);
+  const [resetStep, setResetStep] = useState<'identity' | 'password'>('identity');
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [resetRequestStarted, setResetRequestStarted] = useState(false);
+  const forgotSubmittingRef = useRef(false);
+  const resetSubmittingRef = useRef(false);
   const { height } = useWindowDimensions();
   const emailRef = useRef<TextInput>(null);
   const passwordRef = useRef<TextInput>(null);
@@ -80,7 +89,7 @@ export function LoginCard({
     ? (!/^[6-9]\d{9}$/.test(createAccountValues.mobileNumber.trim()) ? 'Enter a valid 10-digit mobile number.' : undefined)
     : undefined;
   const createAccountOtpError = (createAccountTouched.otp || createAccountAttemptedSubmit)
-    ? (!/^\d{6}$/.test(createAccountValues.otp.trim()) ? 'Enter a valid 6-digit OTP.' : undefined)
+    ? (!createAccountValues.otp.trim() ? 'OTP is required.' : undefined)
     : undefined;
 
   const handleSubmit = async () => {
@@ -91,20 +100,83 @@ export function LoginCard({
   };
 
   const handleCreateAccountSubmit = async () => {
+    if (resetSubmittingRef.current || loading || resetStep !== 'password') return;
     setCreateAccountAttemptedSubmit(true);
-    const nextErrors = validateRegisterForm(createAccountValues);
+    const passwordError = validateStrongPassword(createAccountValues.password);
+    const confirmPasswordError = validateConfirmPassword(createAccountValues.password, createAccountValues.confirmPassword);
     if (
-      validateEmployeeCode(createAccountValues.employeeCode)
-      || nextErrors.email
-      || nextErrors.password
-      || nextErrors.confirmPassword
-      || !/^[6-9]\d{9}$/.test(createAccountValues.mobileNumber.trim())
-      || !/^\d{6}$/.test(createAccountValues.otp.trim())
+      passwordError
+      || confirmPasswordError
+      || !createAccountValues.otp.trim()
     ) return;
+    resetSubmittingRef.current = true;
+    setResetRequestStarted(true);
+    setResetMessage(null);
+    try {
+      const response = await onResetPassword({
+        employeeCode: createAccountValues.employeeCode,
+        otp: createAccountValues.otp,
+        newPassword: createAccountValues.password,
+        confirmPassword: createAccountValues.confirmPassword,
+      });
+      setResetMessage(response.message);
+      setMode('login');
+      setResetStep('identity');
+      setCreateAccountValues({ employeeCode: '', password: '', confirmPassword: '', mobileNumber: '', email: '', otp: '' });
+      setCreateAccountTouched({ employeeCode: false, password: false, confirmPassword: false, mobileNumber: false, email: false, otp: false });
+      setCreateAccountAttemptedSubmit(false);
+    } catch {
+      // AuthContext exposes the backend error through errorMessage.
+    } finally {
+      resetSubmittingRef.current = false;
+    }
   };
 
-  const handleSendOtp = () => {
+  const handleSendOtp = async () => {
+    if (forgotSubmittingRef.current || loading || resetStep !== 'identity') return;
     setCreateAccountTouched((current) => ({ ...current, employeeCode: true, mobileNumber: true, email: true }));
+    if (
+      validateEmployeeCode(createAccountValues.employeeCode)
+      || validateEmail(createAccountValues.email)
+      || !/^[6-9]\d{9}$/.test(createAccountValues.mobileNumber.trim())
+    ) return;
+    forgotSubmittingRef.current = true;
+    setResetRequestStarted(true);
+    setResetMessage(null);
+    try {
+      const response = await onForgotPassword({
+        employeeCode: createAccountValues.employeeCode,
+        email: createAccountValues.email,
+        mobileNumber: createAccountValues.mobileNumber,
+      });
+      setResetMessage(response.message);
+      setResetStep('password');
+      setCreateAccountAttemptedSubmit(false);
+    } catch {
+      // AuthContext exposes the backend error through errorMessage.
+    } finally {
+      forgotSubmittingRef.current = false;
+    }
+  };
+
+  const openForgotPassword = () => {
+    setResetStep('identity');
+    setResetMessage(null);
+    setResetRequestStarted(false);
+    setCreateAccountValues({ employeeCode: '', password: '', confirmPassword: '', mobileNumber: '', email: '', otp: '' });
+    setCreateAccountTouched({ employeeCode: false, password: false, confirmPassword: false, mobileNumber: false, email: false, otp: false });
+    setCreateAccountAttemptedSubmit(false);
+    setMode('createAccount');
+  };
+
+  const returnToLogin = () => {
+    setResetStep('identity');
+    setResetMessage(null);
+    setResetRequestStarted(false);
+    setCreateAccountValues({ employeeCode: '', password: '', confirmPassword: '', mobileNumber: '', email: '', otp: '' });
+    setCreateAccountTouched({ employeeCode: false, password: false, confirmPassword: false, mobileNumber: false, email: false, otp: false });
+    setCreateAccountAttemptedSubmit(false);
+    setMode('login');
   };
 
   return (
@@ -141,14 +213,16 @@ export function LoginCard({
             onEmployeeCodeBlur={() => setTouched((current) => ({ ...current, employeeCode: true }))}
             onPasswordBlur={() => setTouched((current) => ({ ...current, password: true }))}
             onRememberChange={setRemember}
-            onForgotPassword={() => setMode('createAccount')}
+            onForgotPassword={openForgotPassword}
             onSubmit={handleSubmit}
           />
         ) : (
           <CreateAccountFormSection
             styles={styles}
             loading={loading}
-            errorMessage={errorMessage}
+            errorMessage={resetRequestStarted ? errorMessage : null}
+            successMessage={resetMessage}
+            step={resetStep}
             values={createAccountValues}
             employeeCodeError={createAccountEmployeeCodeError}
             emailError={createAccountEmailError}
@@ -161,7 +235,7 @@ export function LoginCard({
             onPasswordChange={(text) => setCreateAccountValues((current) => ({ ...current, password: text }))}
             onConfirmPasswordChange={(text) => setCreateAccountValues((current) => ({ ...current, confirmPassword: text }))}
             onMobileNumberChange={(text) => setCreateAccountValues((current) => ({ ...current, mobileNumber: text.replace(/\D/g, '').slice(0, 10) }))}
-            onOtpChange={(text) => setCreateAccountValues((current) => ({ ...current, otp: text.replace(/\D/g, '').slice(0, 6) }))}
+            onOtpChange={(text) => setCreateAccountValues((current) => ({ ...current, otp: text }))}
             onEmployeeCodeBlur={() => setCreateAccountTouched((current) => ({ ...current, employeeCode: true }))}
             onEmailBlur={() => setCreateAccountTouched((current) => ({ ...current, email: true }))}
             onPasswordBlur={() => setCreateAccountTouched((current) => ({ ...current, password: true }))}
@@ -170,7 +244,7 @@ export function LoginCard({
             onOtpBlur={() => setCreateAccountTouched((current) => ({ ...current, otp: true }))}
             onSendOtp={handleSendOtp}
             onSubmit={handleCreateAccountSubmit}
-            onSwitchToLogin={() => setMode('login')}
+            onSwitchToLogin={returnToLogin}
           />
         )}
       </View>

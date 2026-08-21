@@ -99,6 +99,8 @@ type CreateAccountFormSectionProps = {
   styles: SharedStyles;
   loading: boolean;
   errorMessage: string | null;
+  successMessage: string | null;
+  step: 'identity' | 'password';
   values: {
     employeeCode: string;
     password: string;
@@ -134,6 +136,8 @@ export function CreateAccountFormSection({
   styles,
   loading,
   errorMessage,
+  successMessage,
+  step,
   values,
   employeeCodeError,
   emailError,
@@ -160,83 +164,89 @@ export function CreateAccountFormSection({
   return (
     <View style={[styles.form, styles.activationForm]}>
       {errorMessage ? <FormAlert message={errorMessage} /> : null}
-      <AuthInput
-        compact
-        label="Employee Code"
-        labelBadge={'\u{1F464}'}
-        placeholder="Enter your employee code"
-        value={values.employeeCode}
-        onChangeText={onEmployeeCodeChange}
-        onBlur={onEmployeeCodeBlur}
-        autoCapitalize="none"
-        autoComplete="username"
-        error={employeeCodeError}
-      />
-      <PasswordInput
-        compact
-        label="New Password"
-        placeholder="Enter new password"
-        value={values.password}
-        onChangeText={onPasswordChange}
-        onBlur={onPasswordBlur}
-        autoComplete="new-password"
-        error={passwordError}
-      />
-      <PasswordInput
-        compact
-        label="Confirm Password"
-        placeholder="Confirm new password"
-        value={values.confirmPassword}
-        onChangeText={onConfirmPasswordChange}
-        onBlur={onConfirmPasswordBlur}
-        autoComplete="new-password"
-        error={confirmPasswordError}
-      />
-      <AuthInput
-        compact
-        label="Mobile Number"
-        labelBadge={'\u260E'}
-        placeholder="Enter your mobile number"
-        value={values.mobileNumber}
-        onChangeText={onMobileNumberChange}
-        onBlur={onMobileNumberBlur}
-        keyboardType="phone-pad"
-        autoComplete="tel"
-        error={mobileNumberError}
-      />
-      <View style={styles.emailOtpRow}>
-        <AuthInput
-          compact
-          containerStyle={styles.emailOtpInput}
-          label="Email"
-          labelBadge={'\u2709'}
-          placeholder="Enter your registered email"
-          value={values.email}
-          onChangeText={onEmailChange}
-          onBlur={onEmailBlur}
-          keyboardType="email-address"
-          autoCapitalize="none"
-          autoComplete="email"
-          error={emailError}
-        />
-        <View style={styles.sendOtpButtonWrap}>
-          <AuthButton title="Send OTP" onPress={onSendOtp} loading={false} style={styles.sendOtpButton} />
-        </View>
-      </View>
-      <AuthInput
-        compact
-        label="OTP"
-        labelBadge={'#'}
-        placeholder="Enter OTP"
-        value={values.otp}
-        onChangeText={onOtpChange}
-        onBlur={onOtpBlur}
-        keyboardType="number-pad"
-        autoComplete="one-time-code"
-        maxLength={6}
-        error={otpError}
-      />
-      <AuthButton title="Submit" onPress={onSubmit} loading={loading} style={styles.activationSubmitButton} />
+      {successMessage ? <FormAlert message={successMessage} tone="success" /> : null}
+      {step === 'identity' ? (
+        <>
+          <AuthInput
+            compact
+            label="Employee Code"
+            labelBadge={'\u{1F464}'}
+            placeholder="Enter your employee code"
+            value={values.employeeCode}
+            onChangeText={onEmployeeCodeChange}
+            onBlur={onEmployeeCodeBlur}
+            autoCapitalize="none"
+            autoComplete="username"
+            error={employeeCodeError}
+          />
+          <AuthInput
+            compact
+            label="Mobile Number"
+            labelBadge={'\u260E'}
+            placeholder="Enter your mobile number"
+            value={values.mobileNumber}
+            onChangeText={onMobileNumberChange}
+            onBlur={onMobileNumberBlur}
+            keyboardType="phone-pad"
+            autoComplete="tel"
+            error={mobileNumberError}
+          />
+          <View style={styles.emailOtpRow}>
+            <AuthInput
+              compact
+              containerStyle={styles.emailOtpInput}
+              label="Email"
+              labelBadge={'\u2709'}
+              placeholder="Enter your registered email"
+              value={values.email}
+              onChangeText={onEmailChange}
+              onBlur={onEmailBlur}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoComplete="email"
+              error={emailError}
+            />
+            <View style={styles.sendOtpButtonWrap}>
+              <AuthButton title="Send OTP" onPress={onSendOtp} loading={loading} style={styles.sendOtpButton} />
+            </View>
+          </View>
+        </>
+      ) : (
+        <>
+          <AuthInput
+            compact
+            label="OTP"
+            labelBadge={'#'}
+            placeholder="Enter OTP"
+            value={values.otp}
+            onChangeText={onOtpChange}
+            onBlur={onOtpBlur}
+            autoComplete="one-time-code"
+            error={otpError}
+          />
+          <PasswordInput
+            compact
+            label="New Password"
+            placeholder="Enter new password"
+            value={values.password}
+            onChangeText={onPasswordChange}
+            onBlur={onPasswordBlur}
+            autoComplete="new-password"
+            error={passwordError}
+          />
+          <PasswordInput
+            compact
+            label="Confirm Password"
+            placeholder="Confirm new password"
+            value={values.confirmPassword}
+            onChangeText={onConfirmPasswordChange}
+            onBlur={onConfirmPasswordBlur}
+            autoComplete="new-password"
+            error={confirmPasswordError}
+          />
+          <AuthButton title="Submit" onPress={onSubmit} loading={loading} style={styles.activationSubmitButton} />
+        </>
+      )}
       <Pressable onPress={onSwitchToLogin} style={({ pressed }) => [styles.activateLink, pressed && styles.linkPressed]}>
         <Text style={styles.activatePrompt}>Already have an account?</Text>
         <Text style={styles.activateAction}>Login</Text>

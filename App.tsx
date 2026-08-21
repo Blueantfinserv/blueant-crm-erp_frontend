@@ -7,12 +7,10 @@ import { useAuth } from './src/context/AuthContext';
 import { SplashScreen } from './src/screens/auth/SplashScreen';
 import { LoginScreen } from './src/screens/auth/LoginScreen';
 import { CreateAccountScreen } from './src/screens/auth/CreateAccountScreen';
-import { ForgotPasswordScreen } from './src/screens/auth/ForgotPasswordScreen';
-import { ResetPasswordScreen } from './src/screens/auth/ResetPasswordScreen';
 import { theme } from './src/theme/theme';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
-import { AuthRole, ForgotPasswordCredentials, RegisterCredentials, ResetPasswordCredentials } from './src/types/auth';
+import { AuthRole, RegisterCredentials } from './src/types/auth';
 import { LoginFormValues } from './src/utils/authValidation';
 import { getRoleNavigationConfig } from './src/navigation/navigationConfig';
 import { getRoleExperience, isSalesWorkspaceExperience, type FrontendExperience } from './src/navigation/roleExperience';
@@ -87,8 +85,6 @@ type ScreenState =
   | 'splash'
   | 'login'
   | 'createAccount'
-  | 'forgotPassword'
-  | 'resetPassword'
   | 'dashboard'
   | 'reports'
   | 'dashboard-list'
@@ -230,7 +226,7 @@ function AppShell() {
       }
       return;
     }
-    if (!['login', 'createAccount', 'forgotPassword', 'resetPassword'].includes(screen)) {
+    if (!['login', 'createAccount'].includes(screen)) {
       screenHistory.current = [];
       setScreen('login');
     }
@@ -311,6 +307,8 @@ function AppShell() {
             onCreateAccount={(credentials) => {
               void runAction(() => auth.createAccount(credentials), 'dashboard');
             }}
+            onForgotPassword={(credentials) => auth.forgotPassword(credentials)}
+            onResetPassword={(credentials) => auth.resetPassword(credentials)}
             onHelp={() => openLegalPage('help')}
             onContact={() => openLegalPage('contact')}
             onPrivacyPolicy={() => openLegalPage('privacyPolicy')}
@@ -330,29 +328,6 @@ function AppShell() {
             onLogin={() => navigate('login')}
             loading={auth.isLoading || auth.isRefreshing}
             errorMessage={message ?? auth.error}
-          />
-        );
-      case 'forgotPassword':
-        return (
-          <ForgotPasswordScreen
-            onBack={() => navigate('login')}
-            onSendResetLink={(credentials: ForgotPasswordCredentials) => {
-              void runAction(() => auth.forgotPassword(credentials));
-            }}
-            loading={auth.isLoading || auth.isRefreshing}
-            errorMessage={message ?? auth.error}
-            onSuccess={() => navigate('login')}
-          />
-        );
-      case 'resetPassword':
-        return (
-          <ResetPasswordScreen
-            onBack={() => navigate('login')}
-            loading={auth.isLoading || auth.isRefreshing}
-            errorMessage={message ?? auth.error}
-            onUpdatePassword={(credentials: ResetPasswordCredentials) => {
-              void runAction(() => auth.resetPassword(credentials), 'login');
-            }}
           />
         );
       case 'dashboard':

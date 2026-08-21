@@ -138,20 +138,29 @@ export const authApi = {
     };
   },
 
-  forgotPassword: async (_credentials: ForgotPasswordCredentials): Promise<{ success: boolean; message: string }> => {
-    await simulateNetwork(false);
-    return {
-      success: true,
-      message: 'If the email exists, a reset link has been sent.',
-    };
+  forgotPassword: async (credentials: ForgotPasswordCredentials): Promise<{ success: boolean; message: string }> => {
+    const response = await request<Record<string, never>>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        employeeCode: credentials.employeeCode.trim(),
+        email: credentials.email.trim(),
+        mobileNumber: credentials.mobileNumber.trim(),
+      }),
+    });
+    return { success: response.success, message: response.message };
   },
 
-  resetPassword: async (_credentials: ResetPasswordCredentials): Promise<{ success: boolean; message: string }> => {
-    await simulateNetwork(false);
-    return {
-      success: true,
-      message: 'Password updated successfully.',
-    };
+  resetPassword: async (credentials: ResetPasswordCredentials): Promise<{ success: boolean; message: string }> => {
+    const response = await request<Record<string, never>>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({
+        employeeCode: credentials.employeeCode.trim(),
+        otp: credentials.otp.trim(),
+        newPassword: credentials.newPassword,
+        confirmPassword: credentials.confirmPassword,
+      }),
+    });
+    return { success: response.success, message: response.message };
   },
 
   refreshToken: async (refreshToken: string) => {

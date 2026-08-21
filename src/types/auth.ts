@@ -49,12 +49,15 @@ export type RegisterCredentials = {
 };
 
 export type ForgotPasswordCredentials = {
+  employeeCode: string;
   email: string;
+  mobileNumber: string;
 };
 
 export type ResetPasswordCredentials = {
-  token: string;
-  password: string;
+  employeeCode: string;
+  otp: string;
+  newPassword: string;
   confirmPassword: string;
 };
 
