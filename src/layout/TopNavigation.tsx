@@ -4,6 +4,7 @@ import { Path, Svg } from 'react-native-svg';
 import { shellColors } from '../constants/shellColors';
 import { theme } from '../theme/theme';
 import type { TopTabItem } from './navigationTypes';
+import type { AuthUser } from '../types/auth';
 
 const brandAsset = require('../../assets/blueAnt.png');
 
@@ -15,6 +16,7 @@ type Props = {
   onNotificationsPress?: () => void;
   onProfilePress?: () => void;
   onLogout?: () => void;
+  user?: AuthUser | null;
 };
 
 export function TopNavigation({
@@ -25,10 +27,12 @@ export function TopNavigation({
   onNotificationsPress,
   onProfilePress,
   onLogout,
+  user,
 }: Props) {
   const { width } = useWindowDimensions();
   const isCompact = width < 768;
   const [openMenu, setOpenMenu] = useState<'navigation' | 'profile' | null>(null);
+  const [profileVisible, setProfileVisible] = useState(false);
 
   const closeMenu = () => setOpenMenu(null);
 
@@ -39,12 +43,30 @@ export function TopNavigation({
   const handleProfilePress = () => {
     onProfilePress?.();
     closeMenu();
+    setProfileVisible(true);
   };
 
   const handleLogout = () => {
     closeMenu();
     onLogout?.();
   };
+
+  const profileFields = [
+    { label: 'User ID', value: user?.id },
+    { label: 'Employee Code', value: user?.employeeId },
+    { label: 'Email', value: user?.email },
+    { label: 'Mobile Number', value: user?.mobileNumber },
+    { label: 'Role', value: user?.roleName ?? user?.role },
+    { label: 'Department', value: user?.department },
+    { label: 'Designation', value: user?.designation },
+    { label: 'Team', value: user?.team },
+    { label: 'Reporting Manager', value: user?.reportingManager ?? 'Not assigned' },
+    { label: 'Status', value: user?.status },
+    { label: 'First Login', value: user?.firstLogin === undefined ? undefined : (user.firstLogin ? 'Yes' : 'No') },
+    { label: 'Account Locked', value: user?.accountLocked === undefined ? undefined : (user.accountLocked ? 'Yes' : 'No') },
+    { label: 'Enabled', value: user?.enabled == null ? undefined : (user.enabled ? 'Yes' : 'No') },
+    { label: 'Login At', value: user?.loginAt },
+  ].filter((field) => Boolean(field.value));
 
   return (
     <View style={[styles.shell, isCompact && styles.shellCompact]}>
@@ -119,7 +141,7 @@ export function TopNavigation({
 
       <Modal visible={openMenu !== null} transparent animationType="fade" onRequestClose={closeMenu}>
         <Pressable style={styles.modalBackdrop} onPress={closeMenu}>
-          <View style={styles.dropdown}>
+          <View style={[styles.dropdown, isCompact && styles.dropdownCompact]}>
             {openMenu === 'navigation' ? (
               <>
                 {tabs.map((tab) => {
@@ -150,6 +172,37 @@ export function TopNavigation({
               </>
             )}
           </View>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={profileVisible} transparent animationType="fade" onRequestClose={() => setProfileVisible(false)}>
+        <Pressable style={styles.profileModalBackdrop} onPress={() => setProfileVisible(false)}>
+          <Pressable style={[styles.profileModalCard, isCompact && styles.profileModalCardCompact]} onPress={(event) => event.stopPropagation()}>
+            <View style={styles.profileHeader}>
+              {user?.profileImage ? (
+                <Image source={{ uri: user.profileImage }} style={styles.profileImage} />
+              ) : (
+                <View style={styles.profileImageFallback}>
+                  <Text style={styles.profileImageFallbackText}>{user?.fullName?.charAt(0).toUpperCase() || '?'}</Text>
+                </View>
+              )}
+              <View style={styles.profileHeaderCopy}>
+                <Text style={styles.profileModalTitle}>My Profile</Text>
+                {user?.fullName ? <Text style={styles.profileName}>{user.fullName}</Text> : null}
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Close profile" onPress={() => setProfileVisible(false)} style={styles.profileCloseButton}>
+                <Text style={styles.profileCloseText}>×</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={styles.profileDetails} contentContainerStyle={styles.profileDetailsContent} showsVerticalScrollIndicator={false}>
+              {profileFields.map((field) => (
+                <View key={field.label} style={[styles.profileField, isCompact && styles.profileFieldCompact]}>
+                  <Text style={styles.profileFieldLabel}>{field.label}</Text>
+                  <Text selectable style={styles.profileFieldValue}>{field.value}</Text>
+                </View>
+              ))}
+            </ScrollView>
+          </Pressable>
         </Pressable>
       </Modal>
     </View>
@@ -273,6 +326,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     ...theme.shadow.card,
   },
+  dropdownCompact: {
+    top: 58,
+    right: 12,
+  },
   dropdownItem: {
     paddingHorizontal: 14,
     paddingVertical: 11,
@@ -284,6 +341,122 @@ const styles = StyleSheet.create({
   },
   dropdownLabelActive: {
     color: theme.colors.primary,
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 18,
+    borderBottomWidth: 1,
+    borderBottomColor: '#DDE6F3',
+    backgroundColor: '#F8FAFF',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+  },
+  profileModalBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 18,
+    backgroundColor: 'rgba(15, 23, 42, 0.35)',
+  },
+  profileModalCard: {
+    width: 620,
+    maxWidth: '100%',
+    maxHeight: '82%',
+    borderWidth: 1,
+    borderColor: shellColors.topBarSurfaceBorder,
+    borderRadius: 18,
+    backgroundColor: shellColors.topBarSurface,
+    ...theme.shadow.card,
+  },
+  profileModalCardCompact: {
+    width: '100%',
+    maxHeight: '88%',
+  },
+  profileModalTitle: {
+    color: theme.colors.text,
+    fontSize: 18,
+    fontWeight: '900',
+  },
+  profileCloseButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 16,
+    backgroundColor: '#EEF2FF',
+  },
+  profileCloseText: {
+    color: theme.colors.primary,
+    fontSize: 22,
+    lineHeight: 24,
+    fontWeight: '700',
+  },
+  profileImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  profileImageFallback: {
+    width: 48,
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 24,
+    backgroundColor: '#E9E5FF',
+  },
+  profileImageFallbackText: {
+    color: '#5B21B6',
+    fontSize: 19,
+    fontWeight: '900',
+  },
+  profileHeaderCopy: {
+    minWidth: 0,
+    flex: 1,
+  },
+  profileName: {
+    marginTop: 3,
+    color: theme.colors.muted,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  profileDetails: {
+    flexShrink: 1,
+  },
+  profileDetailsContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 7,
+    padding: 14,
+  },
+  profileField: {
+    width: '48%',
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: 13,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: '#E2E8F2',
+    borderRadius: 11,
+    backgroundColor: '#FAFBFE',
+  },
+  profileFieldCompact: {
+    width: '100%',
+    minHeight: 36,
+  },
+  profileFieldLabel: {
+    color: '#8A9AB2',
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  profileFieldValue: {
+    marginTop: 2,
+    color: theme.colors.text,
+    fontSize: 12,
+    fontWeight: '700',
   },
   dropdownDivider: {
     height: 1,

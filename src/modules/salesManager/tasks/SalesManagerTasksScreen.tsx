@@ -261,6 +261,38 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
     }
   }, [meetingFilter, meetingFilterOptions]);
 
+  const filterCounts = useMemo(() => {
+    const normalizedSearch = search.trim().toLowerCase();
+    const normalizedPhoneSearch = search.replace(/\D/g, '');
+    const countableTasks = tasks.filter((task) => {
+      const matchesSearch =
+        !normalizedSearch
+        || task.name.toLowerCase().includes(normalizedSearch)
+        || (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
+      const matchesTaskType = taskType === 'All Tasks' || task.schedule === taskType;
+      return matchesSearch && matchesTaskType;
+    });
+    const activeLeads = countableTasks.filter((task) => (
+      task.taskKind === 'LEAD' && task.leadStatus !== 'REMOVED' && task.leadStatus !== 'NOT_INTERESTED'
+    )).length;
+    const removedLeads = countableTasks.filter((task) => (
+      task.taskKind === 'LEAD' && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED')
+    )).length;
+    const meetings = countableTasks.filter((task) => task.taskKind === 'MEETING');
+    const meetingsByTitle = meetings.reduce<Record<string, number>>((counts, task) => {
+      if (task.meetingTitle) counts[task.meetingTitle] = (counts[task.meetingTitle] ?? 0) + 1;
+      return counts;
+    }, {});
+    return { activeLeads, removedLeads, meetings: meetings.length, meetingsByTitle };
+  }, [search, taskType, tasks]);
+
+  const getLeadFilterCount = (option: typeof LEAD_FILTER_OPTIONS[number]) => (
+    option === 'Removed Leads' ? filterCounts.removedLeads : filterCounts.activeLeads
+  );
+  const getMeetingFilterCount = (option: string) => (
+    option === 'All Meetings' ? filterCounts.meetings : (filterCounts.meetingsByTitle[option] ?? 0)
+  );
+
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const normalizedPhoneSearch = search.replace(/\D/g, '');
@@ -376,7 +408,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                         numberOfLines={1}
                         style={[styles.stageTabText, taskStage === 'Leads' && styles.stageTabTextSelected]}
                       >
-                        {leadFilter === 'Active Leads' ? 'Leads' : leadFilter}
+                        {leadFilter === 'Active Leads' ? 'Leads' : leadFilter} ({getLeadFilterCount(leadFilter)})
                       </Text>
                       <Icon
                         source={openDropdown === 'lead' ? 'chevron-up' : 'chevron-down'}
@@ -405,7 +437,9 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                                 pressed && styles.pressed,
                               ]}
                             >
-                              <Text style={[styles.optionText, selected && styles.selectedOptionText]}>{option}</Text>
+                              <Text style={[styles.optionText, selected && styles.selectedOptionText]}>
+                                {option} ({getLeadFilterCount(option)})
+                              </Text>
                               {selected ? <Icon source="check" size={17} color={theme.colors.primary} /> : null}
                             </Pressable>
                           );
@@ -438,7 +472,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                         numberOfLines={1}
                         style={[styles.stageTabText, taskStage === 'Meetings' && styles.stageTabTextSelected]}
                       >
-                        {meetingFilter === 'All Meetings' ? 'Meetings' : meetingFilter}
+                        {meetingFilter === 'All Meetings' ? 'Meetings' : meetingFilter} ({getMeetingFilterCount(meetingFilter)})
                       </Text>
                       <Icon
                         source={openDropdown === 'meeting' ? 'chevron-up' : 'chevron-down'}
@@ -472,7 +506,9 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                                 pressed && styles.pressed,
                               ]}
                             >
-                              <Text style={[styles.optionText, selected && styles.selectedOptionText]}>{option}</Text>
+                              <Text style={[styles.optionText, selected && styles.selectedOptionText]}>
+                                {option} ({getMeetingFilterCount(option)})
+                              </Text>
                               {selected ? <Icon source="check" size={17} color={theme.colors.primary} /> : null}
                             </Pressable>
                           );

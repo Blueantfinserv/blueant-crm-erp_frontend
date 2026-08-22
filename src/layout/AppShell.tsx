@@ -6,6 +6,7 @@ import { NavigationTabs } from './NavigationTabs';
 import { Sidebar } from './Sidebar';
 import { TopNavigation } from './TopNavigation';
 import type { ModuleItem, ModuleKey, TopTabItem } from './navigationTypes';
+import { useAuth } from '../context/AuthContext';
 
 type Props = PropsWithChildren<{
   currentDate: string;
@@ -38,6 +39,7 @@ export function AppShell({
   children,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
+  const { user } = useAuth();
 
   return (
     <View style={styles.shell}>
@@ -50,6 +52,7 @@ export function AppShell({
           onNotificationsPress={onNotificationsPress}
           onProfilePress={onProfilePress}
           onLogout={onLogout}
+          user={user}
         />
       ) : null}
       <View style={styles.body}>
