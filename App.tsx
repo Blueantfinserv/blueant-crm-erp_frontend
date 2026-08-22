@@ -42,6 +42,7 @@ import type {
   MeetingLeadStatus,
   MeetingWorkflowRequest,
 } from './src/types/meeting';
+import { PwaInstallPrompt } from './src/components/PwaInstallPrompt';
 
 registerTranslation('en', en);
 
@@ -134,6 +135,7 @@ export default function App() {
     <PaperProvider>
       <AuthProvider>
         <AppShell />
+        <PwaInstallPrompt />
       </AuthProvider>
     </PaperProvider>
   );
