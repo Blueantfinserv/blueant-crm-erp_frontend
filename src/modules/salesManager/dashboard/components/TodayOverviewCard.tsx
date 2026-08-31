@@ -38,10 +38,12 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
     : card.featured
       ? featuredColumnBasis[columns]
       : columnBasis[columns];
-  const pointsChange = card.scoreDetails
-    ? card.scoreDetails.points - card.scoreDetails.previousWeekPoints
-    : 0;
-  const pointsChangeLabel = `${pointsChange >= 0 ? '+' : ''}${pointsChange}`;
+  const scorePoints = card.scoreDetails?.points;
+  const previousWeekPoints = card.scoreDetails?.previousWeekPoints;
+  const pointsChange = scorePoints != null && previousWeekPoints != null
+    ? scorePoints - previousWeekPoints
+    : null;
+  const pointsChangeLabel = pointsChange === null ? '-' : `${pointsChange >= 0 ? '+' : ''}${pointsChange} pts`;
 
   if (card.scoreDetails) {
     return (
@@ -63,19 +65,19 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
           <View style={styles.scorePrimary}>
             <Text numberOfLines={1} style={styles.scoreTitle}>{card.title}</Text>
             <Text numberOfLines={1} style={[styles.scoreValue, { color: card.accentColor }]}>
-              {card.scoreDetails.points} Points
+              {card.scoreDetails.points === null ? '-' : `${card.scoreDetails.points} Points`}
             </Text>
           </View>
-          <View style={[styles.changeBadge, pointsChange >= 0 ? styles.positiveBadge : styles.negativeBadge]}>
+          <View style={[styles.changeBadge, (pointsChange ?? 0) >= 0 ? styles.positiveBadge : styles.negativeBadge]}>
             <Icon
-              source={pointsChange >= 0 ? 'trending-up' : 'trending-down'}
+              source={(pointsChange ?? 0) >= 0 ? 'trending-up' : 'trending-down'}
               size={13}
-              color={pointsChange >= 0 ? '#15803D' : '#DC2626'}
+              color={(pointsChange ?? 0) >= 0 ? '#15803D' : '#DC2626'}
             />
             <View>
               <Text style={styles.badgeLabel}>Last Week</Text>
-              <Text style={[styles.changeValue, pointsChange >= 0 ? styles.positiveChange : styles.negativeChange]}>
-                {pointsChangeLabel} pts
+              <Text style={[styles.changeValue, (pointsChange ?? 0) >= 0 ? styles.positiveChange : styles.negativeChange]}>
+                {pointsChangeLabel}
               </Text>
             </View>
           </View>
@@ -183,13 +185,13 @@ function NotchedCardBackground({
   );
 }
 
-export function RankingCircle({ rank, compact = false }: { rank: number; compact?: boolean }) {
+export function RankingCircle({ rank, compact = false }: { rank: number | null; compact?: boolean }) {
   return (
     <View style={[styles.rankCircle, compact && styles.rankCircleCompact]}>
       <View pointerEvents="none" style={[styles.rankCircleGlow, compact && styles.rankCircleGlowCompact]} />
       <Icon source="trophy-outline" size={compact ? 20 : 24} color="#FFFFFF" />
       <Text style={[styles.rankCircleLabel, compact && styles.rankCircleLabelCompact]}>RANK</Text>
-      <Text style={[styles.rankCircleValue, compact && styles.rankCircleValueCompact]}>#{rank}</Text>
+      <Text style={[styles.rankCircleValue, compact && styles.rankCircleValueCompact]}>{rank === null ? '-' : `#${rank}`}</Text>
     </View>
   );
 }

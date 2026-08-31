@@ -4,7 +4,7 @@ export const todayOverviewData: readonly TodayOverviewCard[] = [
   {
     id: 'todays-meetings',
     title: "Today's Meetings",
-    value: 5,
+    value: '-',
     icon: 'calendar-today',
     accentColor: '#2563EB',
     iconBackgroundColor: '#EFF6FF',
@@ -13,7 +13,7 @@ export const todayOverviewData: readonly TodayOverviewCard[] = [
   {
     id: 'pending-meetings',
     title: 'Pending Meetings',
-    value: 14,
+    value: '-',
     icon: 'calendar-clock',
     accentColor: '#F59E0B',
     iconBackgroundColor: '#FFFBEB',
@@ -22,7 +22,7 @@ export const todayOverviewData: readonly TodayOverviewCard[] = [
   {
     id: 'pending-client-creation',
     title: 'Pending Client Creation',
-    value: 3,
+    value: '-',
     icon: 'account-plus-outline',
     accentColor: '#8B5CF6',
     iconBackgroundColor: '#F5F3FF',
@@ -31,7 +31,7 @@ export const todayOverviewData: readonly TodayOverviewCard[] = [
   {
     id: 'pending-documents',
     title: 'Pending Documents',
-    value: 6,
+    value: '-',
     icon: 'file-document-outline',
     accentColor: '#F97316',
     iconBackgroundColor: '#FFF7ED',
@@ -40,16 +40,16 @@ export const todayOverviewData: readonly TodayOverviewCard[] = [
   {
     id: 'current-score',
     title: 'Current Score',
-    value: '80 Points',
+    value: '-',
     icon: 'star-four-points-outline',
     accentColor: '#16A34A',
     iconBackgroundColor: '#F0FDF4',
     cardBackgroundColor: '#F5FCF7',
     featured: true,
     scoreDetails: {
-      points: 80,
-      rank: 4,
-      previousWeekPoints: 68,
+      points: null,
+      rank: null,
+      previousWeekPoints: null,
     },
   },
 ];

@@ -11,6 +11,7 @@ type Props = {
 export const ConversionPerformanceSection = memo(function ConversionPerformanceSection({ data }: Props) {
   const { width } = useWindowDimensions();
   const isCompact = width < 900;
+  const hasData = data.length > 0;
 
   const totals = useMemo(
     () =>
@@ -45,17 +46,17 @@ export const ConversionPerformanceSection = memo(function ConversionPerformanceS
 
           <View style={styles.summaryBody}>
             <View style={styles.percentageBlock}>
-              <Text style={styles.percentage}>{conversionRate}%</Text>
+              <Text style={styles.percentage}>{hasData ? `${conversionRate}%` : '-'}</Text>
               <Text style={styles.percentageLabel}>Conversion rate</Text>
             </View>
             <View style={styles.summaryMetrics}>
               <View style={styles.summaryMetric}>
-                <Text style={styles.meetingValue}>{totals.meetings}</Text>
+                <Text style={styles.meetingValue}>{hasData ? totals.meetings : '-'}</Text>
                 <Text style={styles.metricLabel}>Meetings</Text>
               </View>
               <View style={styles.metricDivider} />
               <View style={styles.summaryMetric}>
-                <Text style={styles.clientValue}>{totals.clients}</Text>
+                <Text style={styles.clientValue}>{hasData ? totals.clients : '-'}</Text>
                 <Text style={styles.metricLabel}>Clients</Text>
               </View>
             </View>

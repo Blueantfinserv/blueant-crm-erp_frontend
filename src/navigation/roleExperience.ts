@@ -4,6 +4,7 @@ export type FrontendExperience =
   | 'SUPER_ADMIN'
   | 'ADMIN'
   | 'SALES_MANAGER'
+  | 'SALES_COORDINATOR'
   | 'SALES_EXECUTIVE'
   | 'TEAM_LEADER'
   | 'LEGACY_LEADER'
@@ -14,6 +15,7 @@ const roleExperienceMap: Record<AuthRole, FrontendExperience> = {
   ADMIN: 'ADMIN',
   BUSINESS_HEAD: 'UNAVAILABLE',
   SALES_MANAGER: 'SALES_MANAGER',
+  SALES_COORDINATOR: 'SALES_COORDINATOR',
   TEAM_LEADER: 'TEAM_LEADER',
   RELATIONSHIP_MANAGER: 'UNAVAILABLE',
   EMPLOYEE: 'SALES_EXECUTIVE',
@@ -24,4 +26,5 @@ export const getRoleExperience = (role: AuthRole | null | undefined): FrontendEx
   role ? roleExperienceMap[role] : 'UNAVAILABLE';
 
 export const isSalesWorkspaceExperience = (experience: FrontendExperience) =>
-  experience === 'SALES_MANAGER' || experience === 'SALES_EXECUTIVE';
+  experience === 'SALES_MANAGER' ||
+  experience === 'SALES_EXECUTIVE';

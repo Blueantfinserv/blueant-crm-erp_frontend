@@ -1,5 +1,5 @@
 import { meetingApi, MeetingApiError } from '../api/meeting';
-import type { CreateMeetingRequest, MeetingQueueState, MeetingResponse, MeetingWorkflowRequest } from '../types/meeting';
+import type { CreateMeetingRequest, MeetingQueueState, MeetingResponse, MeetingVerificationRequest, MeetingWorkflowRequest } from '../types/meeting';
 
 type Listener = (state: MeetingQueueState) => void;
 const initialState: MeetingQueueState = { meetings: [], timestamp: null, isLoading: false, error: null };
@@ -65,6 +65,20 @@ export class MeetingService {
   async resolveActiveMeetingCode(leadId: string) {
     const response = await meetingApi.getActiveMeeting(leadId);
     return response.data?.meetingCode?.trim() || null;
+  }
+
+  async getVerificationMeetings(status: 'PENDING' | 'VERIFIED') {
+    return (await meetingApi.getByVerificationStatus(status)).data ?? [];
+  }
+
+  async getAllMeetingRecords() {
+    return (await meetingApi.getMeetings()).data ?? [];
+  }
+
+  async verifyMeeting(meetingCode: string, request: MeetingVerificationRequest) {
+    const code = meetingCode.trim();
+    if (!code) throw new Error('Meeting code is unavailable.');
+    return meetingApi.verify(code, request);
   }
 
   async createMeeting(request: CreateMeetingRequest) {

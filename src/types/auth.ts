@@ -3,6 +3,7 @@ export const AUTH_ROLES = [
   'ADMIN',
   'BUSINESS_HEAD',
   'SALES_MANAGER',
+  'SALES_COORDINATOR',
   'TEAM_LEADER',
   'RELATIONSHIP_MANAGER',
   'EMPLOYEE',
@@ -24,7 +25,7 @@ export type AuthUser = {
   email: string;
   role: AuthRole;
   roleName?: string;
-  permissions?: AuthPermission[];
+  permissions?: AuthPermission[] | null;
   employeeId?: string;
   mobileNumber?: string | null;
   profileImage?: string | null;
@@ -111,7 +112,7 @@ export type LoginResponseData = {
   designation?: string | null;
   team?: string | null;
   reportingManager?: string | null;
-  permissions?: string[];
+  permissions?: string[] | null;
   accessToken: string;
   refreshToken: string;
   tokenType?: string;

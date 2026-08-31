@@ -14,6 +14,7 @@ import { leadService } from '../../../services/LeadService';
 import type { LeadResponse, LeadSearchState } from '../../../types/lead';
 import { meetingService } from '../../../services/MeetingService';
 import type { MeetingQueueState, MeetingResponse } from '../../../types/meeting';
+import { getActionableTaskMeetings, getTaskSchedule } from './taskMeetingSelectors';
 
 const parseBackendCalendarDate = (value?: string | null) => {
   const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -42,19 +43,6 @@ const formatTimestamp = (timestamp?: string | null) => {
   return `${date.day} ${MONTH_LABELS[date.month - 1]}`;
 };
 
-const getSchedule = (dateValue?: string): SalesTask['schedule'] => {
-  if (!dateValue) return 'Pending';
-  const backendDate = parseBackendCalendarDate(dateValue);
-  if (!backendDate) return 'Pending';
-  const taskDate = new Date(backendDate.year, backendDate.month - 1, backendDate.day);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const differenceInDays = Math.round((taskDate.getTime() - today.getTime()) / 86_400_000);
-  if (differenceInDays === 0) return 'Today';
-  if (differenceInDays > 0 && differenceInDays <= 3) return 'Future 3 Days';
-  return 'Pending';
-};
-
 const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
   return {
     id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId ?? `lead-${index}`),
@@ -73,7 +61,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     remarks: lead.remarks ?? 'No remarks available.',
     lastUpdated: formatTimestamp(lead.audit?.updatedAt ?? lead.audit?.createdAt),
     nextFollowUpDate: formatDate(lead.nextPlanDate),
-    schedule: getSchedule(lead.nextPlanDate),
+    schedule: getTaskSchedule(lead.nextPlanDate),
     email: lead.email,
     leadSource: lead.leadSource,
   };
@@ -111,7 +99,7 @@ const mapMeetingToSalesTask = (
       ?? lead?.audit?.createdAt,
   ),
   nextFollowUpDate: formatDate(meeting.meetingDate),
-  schedule: getSchedule(meeting.meetingDate),
+  schedule: getTaskSchedule(meeting.meetingDate),
 });
 
 type DropdownProps<T extends string> = {
@@ -199,9 +187,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
   const tasks = useMemo(
     () => {
-      const actionableMeetings = meetingState.meetings.filter((meeting) => (
-        meeting.meetingStatus === 'SCHEDULED' && meeting.meetingType !== 'INTRO'
-      ));
+      const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
       const meetingTasks = actionableMeetings.flatMap((meeting, index) => {
         const lead = leadState.leads.find((candidate) => (
           (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)

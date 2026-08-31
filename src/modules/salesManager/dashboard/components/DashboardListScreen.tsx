@@ -1,13 +1,72 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../../theme/theme';
 import { DashboardListCard, DashboardListPeriod } from '../types/dashboard';
+import { leadSearchApi } from '../../../../api/leadSearch';
+import { leadApi } from '../../../../api/lead';
+import type { LeadResponse } from '../../../../types/lead';
+import { meetingApi } from '../../../../api/meeting';
+import type { MeetingResponse } from '../../../../types/meeting';
 
 type Props = {
   list: DashboardListCard;
   userName: string;
+  userId?: number;
+  employeeCode?: string;
   onBack: () => void;
+};
+
+const toCalendarDate = (value?: string) => {
+  const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+};
+
+const getPeriod = (createdAt?: string): DashboardListPeriod | null => {
+  const created = toCalendarDate(createdAt);
+  if (!created) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  if (created.getTime() === today.getTime()) return 'today';
+  const weekStart = new Date(today);
+  weekStart.setDate(today.getDate() - today.getDay());
+  if (created >= weekStart && created <= today) return 'thisWeek';
+  if (created.getFullYear() === today.getFullYear() && created.getMonth() === today.getMonth()) return 'thisMonth';
+  return null;
+};
+
+const toLeadListItem = (lead: LeadResponse) => {
+  const period = getPeriod(lead.audit?.createdAt);
+  if (!period) return null;
+  const createdAt = toCalendarDate(lead.audit?.createdAt);
+  return {
+    id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId),
+    primaryText: lead.clientName ?? 'Unnamed lead',
+    secondaryText: [lead.leadStatus, lead.leadStage].filter(Boolean).join(' · ') || 'Lead',
+    dateLabel: createdAt
+      ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(createdAt)
+      : 'Date unavailable',
+    period,
+  };
+};
+
+const toMeetingListItem = (meeting: MeetingResponse) => {
+  const conductedAt = meeting.workflowUpdatedAt
+    ?? meeting.updatedAt
+    ?? meeting.lastModifiedDate
+    ?? meeting.meetingDate;
+  const period = getPeriod(conductedAt);
+  if (!period) return null;
+  const meetingDate = toCalendarDate(conductedAt);
+  return {
+    id: meeting.meetingCode ?? String(meeting.id),
+    primaryText: meeting.clientName ?? 'Unnamed client',
+    secondaryText: [meeting.meetingTitle, meeting.meetingMode].filter(Boolean).join(' · ') || 'Meeting',
+    dateLabel: meetingDate
+      ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(meetingDate)
+      : 'Date unavailable',
+    period,
+  };
 };
 
 const periods: readonly { key: DashboardListPeriod; label: string; color: string }[] = [
@@ -29,15 +88,138 @@ const rowColors = [
   { accent: '#16A34A', background: '#F5FCF7', border: '#DCFCE7', soft: '#E7F8EC' },
 ] as const;
 
-export function DashboardListScreen({ list, userName, onBack }: Props) {
+export function DashboardListScreen({ list, userName, userId, employeeCode, onBack }: Props) {
   const { width } = useWindowDimensions();
   const [period, setPeriod] = useState<DashboardListPeriod>('today');
+  const [liveLeadItems, setLiveLeadItems] = useState(list.items);
+  const isLiveList = list.id === 'lead-collected-list' || list.id === 'meeting-done-list';
+  const [loading, setLoading] = useState(isLiveList);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const isMobile = width < 600;
   const isCompactHeader = width < 980;
 
+  useEffect(() => {
+    if (list.id !== 'lead-collected-list') return;
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const firstPage = await leadSearchApi.search({
+          page: 0,
+          size: 100,
+        });
+        const pageData = firstPage.data;
+        const leads = [...(pageData?.content ?? [])];
+        const totalPages = pageData?.totalPages ?? 1;
+        for (let page = 1; page < totalPages; page += 1) {
+          const response = await leadSearchApi.search({
+            page,
+            size: 100,
+          });
+          leads.push(...(response.data?.content ?? []));
+        }
+        const detailedLeads = await Promise.all(leads.map(async (lead) => {
+          if (!lead.uniqueLeadId) return lead;
+          try {
+            return (await leadApi.getLeadDetails(lead.uniqueLeadId)).data ?? lead;
+          } catch {
+            return lead;
+          }
+        }));
+        const personallyCreatedLeads = userId === undefined
+          ? detailedLeads
+          : detailedLeads.filter((lead) => lead.audit?.createdBy?.id === userId);
+        if (active) setLiveLeadItems(personallyCreatedLeads.map(toLeadListItem).filter((item) => item !== null));
+      } catch (error) {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Leads could not be loaded.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [list.id, userId]);
+
+  useEffect(() => {
+    if (list.id !== 'meeting-done-list') return;
+    let active = true;
+    const load = async () => {
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const firstPage = await leadSearchApi.search({ page: 0, size: 100 });
+        const leads = [...(firstPage.data?.content ?? [])];
+        const totalPages = firstPage.data?.totalPages ?? 1;
+        for (let page = 1; page < totalPages; page += 1) {
+          const response = await leadSearchApi.search({ page, size: 100 });
+          leads.push(...(response.data?.content ?? []));
+        }
+        const detailedLeads = await Promise.all(leads.map(async (lead) => {
+          if (!lead.uniqueLeadId) return lead;
+          try {
+            return (await leadApi.getLeadDetails(lead.uniqueLeadId)).data ?? lead;
+          } catch {
+            return lead;
+          }
+        }));
+        const personalLeads = userId === undefined
+          ? detailedLeads
+          : detailedLeads.filter((lead) => String(lead.audit?.createdBy?.id ?? '') === String(userId));
+        const meetingJourneys = await Promise.all(personalLeads.map(async (lead) => {
+          const leadIdentifier = lead.uniqueLeadId ?? (lead.leadId !== undefined ? String(lead.leadId) : '');
+          if (!leadIdentifier) return [];
+          try {
+            const journey = (await meetingApi.getJourney(leadIdentifier)).data ?? [];
+            return journey.map((meeting): MeetingResponse => ({
+              ...meeting,
+              clientName: meeting.clientName ?? lead.clientName,
+            }));
+          } catch {
+            try {
+              const history = (await meetingApi.getHistory(leadIdentifier)).data ?? [];
+              return history.map((meeting): MeetingResponse => ({
+                ...meeting,
+                clientName: meeting.clientName ?? lead.clientName,
+              }));
+            } catch {
+              return [];
+            }
+          }
+        }));
+        const uniqueMeetings = Array.from(new Map<string, MeetingResponse>(
+          meetingJourneys.flat().map((meeting) => [meeting.meetingCode ?? String(meeting.id), meeting]),
+        ).values());
+        const conductedMeetings = uniqueMeetings.filter((meeting) => (
+          meeting.meetingType === 'INTRO'
+          || meeting.meetingConducted === 'CONDUCTED'
+          || meeting.meetingStatus === 'COMPLETED'
+        ));
+        if (!conductedMeetings.length) {
+          const response = await meetingApi.getMeetings();
+          conductedMeetings.push(...(response.data ?? []).filter((meeting) => (
+            (!employeeCode || !meeting.employeeCode || meeting.employeeCode.trim().toUpperCase() === employeeCode.trim().toUpperCase())
+            && (
+            meeting.meetingType === 'INTRO'
+            || meeting.meetingConducted === 'CONDUCTED'
+            || meeting.meetingStatus === 'COMPLETED'
+            )
+          )));
+        }
+        if (active) setLiveLeadItems(conductedMeetings.map(toMeetingListItem).filter((item) => item !== null));
+      } catch (error) {
+        if (active) setLoadError(error instanceof Error ? error.message : 'Meetings could not be loaded.');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void load();
+    return () => { active = false; };
+  }, [employeeCode, list.id, userId]);
+
   const visibleItems = useMemo(
-    () => list.items.filter((item) => periodWeight[item.period] <= periodWeight[period]),
-    [list.items, period],
+    () => liveLeadItems.filter((item) => periodWeight[item.period] <= periodWeight[period]),
+    [liveLeadItems, period],
   );
 
   return (
@@ -113,7 +295,18 @@ export function DashboardListScreen({ list, userName, onBack }: Props) {
         </View>
 
         <View style={styles.rows}>
-          {visibleItems.length ? (
+          {loading ? (
+            <View style={styles.emptyState}>
+              <ActivityIndicator size="small" color={list.accentColor} />
+              <Text style={styles.emptyDescription}>Loading records...</Text>
+            </View>
+          ) : loadError ? (
+            <View style={styles.emptyState}>
+              <Icon source="alert-circle-outline" size={30} color="#DC2626" />
+              <Text style={styles.emptyTitle}>Records could not be loaded</Text>
+              <Text style={styles.emptyDescription}>{loadError}</Text>
+            </View>
+          ) : visibleItems.length ? (
             visibleItems.map((item, index) => {
               const rowColor = rowColors[index % rowColors.length];
 

@@ -17,9 +17,9 @@ export interface TodayOverviewCard {
   cardBackgroundColor: string;
   featured?: boolean;
   scoreDetails?: {
-    points: number;
-    rank: number;
-    previousWeekPoints: number;
+    points: number | null;
+    rank: number | null;
+    previousWeekPoints: number | null;
   };
 }
 
@@ -31,7 +31,7 @@ export interface SalesMetricPeriod {
     | 'Today Meeting'
     | 'This Week Meeting'
     | 'This Month Meeting';
-  value: number;
+  value: number | string;
 }
 
 export interface SalesSummaryCard {

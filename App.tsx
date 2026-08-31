@@ -9,6 +9,7 @@ import { LoginScreen } from './src/screens/auth/LoginScreen';
 import { CreateAccountScreen } from './src/screens/auth/CreateAccountScreen';
 import { theme } from './src/theme/theme';
 import { DashboardScreen } from './src/screens/DashboardScreen';
+import { SalesCoordinatorScreen } from './src/screens/SalesCoordinatorScreen';
 import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
 import { AuthRole, RegisterCredentials } from './src/types/auth';
 import { LoginFormValues } from './src/utils/authValidation';
@@ -61,7 +62,11 @@ const toCreateMeeting = (form: MeetingFormSubmission, lead: SalesTask): CreateMe
     meetingMode: form.meetingMode === 'Physical' ? 'PHYSICAL' : 'VIRTUAL/ONLINE',
     meetingDate: form.meetingDate,
     meetingLocation: lead.locationText,
-    remarks: form.remarks.trim(),
+    meetingRemarks: form.remarks.trim(),
+    meetingStatus: 'COMPLETED',
+    ...(form.leadStatus === 'Work In Progress' && form.nextPlanDate
+      ? { nextMeetingDate: form.nextPlanDate }
+      : {}),
   };
 };
 
@@ -71,7 +76,6 @@ const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; 
   return {
     meetingCode: form.meetingCode,
     workflow: {
-      meetingDate: form.meetingDate,
       meetingMode,
       meetingConducted: 'CONDUCTED',
       leadStatus: MEETING_LEAD_STATUS[form.leadStatus],
@@ -112,6 +116,10 @@ const baseModuleItems: ModuleItem[] = [
 ];
 
 const getTopTabsForExperience = (experience: FrontendExperience): TopTabItem[] => {
+  if (experience === 'SALES_COORDINATOR') {
+    return [{ key: 'dashboard', label: 'Dashboard', route: 'dashboard' }];
+  }
+
   if (isSalesWorkspaceExperience(experience)) {
     return [
       { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
@@ -123,7 +131,7 @@ const getTopTabsForExperience = (experience: FrontendExperience): TopTabItem[] =
 };
 
 const getModuleItemsForExperience = (experience: FrontendExperience): ModuleItem[] => {
-  if (isSalesWorkspaceExperience(experience)) {
+  if (experience === 'SALES_COORDINATOR' || isSalesWorkspaceExperience(experience)) {
     return [];
   }
 
@@ -355,7 +363,9 @@ function AppShell() {
               navigate('coming-soon');
             }}
           >
-            {activeModule === 'sales' ? (
+            {experience === 'SALES_COORDINATOR' ? (
+              <SalesCoordinatorScreen permissions={auth.user?.permissions} />
+            ) : activeModule === 'sales' ? (
               <DashboardScreen
                 role={roleNavigation.role}
                 experience={experience}
@@ -400,7 +410,13 @@ function AppShell() {
               navigate('dashboard');
             }}
           >
-            <DashboardListScreen list={selectedList} userName={auth.user?.fullName ?? 'Salesperson'} onBack={goBack} />
+            <DashboardListScreen
+              list={selectedList}
+              userName={auth.user?.fullName ?? 'Salesperson'}
+              userId={typeof auth.user?.id === 'number' ? auth.user.id : undefined}
+              employeeCode={auth.user?.employeeId}
+              onBack={goBack}
+            />
           </ErpShell>
         );
       }

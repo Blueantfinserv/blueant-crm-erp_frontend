@@ -9,9 +9,9 @@ export const salesActivityData: readonly SalesActivityCard[] = [
     accentColor: '#8B5CF6',
     cardBackgroundColor: '#FAF8FF',
     values: [
-      { label: 'Today', value: 4 },
-      { label: 'This Week', value: 19 },
-      { label: 'This Month', value: 71 },
+      { label: 'Today', value: '-' },
+      { label: 'This Week', value: '-' },
+      { label: 'This Month', value: '-' },
     ],
   },
   {
@@ -22,9 +22,9 @@ export const salesActivityData: readonly SalesActivityCard[] = [
     accentColor: '#16A34A',
     cardBackgroundColor: '#F5FCF7',
     values: [
-      { label: 'Today Meeting', value: 7 },
-      { label: 'This Week Meeting', value: 29 },
-      { label: 'This Month Meeting', value: 112 },
+      { label: 'Today Meeting', value: '-' },
+      { label: 'This Week Meeting', value: '-' },
+      { label: 'This Month Meeting', value: '-' },
     ],
   },
   {

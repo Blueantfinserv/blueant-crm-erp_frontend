@@ -17,8 +17,13 @@ export type MeetingResponse = MeetingSummary & {
   mobileNumber?: string; employeeCode?: string; employeeName?: string; meetingMode?: MeetingMode;
   meetingLocation?: string; status?: string; address?: string; discussion?: string;
   remarks?: string; meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED';
+  meetingRemarks?: string;
   leadStatus?: MeetingLeadStatus; latitude?: number; longitude?: number; locationAccuracy?: number;
   lastModifiedDate?: string; createdDate?: string; workflowUpdatedAt?: string; googleMapsUrl?: string;
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  meetingVerificationDate?: string; verifiedBy?: string; verificationRemarks?: string;
+  meetingTiming?: string; ageGroup?: string; existingSip?: string; profession?: string;
+  professionDetail?: string; bestTimeForMeeting?: string; meetingWith?: string;
 };
 
 export type MeetingDetail = MeetingResponse & { leadId?: number; assignedEmployeeId?: number; agenda?: string };
@@ -33,12 +38,25 @@ export type ScheduleMeetingRequest = {
   leadId: string; meetingMode: MeetingMode; meetingDate: string; meetingTime: LocalTime; meetingLocation: string;
 };
 export type CreateMeetingRequest = Omit<ScheduleMeetingRequest, 'meetingTime'> & {
-  remarks?: string;
+  meetingRemarks?: string;
+  nextMeetingDate?: string;
+  meetingStatus?: MeetingStatus;
 };
 export type MeetingWorkflowRequest = {
   leadStatus: MeetingLeadStatus; aloneWith: AloneWith; meetingDate?: string; meetingMode?: MeetingMode;
   meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED';
   remarks?: string; nextPlanDate?: string; latitude?: number; longitude?: number; address?: string; accuracy?: number;
+};
+export type MeetingVerificationRequest = {
+  meetingTiming?: string;
+  ageGroup?: string;
+  existingSip?: string;
+  profession?: string;
+  professionDetail?: string;
+  bestTimeForMeeting?: string;
+  meetingWith?: string;
+  personName?: string;
+  position?: string;
 };
 export type MeetingSearchRequest = { keyword?: string };
 export type RescheduleMeetingRequest = { meetingCode: string; meetingDate: string; meetingTime: LocalTime; meetingLocation: string; rescheduleReason: string };

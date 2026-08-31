@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { theme } from '../theme/theme';
 import { AuthRole, AuthUser } from '../types/auth';
@@ -20,6 +21,11 @@ import { DashboardListCard } from '../modules/salesManager/dashboard/types/dashb
 import { ConversionPerformanceSection } from '../modules/salesManager/dashboard/components/ConversionPerformanceSection';
 import { conversionPerformanceData } from '../modules/salesManager/dashboard/mock/conversionPerformanceData';
 import { FrontendExperience, isSalesWorkspaceExperience } from '../navigation/roleExperience';
+import { meetingService } from '../services/MeetingService';
+import { leadSearchService } from '../services/LeadSearchService';
+import type { MeetingQueueState } from '../types/meeting';
+import type { LeadSearchState } from '../types/lead';
+import { getActionableTaskMeetings, getTaskSchedule } from '../modules/salesManager/tasks/taskMeetingSelectors';
 const salesIcon = require('../../assets/perfomancecardlogo.png');
 const meetingsIcon = require('../../assets/meetingcardlogo.png');
 const convertedClientIcon = require('../../assets/convertedclientcardlogo.png');
@@ -67,6 +73,31 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
   const isLoading = dashboardState === 'loading';
   const isEmpty = dashboardState === 'empty';
   const isError = dashboardState === 'error';
+  const [meetingState, setMeetingState] = useState<MeetingQueueState>(() => meetingService.getState());
+  const [leadState, setLeadState] = useState<LeadSearchState>(() => leadSearchService.getState());
+
+  useEffect(() => {
+    if (!isSalesWorkspace) return;
+    const unsubscribeMeetings = meetingService.subscribe(setMeetingState);
+    const unsubscribeLeads = leadSearchService.subscribe(setLeadState);
+    void meetingService.loadMeetings();
+    void leadSearchService.loadLeads();
+    return () => {
+      unsubscribeMeetings();
+      unsubscribeLeads();
+    };
+  }, [isSalesWorkspace]);
+
+  const salesOverviewCards = useMemo(() => {
+    const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
+    const todayMeetings = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.meetingDate) === 'Today').length;
+    const pendingMeetings = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.meetingDate) === 'Pending').length;
+    return todayOverviewData.map((card) => {
+      if (card.id === 'todays-meetings') return { ...card, value: todayMeetings };
+      if (card.id === 'pending-meetings') return { ...card, value: pendingMeetings };
+      return card;
+    });
+  }, [leadState.leads, meetingState.meetings]);
 
   if (!isSuperAdmin) {
     return (
@@ -74,7 +105,7 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
         <View style={styles.shell}>
           {isSalesWorkspace ? (
             <>
-              <TodayOverviewSection cards={todayOverviewData} />
+              <TodayOverviewSection cards={salesOverviewCards} />
               <SalesActivitySection cards={salesActivityData} onActionPress={(actionId) => {
                 if (actionId === 'new-lead') onCreateNewLead();
               }} />

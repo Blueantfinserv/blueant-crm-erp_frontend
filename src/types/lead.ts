@@ -120,6 +120,11 @@ export type LeadResponse = {
   audit?: {
     createdAt?: string;
     updatedAt?: string;
+    createdBy?: {
+      id?: number;
+      code?: string;
+      name?: string;
+    };
   };
 };
 
