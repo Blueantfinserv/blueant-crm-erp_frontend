@@ -132,7 +132,8 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       if (!form.joinedWith) nextErrors.joinedWith = "Joined With is required.";
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
       if (!form.liveLocation) nextErrors.liveLocation = "Live location is required.";
-      if (!form.cardImage) nextErrors.cardImage = "Card image is required.";
+      // Temporarily disabled while the backend visiting-card flow is being fixed.
+      // if (!form.cardImage) nextErrors.cardImage = "Card image is required.";
       if (form.leadStatus === "Work In Progress" && !form.nextPlanDate) {
         nextErrors.nextPlanDate = "Next plan date is required.";
       }
@@ -414,6 +415,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                 </Pressable>
               </Field>
 
+              {/* Temporarily hidden while the backend visiting-card flow is being fixed.
               <Field label="Visiting Card Image" required error={errors.cardImage}>
                 <Pressable
                   disabled={openingCamera}
@@ -434,6 +436,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                   <Icon source="camera" size={19} color="#7C3AED" />
                 </Pressable>
               </Field>
+              */}
 
               {showNextPlanDate ? (
                 <Field label="Next Plan Date" required error={errors.nextPlanDate}>
