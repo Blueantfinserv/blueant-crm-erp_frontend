@@ -1,5 +1,5 @@
 import { leadApi, LeadApiError } from '../api/lead';
-import { CreateLeadRequest, LeadResponse, LeadState } from '../types/lead';
+import { AssignLeadRequest, CreateLeadRequest, LeadResponse, LeadState } from '../types/lead';
 
 type Listener = (state: LeadState) => void;
 
@@ -58,6 +58,11 @@ export class LeadService {
     }
   }
 
+  async assignLead(request: AssignLeadRequest): Promise<LeadResponse> {
+    const response = await leadApi.assignLead(request);
+    return response.data as LeadResponse;
+  }
+
   getState() {
     return this.state;
   }
@@ -71,6 +76,7 @@ export const leadService = new LeadService();
 
 export type LeadServiceApi = {
   createLead: (request: CreateLeadRequest) => Promise<LeadResponse>;
+  assignLead: (request: AssignLeadRequest) => Promise<LeadResponse>;
 };
 
 export type { CreateLeadRequest, LeadResponse };

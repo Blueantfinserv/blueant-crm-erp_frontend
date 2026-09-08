@@ -1,6 +1,6 @@
 import type { LeadStatus } from '../../../../types/lead';
 
-export type TaskScheduleFilter = 'Today' | 'Pending' | 'Future 3 Days';
+export type TaskScheduleFilter = 'Today' | 'Pending' | 'Future 3 Days' | 'Later' | 'Unscheduled';
 
 export interface SalesTask {
   id: string;
@@ -17,6 +17,7 @@ export interface SalesTask {
   name: string;
   phone: string;
   locationText: string;
+  clinicAddress?: string;
   coordinates: {
     latitude: number;
     longitude: number;

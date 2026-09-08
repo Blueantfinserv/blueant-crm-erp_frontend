@@ -1,6 +1,6 @@
 import { AuthRole } from '../types/auth';
 
-export type NavigationRoute = 'dashboard' | 'reports' | 'users-roles' | 'team-mapping' | 'leads' | 'lead-details' | 'add-followup' | 'coming-soon';
+export type NavigationRoute = 'dashboard' | 'reports' | 'users-roles' | 'team-mapping' | 'leads' | 'assigned-tasks' | 'lead-details' | 'add-followup' | 'coming-soon';
 
 export type NavigationItem = {
   key: string;

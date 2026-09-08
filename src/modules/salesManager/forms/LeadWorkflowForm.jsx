@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +15,8 @@ import {
 import { Picker } from "@react-native-picker/picker";
 import { Icon } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
+import * as Location from "expo-location";
 
 const LEAD_SOURCES = ["Referral", "Website", "Walk-in", "Other"];
 const MEETING_MODES = ["Physical", "Virtual"];
@@ -28,6 +32,35 @@ const getLocalDate = () => {
   const now = new Date();
   const offset = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
+};
+
+const getClientSideAddress = async (latitude, longitude) => {
+  const query = new URLSearchParams({
+    latitude: String(latitude),
+    longitude: String(longitude),
+    localityLanguage: "en",
+  });
+  const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?${query.toString()}`);
+  if (!response.ok) throw new Error("Reverse geocoding failed");
+  const place = await response.json();
+  const localityEntries = [
+    ...(place.localityInfo?.informative ?? []),
+    ...(place.localityInfo?.administrative ?? []),
+  ];
+  const specificLocalities = localityEntries
+    .filter((entry) => {
+      const name = String(entry?.name ?? "");
+      const description = String(entry?.description ?? "");
+      return /sector|block|phase|ward|colony|industrial area|neighbou?rhood|suburb|quarter|locality/i.test(`${name} ${description}`);
+    })
+    .map((entry) => entry.name)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  return [...specificLocalities, place.locality, place.localityName, place.city, place.principalSubdivision, place.postcode, place.countryName]
+    .filter(Boolean)
+    .filter((value, index, values) => values.indexOf(value) === index)
+    .join(", ");
 };
 
 export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
@@ -53,7 +86,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     leadStatus: "",
     joinedWith: "Alone",
     nextPlanDate: "",
+    liveLocation: null,
+    cardImage: null,
   });
+  const [fetchingLocation, setFetchingLocation] = useState(false);
+  const [openingCamera, setOpeningCamera] = useState(false);
 
   useEffect(() => {
     if (!submissionSuccess) return undefined;
@@ -94,12 +131,87 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       if (!form.leadStatus) nextErrors.leadStatus = "Lead status is required.";
       if (!form.joinedWith) nextErrors.joinedWith = "Joined With is required.";
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
+      if (!form.liveLocation) nextErrors.liveLocation = "Live location is required.";
+      if (!form.cardImage) nextErrors.cardImage = "Card image is required.";
       if (form.leadStatus === "Work In Progress" && !form.nextPlanDate) {
         nextErrors.nextPlanDate = "Next plan date is required.";
       }
     }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
+  };
+
+  const captureLiveLocation = async () => {
+    if (fetchingLocation) return;
+    setFetchingLocation(true);
+    setSubmissionError("");
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert("Location permission needed", "Please allow location access to capture your live meeting location.");
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const { latitude, longitude } = position.coords;
+      let address = "Address could not be resolved";
+      try {
+        const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (place) {
+          address = place.formattedAddress || [
+            place.name,
+            place.streetNumber && place.street ? `${place.streetNumber} ${place.street}` : place.street,
+            place.district,
+            place.subregion,
+            place.city,
+            place.region,
+            place.postalCode,
+            place.country,
+          ]
+            .filter(Boolean)
+            .filter((value, index, values) => values.indexOf(value) === index)
+            .join(", ") || address;
+        }
+      } catch {
+        // The native reverse geocoder is not available on web and can occasionally fail on devices.
+      }
+      if (address === "Address could not be resolved") {
+        try {
+          const clientSideAddress = await getClientSideAddress(latitude, longitude);
+          if (clientSideAddress) address = clientSideAddress;
+        } catch {
+          // Coordinates remain available if both address providers are unavailable.
+        }
+      }
+      update("liveLocation", { latitude, longitude, address, accuracy: position.coords.accuracy });
+    } catch {
+      Alert.alert("Location unavailable", "Could not fetch the current location. Please turn on location services and try again.");
+    } finally {
+      setFetchingLocation(false);
+    }
+  };
+
+  const captureCardImage = async () => {
+    if (openingCamera) return;
+    setOpeningCamera(true);
+    setSubmissionError("");
+    try {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (permission.status !== "granted") {
+        Alert.alert("Camera permission needed", "Please allow camera access to capture the visiting card.");
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ["images"],
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) update("cardImage", result.assets[0]);
+    } catch {
+      Alert.alert("Camera unavailable", "Could not open the camera. Please try again.");
+    } finally {
+      setOpeningCamera(false);
+    }
   };
 
   const submit = async () => {
@@ -114,6 +226,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       aloneWith: form.joinedWith === "Alone" ? "SELF" : "SOMEONE",
       remarks: form.remarks.trim(),
       nextPlanDate: form.leadStatus === "Work In Progress" ? form.nextPlanDate : "",
+      latitude: form.liveLocation?.latitude,
+      longitude: form.liveLocation?.longitude,
+      address: form.liveLocation?.address,
+      accuracy: form.liveLocation?.accuracy,
+      cardImage: form.cardImage,
     };
 
     const createLeadRequest = {
@@ -252,6 +369,70 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                   style={styles.textarea}
                   placeholder="Meeting remarks"
                 />
+              </Field>
+
+              <Field label="Live Location" required error={errors.liveLocation}>
+                <Pressable
+                  disabled={fetchingLocation}
+                  onPress={() => void captureLiveLocation()}
+                  style={({ pressed }) => [styles.captureBox, pressed && styles.pressed]}
+                >
+                  <View style={[styles.captureIcon, form.liveLocation && styles.captureIconSuccess]}>
+                    {fetchingLocation
+                      ? <ActivityIndicator size="small" color="#2563EB" />
+                      : <Icon source={form.liveLocation ? "map-marker-check" : "crosshairs-gps"} size={20} color={form.liveLocation ? "#047857" : "#2563EB"} />}
+                  </View>
+                  <View style={styles.captureCopy}>
+                    <View style={styles.locationTitleRow}>
+                      <Text style={styles.captureTitle}>{fetchingLocation ? "Fetching live location..." : form.liveLocation ? "Live location" : "Capture current location"}</Text>
+                      {form.liveLocation ? (
+                        <View style={styles.verifiedBadge}>
+                          <View style={styles.verifiedDot} />
+                          <Text style={styles.verifiedText}>VERIFIED</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                    <Text numberOfLines={2} style={styles.captureDescription}>
+                      {form.liveLocation?.address ?? "Tap to fetch latitude, longitude and address"}
+                    </Text>
+                    {form.liveLocation ? (
+                      <View style={styles.coordinateRow}>
+                        <View style={styles.coordinateChip}>
+                          <Text style={styles.coordinateLabel}>LAT</Text>
+                          <Text style={styles.coordinateText}>{form.liveLocation.latitude.toFixed(6)}</Text>
+                        </View>
+                        <View style={styles.coordinateChip}>
+                          <Text style={styles.coordinateLabel}>LONG</Text>
+                          <Text style={styles.coordinateText}>{form.liveLocation.longitude.toFixed(6)}</Text>
+                        </View>
+                      </View>
+                    ) : null}
+                  </View>
+                  <View style={styles.locationAction}>
+                    <Icon source={form.liveLocation ? "refresh" : "chevron-right"} size={18} color="#4F46E5" />
+                  </View>
+                </Pressable>
+              </Field>
+
+              <Field label="Visiting Card Image" required error={errors.cardImage}>
+                <Pressable
+                  disabled={openingCamera}
+                  onPress={() => void captureCardImage()}
+                  style={({ pressed }) => [styles.cameraBox, pressed && styles.pressed]}
+                >
+                  {form.cardImage?.uri ? <Image source={{ uri: form.cardImage.uri }} style={styles.cardPreview} /> : (
+                    <View style={styles.cameraPlaceholder}>
+                      {openingCamera
+                        ? <ActivityIndicator size="small" color="#7C3AED" />
+                        : <Icon source="camera-outline" size={26} color="#7C3AED" />}
+                    </View>
+                  )}
+                  <View style={styles.captureCopy}>
+                    <Text style={styles.captureTitle}>{openingCamera ? "Opening camera..." : form.cardImage ? "Card image captured" : "Take card photo"}</Text>
+                    <Text style={styles.captureDescription}>{form.cardImage ? "Tap to retake using camera" : "Camera only — gallery selection is disabled"}</Text>
+                  </View>
+                  <Icon source="camera" size={19} color="#7C3AED" />
+                </Pressable>
               </Field>
 
               {showNextPlanDate ? (
@@ -538,6 +719,33 @@ const styles = StyleSheet.create({
   autofillItem: { minWidth: 0, flex: 1 },
   autofillLabel: { color: "#64748B", fontSize: 9, fontWeight: "800", textTransform: "uppercase" },
   autofillValue: { marginTop: 3, color: "#4C1D95", fontSize: 13, fontWeight: "900" },
+  captureBox: {
+    minHeight: 104, flexDirection: "row", alignItems: "center", gap: 12,
+    padding: 14, borderWidth: 1, borderColor: "#DCE4F2", borderRadius: 17,
+    backgroundColor: "#F8FAFF", shadowColor: "#1E3A8A", shadowOpacity: 0.06,
+    shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 2,
+  },
+  captureIcon: { width: 48, height: 48, alignItems: "center", justifyContent: "center", borderRadius: 15, backgroundColor: "#E8F0FF" },
+  captureIconSuccess: { backgroundColor: "#DCFCE7", borderWidth: 1, borderColor: "#BBF7D0" },
+  captureCopy: { minWidth: 0, flex: 1 },
+  locationTitleRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 7 },
+  captureTitle: { color: "#172554", fontSize: 12, fontWeight: "900" },
+  verifiedBadge: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 3, borderRadius: 10, backgroundColor: "#ECFDF5" },
+  verifiedDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: "#10B981" },
+  verifiedText: { color: "#047857", fontSize: 7, fontWeight: "900", letterSpacing: 0.65 },
+  captureDescription: { marginTop: 5, color: "#475569", fontSize: 10, lineHeight: 15, fontWeight: "700" },
+  coordinateRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 8 },
+  coordinateChip: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 8, backgroundColor: "#EEF2FF" },
+  coordinateLabel: { color: "#818CF8", fontSize: 7, fontWeight: "900", letterSpacing: 0.5 },
+  coordinateText: { color: "#3730A3", fontSize: 8, fontWeight: "900" },
+  locationAction: { width: 34, height: 34, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#E0E7FF", borderRadius: 12, backgroundColor: "#FFFFFF" },
+  cameraBox: {
+    minHeight: 84, flexDirection: "row", alignItems: "center", gap: 11,
+    padding: 10, borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 14,
+    backgroundColor: "#FAF8FF",
+  },
+  cameraPlaceholder: { width: 64, height: 64, alignItems: "center", justifyContent: "center", borderRadius: 12, backgroundColor: "#EDE9FE" },
+  cardPreview: { width: 64, height: 64, borderRadius: 12, backgroundColor: "#EDE9FE" },
   error: { marginTop: 5, color: "#DC2626", fontSize: 10, fontWeight: "700" },
   successOverlay: {
     ...StyleSheet.absoluteFillObject,

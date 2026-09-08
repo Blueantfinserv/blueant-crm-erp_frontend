@@ -10,6 +10,7 @@ import { CreateAccountScreen } from './src/screens/auth/CreateAccountScreen';
 import { theme } from './src/theme/theme';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { SalesCoordinatorScreen } from './src/screens/SalesCoordinatorScreen';
+import { AssignedLeadsScreen } from './src/screens/AssignedLeadsScreen';
 import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
 import { AuthRole, RegisterCredentials } from './src/types/auth';
 import { LoginFormValues } from './src/utils/authValidation';
@@ -36,6 +37,7 @@ import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/S
 import { leadService } from './src/services/LeadService';
 import { leadSearchService } from './src/services/LeadSearchService';
 import { meetingService } from './src/services/MeetingService';
+import { documentApi } from './src/api/document';
 import type { CreateLeadRequest } from './src/types/lead';
 import type {
   CreateMeetingRequest,
@@ -81,6 +83,11 @@ const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; 
       leadStatus: MEETING_LEAD_STATUS[form.leadStatus],
       aloneWith: form.aloneWith,
       remarks: form.remarks.trim(),
+      latitude: form.latitude,
+      longitude: form.longitude,
+      address: form.address,
+      ...(form.accuracy !== null && form.accuracy !== undefined ? { accuracy: form.accuracy } : {}),
+      ...(form.visitingCard ? { visitingCard: form.visitingCard } : {}),
       ...(form.leadStatus === 'Work In Progress' ? { nextPlanDate: form.nextPlanDate } : {}),
     },
   };
@@ -344,6 +351,7 @@ function AppShell() {
         return (
           <ErpShell
             currentDate={currentDate}
+            contentScrollable={experience !== 'SALES_COORDINATOR'}
             tabs={topTabs}
             activeTab={activeTab}
             onLogout={handleLogout}
@@ -536,6 +544,22 @@ function AppShell() {
             )}
           </ErpShell>
         );
+      case 'assigned-tasks':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            contentScrollable={false}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => { setActiveTab(tab.key); navigate(tab.route); }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={() => navigate('dashboard')}
+          >
+            <AssignedLeadsScreen />
+          </ErpShell>
+        );
       case 'sales-task-details':
         if (!selectedSalesTask) return null;
         return (
@@ -680,7 +704,10 @@ function AppShell() {
                           const meetingCode = task.taskKind === 'LEAD'
                             ? await meetingService.createMeeting(toCreateMeeting(form, task))
                             : form.meetingCode;
-                          const submission = toMeetingWorkflow({ ...form, meetingCode });
+                          const visitingCard = form.cardImage
+                            ? await documentApi.upload(form.cardImage)
+                            : undefined;
+                          const submission = toMeetingWorkflow({ ...form, meetingCode, visitingCard });
                           const nextMeeting = await meetingService.submitWorkflow(submission.meetingCode, submission.workflow);
                           if (form.leadStatus === 'Converted as Client' || form.leadStatus === 'Already Blueant Client') {
                             const leadIdentity = {

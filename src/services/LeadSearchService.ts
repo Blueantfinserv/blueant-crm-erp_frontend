@@ -68,7 +68,7 @@ export class LeadSearchService {
         if (!uniqueLeadId) return lead;
         try {
           const details = (await leadApi.getLeadDetails(uniqueLeadId)).data;
-          return details ? { ...lead, audit: details.audit } : lead;
+          return details ? { ...lead, ...details } : lead;
         } catch {
           return lead;
         }

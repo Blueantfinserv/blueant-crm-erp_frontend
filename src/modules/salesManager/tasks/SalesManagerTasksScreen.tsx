@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import {
@@ -25,6 +25,7 @@ const parseBackendCalendarDate = (value?: string | null) => {
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 const LEAD_FILTER_OPTIONS = ['Active Leads', 'Removed Leads'] as const;
+const SERVICE_REQUEST_FORM_URL = 'https://docs.google.com/forms/d/14H3qkLVigG18GVMhcIqGb0PrR2hk3C5L9EHHDKxbqD0/viewform?edit_requested=true';
 const isHiddenCompletedLead = (status?: LeadResponse['leadStatus'] | MeetingResponse['leadStatus']) => (
   status === 'ALREADY_CLIENT' || status === 'CONVERTED' || status === 'CONVERTED_CLIENT'
 );
@@ -43,6 +44,11 @@ const formatTimestamp = (timestamp?: string | null) => {
   return `${date.day} ${MONTH_LABELS[date.month - 1]}`;
 };
 
+const meetingTitleOrder = (title: string) => {
+  const match = title.match(/^(\d+)/);
+  return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
+};
+
 const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
   return {
     id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId ?? `lead-${index}`),
@@ -55,6 +61,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     name: lead.clientName ?? 'Unnamed lead',
     phone: lead.mobileNumber ?? '',
     locationText: lead.location ?? 'Location unavailable',
+    clinicAddress: lead.clinicAddress,
     coordinates: { latitude: 0, longitude: 0 },
     hasLocationPin: false,
     taskLabel: 'LEADS',
@@ -71,6 +78,7 @@ const mapMeetingToSalesTask = (
   meeting: MeetingResponse,
   index: number,
   lead?: LeadResponse,
+  locationMeeting?: MeetingResponse,
 ): SalesTask => ({
   id: meeting.meetingCode ?? String(meeting.id ?? `meeting-${index}`),
   taskKind: 'MEETING',
@@ -84,9 +92,17 @@ const mapMeetingToSalesTask = (
   leadId: meeting.leadId ?? lead?.leadId,
   name: meeting.clientName ?? 'Unnamed client',
   phone: meeting.mobileNumber ?? '',
-  locationText: meeting.location ?? meeting.meetingLocation ?? meeting.address ?? 'Location unavailable',
-  coordinates: { latitude: meeting.latitude ?? 0, longitude: meeting.longitude ?? 0 },
-  hasLocationPin: meeting.latitude !== undefined && meeting.longitude !== undefined,
+  locationText: meeting.address ?? locationMeeting?.address ?? meeting.location ?? meeting.meetingLocation ?? locationMeeting?.meetingLocation ?? 'Location unavailable',
+  clinicAddress: lead?.clinicAddress,
+  coordinates: {
+    latitude: meeting.latitude ?? locationMeeting?.latitude ?? 0,
+    longitude: meeting.longitude ?? locationMeeting?.longitude ?? 0,
+  },
+  hasLocationPin: (
+    Number.isFinite(meeting.latitude) && Number.isFinite(meeting.longitude)
+  ) || (
+    Number.isFinite(locationMeeting?.latitude) && Number.isFinite(locationMeeting?.longitude)
+  ),
   taskLabel: meeting.meetingTitle ?? '',
   remarks: meeting.remarks ?? 'No remarks available.',
   lastUpdated: formatTimestamp(
@@ -194,7 +210,21 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
         ));
         if (isHiddenCompletedLead(lead?.leadStatus) || isHiddenCompletedLead(meeting.leadStatus)) return [];
-        return [mapMeetingToSalesTask(meeting, index, lead)];
+        const locationMeeting = meetingState.meetings
+          .filter((candidate) => (
+            Number.isFinite(candidate.latitude)
+            && Number.isFinite(candidate.longitude)
+            && (
+              (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
+              || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
+            )
+          ))
+          .sort((a, b) => (
+            b.workflowUpdatedAt ?? b.updatedAt ?? b.lastModifiedDate ?? b.meetingDate ?? ''
+          ).localeCompare(
+            a.workflowUpdatedAt ?? a.updatedAt ?? a.lastModifiedDate ?? a.meetingDate ?? ''
+          ))[0];
+        return [mapMeetingToSalesTask(meeting, index, lead, locationMeeting)];
       });
       const meetingLeadKeys = new Set(meetingTasks.flatMap((task) => [
         task.leadCode ? `code:${task.leadCode}` : '',
@@ -217,7 +247,12 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       tasks
         .filter((task) => task.taskKind === 'MEETING' && Boolean(task.meetingTitle))
         .map((task) => task.meetingTitle as string),
-    )),
+    )).sort((left, right) => {
+      const numberDifference = meetingTitleOrder(left) - meetingTitleOrder(right);
+      return Number.isNaN(numberDifference) || numberDifference === 0
+        ? left.localeCompare(right)
+        : numberDifference;
+    }),
   ], [tasks]);
   useEffect(() => {
     const unsubscribe = leadSearchService.subscribe(setLeadState);
@@ -327,6 +362,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Create service request"
+                  onPress={() => void Linking.openURL(SERVICE_REQUEST_FORM_URL)}
                   style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}
                 >
                   <Text style={styles.primaryActionText}>Service Request</Text>

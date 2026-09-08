@@ -33,7 +33,19 @@
     },
     "plugins": [
       "@react-native-community/datetimepicker",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow Blueant ERP to capture the live location of your meeting."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Allow Blueant ERP to take a photo of the visiting card."
+        }
+      ]
     ]
   }
 }

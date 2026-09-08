@@ -25,6 +25,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
     && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED');
   const whatsappNumber = task.phone.replace(/\D/g, '');
   const dialerNumber = task.phone.replace(/[^\d+]/g, '');
+  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${task.coordinates.latitude},${task.coordinates.longitude}`;
   const openContactLink = (event: GestureResponderEvent, url: string) => {
     event.stopPropagation();
     void Linking.openURL(url);
@@ -45,6 +46,21 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
         <View style={styles.identity}>
           <Text numberOfLines={1} style={styles.name}>{task.name}</Text>
           <View style={styles.contactActions}>
+            {task.hasLocationPin ? (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Open captured meeting location for ${task.name} in Google Maps`}
+                hitSlop={6}
+                onPress={(event) => openContactLink(event, mapUrl)}
+                style={({ pressed }) => [
+                  styles.contactButton,
+                  styles.locationButton,
+                  pressed && styles.contactButtonPressed,
+                ]}
+              >
+                <Icon source="map-marker" size={15} color={tone.accent} />
+              </Pressable>
+            ) : null}
             <Pressable
               accessibilityRole="link"
               accessibilityLabel={`Open WhatsApp chat with ${task.name}`}
@@ -81,7 +97,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
       <View style={styles.locationRow}>
         <Icon source="map-marker-outline" size={15} color={tone.accent} />
         <View style={styles.locationCopy}>
-          <Text numberOfLines={1} style={styles.location}>{task.locationText}</Text>
+          <Text numberOfLines={1} style={styles.location}>{task.clinicAddress || 'Clinic address unavailable'}</Text>
         </View>
       </View>
 
@@ -160,6 +176,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+  },
+  locationButton: {
+    borderColor: '#DDD6FE',
+    backgroundColor: '#F5F3FF',
   },
   whatsappButton: {
     borderColor: '#BBF7D0',

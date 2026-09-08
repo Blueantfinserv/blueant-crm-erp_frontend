@@ -95,6 +95,15 @@ export type CreateLeadRequest = {
   remarks: string;
 };
 
+export type AssignLeadRequest = {
+  clientName: string;
+  mobileNumber: string;
+  location: string;
+  clinicAddress: string;
+  speciality: string;
+  salesPersonEmployeeCode: string;
+};
+
 export type LeadResponse = {
   leadId?: number;
   leadCode?: string;
@@ -103,6 +112,8 @@ export type LeadResponse = {
   mobileNumber?: string;
   email?: string;
   location?: string;
+  clinicAddress?: string;
+  speciality?: string;
   companyName?: string;
   leadSource?: LeadSource;
   leadStatus?: LeadStatus;

@@ -10,16 +10,17 @@ const parseBackendCalendarDate = (value?: string | null) => {
 };
 
 export const getTaskSchedule = (dateValue?: string): SalesTask['schedule'] => {
-  if (!dateValue) return 'Pending';
+  if (!dateValue) return 'Unscheduled';
   const backendDate = parseBackendCalendarDate(dateValue);
-  if (!backendDate) return 'Pending';
-  const taskDate = new Date(backendDate.year, backendDate.month - 1, backendDate.day);
+  if (!backendDate) return 'Unscheduled';
   const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const differenceInDays = Math.round((taskDate.getTime() - today.getTime()) / 86_400_000);
+  const taskDateUtc = Date.UTC(backendDate.year, backendDate.month - 1, backendDate.day);
+  const todayUtc = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const differenceInDays = Math.round((taskDateUtc - todayUtc) / 86_400_000);
+  if (differenceInDays < 0) return 'Pending';
   if (differenceInDays === 0) return 'Today';
-  if (differenceInDays > 0 && differenceInDays <= 3) return 'Future 3 Days';
-  return 'Pending';
+  if (differenceInDays <= 3) return 'Future 3 Days';
+  return 'Later';
 };
 
 const isHiddenCompletedLead = (status?: string) => (

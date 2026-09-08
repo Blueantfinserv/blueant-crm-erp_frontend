@@ -1,5 +1,5 @@
 import { SecureStorageService } from '../services/SecureStorageService';
-import { ApiResponseLeadResponse, CreateLeadRequest, LeadDetailResponse, LeadResponse } from '../types/lead';
+import { ApiResponseLeadResponse, AssignLeadRequest, CreateLeadRequest, LeadDetailResponse, LeadResponse } from '../types/lead';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://blueant-crm-erp.up.railway.app/api';
 
@@ -65,6 +65,12 @@ const request = async <T extends LeadResponse>(path: string, init: RequestInit):
 };
 
 export const leadApi = {
+  assignLead: async (requestBody: AssignLeadRequest): Promise<ApiResponseLeadResponse> => {
+    return request<LeadResponse>('/v1/Leads_assign', {
+      method: 'POST',
+      body: JSON.stringify(requestBody),
+    });
+  },
   createLead: async (requestBody: CreateLeadRequest): Promise<ApiResponseLeadResponse> => {
     return request<LeadResponse>('/v1/leads', {
       method: 'POST',

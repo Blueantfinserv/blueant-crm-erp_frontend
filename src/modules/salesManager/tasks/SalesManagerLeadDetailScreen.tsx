@@ -1,6 +1,9 @@
-import { Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
+import { meetingService } from '../../../services/MeetingService';
+import type { MeetingResponse } from '../../../types/meeting';
 import type { SalesTask } from './types/tasks';
 
 const formatLeadSource = (leadSource?: string) => {
@@ -24,12 +27,76 @@ const infoFields = (lead: SalesTask) => [
   { label: 'Lead Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
 ] as const;
 
+const verificationFields = (meeting: MeetingResponse) => [
+  { label: 'Meeting Time', value: meeting.meetingTiming, icon: 'clock-outline' },
+  { label: 'Age Group', value: meeting.ageGroup, icon: 'account-clock-outline' },
+  { label: 'Prior Investment', value: meeting.existingSip, icon: 'chart-line' },
+  { label: 'Profession', value: meeting.profession, icon: 'briefcase-outline' },
+  { label: 'Clinic / Company / Firm', value: meeting.professionDetail, icon: 'office-building-outline' },
+  { label: 'Best Meeting Time', value: meeting.bestTimeForMeeting, icon: 'calendar-clock-outline' },
+  { label: 'Meeting With', value: meeting.meetingWith, icon: 'account-group-outline' },
+  { label: 'Joined Person', value: meeting.personName, icon: 'account-outline' },
+  { label: 'Position', value: meeting.position, icon: 'badge-account-outline' },
+] as const;
+
+const displayVerificationValue = (value?: string) => {
+  if (!value?.trim()) return 'Not provided';
+  return value
+    .toLowerCase()
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
+
 export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 600;
+  const [verifiedMeeting, setVerifiedMeeting] = useState<MeetingResponse | null>(null);
+  const [verificationLoading, setVerificationLoading] = useState(true);
+  const [verificationError, setVerificationError] = useState<string | null>(null);
   const phone = lead.phone.replace(/[^\d+]/g, '');
   const whatsapp = lead.phone.replace(/\D/g, '');
-  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${lead.coordinates.latitude},${lead.coordinates.longitude}`;
+  const hasCoordinates = Boolean(lead.hasLocationPin)
+    && Number.isFinite(lead.coordinates.latitude)
+    && Number.isFinite(lead.coordinates.longitude);
+  const mapQuery = hasCoordinates
+    ? `${lead.coordinates.latitude},${lead.coordinates.longitude}`
+    : lead.locationText;
+  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+
+  useEffect(() => {
+    let active = true;
+    const loadVerification = async () => {
+      setVerificationLoading(true);
+      setVerificationError(null);
+      try {
+        const meetings = await meetingService.getVerificationMeetings('VERIFIED');
+        if (!active) return;
+        const matching = meetings
+          .filter((meeting) => (
+            (lead.leadId !== undefined && meeting.leadId === lead.leadId)
+            || (Boolean(lead.leadCode) && meeting.leadCode === lead.leadCode)
+            || (Boolean(lead.meetingCode) && meeting.meetingCode === lead.meetingCode)
+          ))
+          .sort((a, b) => (
+            b.meetingVerificationDate ?? b.updatedAt ?? b.meetingDate ?? ''
+          ).localeCompare(
+            a.meetingVerificationDate ?? a.updatedAt ?? a.meetingDate ?? ''
+          ));
+        setVerifiedMeeting(matching[0] ?? null);
+      } catch (error) {
+        if (!active) return;
+        setVerifiedMeeting(null);
+        setVerificationError(error instanceof Error ? error.message : 'Verified meeting information could not be loaded.');
+      } finally {
+        if (active) setVerificationLoading(false);
+      }
+    };
+    void loadVerification();
+    return () => {
+      active = false;
+    };
+  }, [lead.leadCode, lead.leadId, lead.meetingCode]);
 
   return (
     <View style={styles.screen}>
@@ -105,6 +172,51 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 </View>
               ))}
             </View>
+            <View style={styles.verificationSection}>
+              <View style={styles.verificationHeading}>
+                <View style={styles.verificationHeadingIcon}>
+                  <Icon source="check-decagram-outline" size={17} color="#047857" />
+                </View>
+                <View style={styles.verificationHeadingCopy}>
+                  <View style={styles.verificationTitleRow}>
+                    <Text style={styles.verificationTitle}>Coordinator Verification</Text>
+                    {verifiedMeeting ? <Text style={styles.verifiedPill}>VERIFIED</Text> : null}
+                  </View>
+                  <Text style={styles.verificationSubtitle}>Additional information confirmed by the Sales Coordinator</Text>
+                </View>
+              </View>
+
+              {verificationLoading ? (
+                <View style={styles.verificationState}>
+                  <ActivityIndicator size="small" color="#4F46E5" />
+                  <Text style={styles.verificationStateText}>Loading verified meeting information...</Text>
+                </View>
+              ) : verificationError ? (
+                <View style={styles.verificationState}>
+                  <Icon source="alert-circle-outline" size={18} color="#DC2626" />
+                  <Text style={[styles.verificationStateText, styles.verificationError]}>{verificationError}</Text>
+                </View>
+              ) : verifiedMeeting ? (
+                <View style={[styles.verificationGrid, isMobile && styles.mobileVerificationGrid]}>
+                  {verificationFields(verifiedMeeting).map((field) => (
+                    <View key={field.label} style={[styles.verificationItem, isMobile && styles.mobileVerificationItem]}>
+                      <View style={styles.verificationItemIcon}>
+                        <Icon source={field.icon} size={14} color="#4F46E5" />
+                      </View>
+                      <View style={styles.infoCopy}>
+                        <Text style={styles.verificationLabel}>{field.label}</Text>
+                        <Text numberOfLines={2} style={styles.verificationValue}>{displayVerificationValue(field.value)}</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              ) : (
+                <View style={styles.verificationState}>
+                  <Icon source="clock-outline" size={18} color="#94A3B8" />
+                  <Text style={styles.verificationStateText}>This lead does not have a verified meeting response yet.</Text>
+                </View>
+              )}
+            </View>
           </View>
 
           <View style={styles.rightColumn}>
@@ -115,15 +227,31 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
               isMobile && styles.mobileLocationPanel,
             ]}>
               <SectionHeading icon="map-marker-radius-outline" title="Location" subtitle="Saved meeting location" />
-              <View style={styles.locationCard}>
-                <Icon source="map-marker" size={24} color="#EA580C" />
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Open location for ${lead.name} in Google Maps`}
+                onPress={() => void Linking.openURL(mapUrl)}
+                style={({ pressed }) => [styles.locationCard, pressed && styles.locationCardPressed]}
+              >
+                <View style={styles.locationPin}>
+                  <Icon source="map-marker" size={22} color="#EA580C" />
+                </View>
                 <View style={styles.locationCopy}>
                   <Text style={styles.locationText}>{lead.locationText}</Text>
-                  <Text style={styles.coordinates}>
-                    {lead.coordinates.latitude.toFixed(6)}, {lead.coordinates.longitude.toFixed(6)}
-                  </Text>
+                  <View style={styles.coordinateRow}>
+                    <View style={styles.coordinateItem}>
+                      <Text style={styles.coordinateLabel}>LAT</Text>
+                      <Text style={styles.coordinates}>{hasCoordinates ? lead.coordinates.latitude.toFixed(6) : 'Not captured'}</Text>
+                    </View>
+                    <View style={styles.coordinateDivider} />
+                    <View style={styles.coordinateItem}>
+                      <Text style={styles.coordinateLabel}>LONG</Text>
+                      <Text style={styles.coordinates}>{hasCoordinates ? lead.coordinates.longitude.toFixed(6) : 'Not captured'}</Text>
+                    </View>
+                  </View>
                 </View>
-              </View>
+                <Icon source="open-in-new" size={15} color="#F97316" />
+              </Pressable>
               <Pressable onPress={() => void Linking.openURL(mapUrl)} style={styles.mapButton}>
                 <Icon source="map-outline" size={16} color="#EA580C" />
                 <Text style={styles.mapButtonText}>Open in Maps</Text>
@@ -198,8 +326,8 @@ const styles = StyleSheet.create({
   mobilePanel: { padding: 11, gap: 10, borderRadius: 14 },
   infoPanel: { minWidth: 300, flex: 2 },
   rightColumn: { minWidth: 260, flex: 1, gap: 14 },
-  locationPanel: { flex: 1 },
-  mobileLocationPanel: { minHeight: 205 },
+  locationPanel: { height: 218, flexGrow: 0, flexShrink: 0, gap: 10, padding: 14, overflow: 'hidden' },
+  mobileLocationPanel: { height: 'auto', minHeight: 205 },
   remarksPanel: { flex: 1 },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#EEF0F5' },
   sectionIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#F3F0FF' },
@@ -215,10 +343,34 @@ const styles = StyleSheet.create({
   infoCopy: { minWidth: 0, flex: 1 },
   infoLabel: { color: '#94A3B8', fontSize: 8, fontWeight: '800', textTransform: 'uppercase' },
   infoValue: { marginTop: 2, color: '#334155', fontSize: 11, fontWeight: '900' },
-  locationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 13, borderRadius: 13, backgroundColor: '#FFF7ED' },
+  verificationSection: { marginTop: 4, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#EEF0F5' },
+  verificationHeading: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 },
+  verificationHeadingIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#ECFDF5' },
+  verificationHeadingCopy: { minWidth: 0, flex: 1 },
+  verificationTitleRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7 },
+  verificationTitle: { color: '#1E1B4B', fontSize: 13, fontWeight: '900' },
+  verifiedPill: { paddingHorizontal: 7, paddingVertical: 3, borderRadius: 999, overflow: 'hidden', color: '#047857', fontSize: 7, fontWeight: '900', letterSpacing: 0.6, backgroundColor: '#D1FAE5' },
+  verificationSubtitle: { marginTop: 2, color: '#94A3B8', fontSize: 9, fontWeight: '600' },
+  verificationGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9 },
+  mobileVerificationGrid: { gap: 7 },
+  verificationItem: { minWidth: 210, flexBasis: '31%', flexGrow: 1, flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 58, padding: 10, borderWidth: 1, borderColor: '#E7E9F5', borderRadius: 12, backgroundColor: '#FAFAFF' },
+  mobileVerificationItem: { minWidth: 0, flexBasis: '100%' },
+  verificationItemIcon: { width: 29, height: 29, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#EEF2FF' },
+  verificationLabel: { color: '#94A3B8', fontSize: 7, fontWeight: '900', letterSpacing: 0.35, textTransform: 'uppercase' },
+  verificationValue: { marginTop: 3, color: '#27324A', fontSize: 10, lineHeight: 14, fontWeight: '900' },
+  verificationState: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderWidth: 1, borderColor: '#E7EAF0', borderRadius: 12, backgroundColor: '#F8FAFC' },
+  verificationStateText: { color: '#64748B', fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  verificationError: { color: '#B91C1C' },
+  locationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderWidth: 1, borderColor: '#FFEDD5', borderRadius: 13, backgroundColor: '#FFF7ED' },
+  locationCardPressed: { opacity: 0.72, transform: [{ scale: 0.995 }] },
+  locationPin: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#FFEDD5' },
   locationCopy: { minWidth: 0, flex: 1 },
   locationText: { color: '#7C2D12', fontSize: 11, lineHeight: 15, fontWeight: '900' },
-  coordinates: { marginTop: 3, color: '#C2410C', fontSize: 8, fontWeight: '700' },
+  coordinateRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 6 },
+  coordinateItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  coordinateLabel: { color: '#FDBA74', fontSize: 7, fontWeight: '900', letterSpacing: 0.45 },
+  coordinateDivider: { width: 1, height: 11, backgroundColor: '#FED7AA' },
+  coordinates: { color: '#C2410C', fontSize: 8, fontWeight: '800' },
   mapButton: { minHeight: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: '#FED7AA', borderRadius: 10, backgroundColor: '#FFFBF5' },
   mapButtonText: { color: '#EA580C', fontSize: 10, fontWeight: '900' },
   remarksCard: { flexDirection: 'row', gap: 10, padding: 15, borderLeftWidth: 3, borderLeftColor: '#8B5CF6', borderRadius: 12, backgroundColor: '#FAF8FF' },
