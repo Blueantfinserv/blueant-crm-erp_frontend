@@ -26,6 +26,7 @@ const parseBackendCalendarDate = (value?: string | null) => {
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 const LEAD_FILTER_OPTIONS = ['Active Leads', 'Removed Leads'] as const;
 const SERVICE_REQUEST_FORM_URL = 'https://docs.google.com/forms/d/14H3qkLVigG18GVMhcIqGb0PrR2hk3C5L9EHHDKxbqD0/viewform?edit_requested=true';
+const SHOW_NEW_LEAD_ACTION = false;
 const isHiddenCompletedLead = (status?: LeadResponse['leadStatus'] | MeetingResponse['leadStatus']) => (
   status === 'ALREADY_CLIENT' || status === 'CONVERTED' || status === 'CONVERTED_CLIENT'
 );
@@ -351,14 +352,16 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                 <Text style={styles.title}>Your Tasks</Text>
               </View>
               <View style={[styles.headingActions, isMobile && styles.mobileHeadingActions]}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="Create new lead"
-                  onPress={onCreateNewLead}
-                  style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
-                >
-                  <Text style={styles.secondaryActionText}>New Lead</Text>
-                </Pressable>
+                {SHOW_NEW_LEAD_ACTION ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Create new lead"
+                    onPress={onCreateNewLead}
+                    style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.secondaryActionText}>New Lead</Text>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Create service request"
