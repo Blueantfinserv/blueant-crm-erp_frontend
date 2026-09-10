@@ -72,16 +72,8 @@ const PROFESSION_LABELS: Record<string, string> = {
 const PROFESSION_OPTIONS = Object.keys(PROFESSION_LABELS);
 const POSITION_OPTIONS = ['Sales person', 'Team Leader', 'Admin', 'Super Admin'] as const;
 const show = (v: unknown) => v === undefined || v === null || v === '' ? '—' : String(v);
-const dateOnly = (v?: string) => { const m = v?.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
 const localToday = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
 const timeText = (v?: { hour?: number; minute?: number; second?: number } | string) => typeof v === 'string' ? v : v?.hour === undefined ? '—' : [v.hour, v.minute ?? 0, v.second ?? 0].map((n) => String(n).padStart(2, '0')).join(':');
-const inCurrentWeek = (v?: string) => {
-  const d = dateOnly(v); if (!d) return false;
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  const monday = new Date(now); monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
-  const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
-  return d >= monday && d <= sunday;
-};
 
 export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly string[] | null }) {
   const compact = useWindowDimensions().width < 760;
@@ -90,6 +82,13 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [verified, setVerified] = useState<MeetingResponse[]>([]);
   const [meetings, setMeetings] = useState<MeetingResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshSeconds, setRefreshSeconds] = useState(10);
+  const nextRefreshAt = useRef(Date.now() + 10_000);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const loadInFlight = useRef(false);
+  const dataGeneration = useRef(0);
+  const hasLoaded = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MeetingResponse | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -103,18 +102,40 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [assignMessage, setAssignMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true); setError(null);
+    if (loadInFlight.current || submittingRef.current) return;
+    loadInFlight.current = true;
+    const generation = dataGeneration.current;
+    if (!hasLoaded.current) setLoading(true);
+    setRefreshing(true);
     try {
       const [p, v, all] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), meetingService.getVerificationMeetings('VERIFIED'), meetingService.getAllMeetingRecords()]);
+      if (generation !== dataGeneration.current) return;
       setPending(p); setVerified(v); setMeetings(all);
-    } catch (e) { setError(e instanceof Error ? e.message : 'Coordinator data could not be loaded.'); }
-    finally { setLoading(false); }
+      hasLoaded.current = true;
+      setError(null); setRefreshError(null);
+    } catch (e) {
+      if (generation !== dataGeneration.current) return;
+      const message = e instanceof Error ? e.message : 'Coordinator data could not be loaded.';
+      if (hasLoaded.current) setRefreshError(message);
+      else setError(message);
+    }
+    finally {
+      loadInFlight.current = false; setLoading(false); setRefreshing(false);
+      nextRefreshAt.current = Date.now() + 10_000;
+      setRefreshSeconds(10);
+    }
   }, []);
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => {
+      if (loadInFlight.current || submittingRef.current) return;
+      const seconds = Math.max(0, Math.ceil((nextRefreshAt.current - Date.now()) / 1000));
+      setRefreshSeconds(seconds);
+      if (seconds === 0) void load();
+    }, 1000);
+    return () => { clearInterval(timer); dataGeneration.current += 1; };
+  }, [load]);
 
-  const weekResponses = useMemo(() => verified.filter((m) => inCurrentWeek(
-    m.meetingVerificationDate ?? m.workflowUpdatedAt ?? m.updatedAt ?? m.lastModifiedDate,
-  )), [verified]);
   const taskStatus = (m: MeetingResponse) => m.meetingStatus === 'COMPLETED' ? 'COMPLETED' : m.meetingDate === localToday() ? 'TODAY' : (m.meetingDate ?? '') < localToday() ? 'OVERDUE' : 'PENDING';
   const filteredTasks = useMemo(() => meetings.filter((m) => {
     const q = employeeFilter.trim().toLowerCase();
@@ -153,6 +174,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         .map((field) => [field.key, form[field.key].trim()]).filter(([, fieldValue]) => Boolean(fieldValue)),
     ) as MeetingVerificationRequest;
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);
+    dataGeneration.current += 1;
     try {
       await meetingService.verifyMeeting(selected.meetingCode, payload);
       setPending((items) => items.filter((m) => m.meetingCode !== selected.meetingCode));
@@ -164,7 +186,24 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
 
   return <View style={[styles.page, compact && styles.pageCompact]}>
     <View style={styles.topSection}>
-      <View style={[styles.metrics, compact && styles.metricsCompact]}><Metric icon="clock-outline" value={pending.length} label="Awaiting review" tone="blue" /><Metric icon="check-circle-outline" value={weekResponses.length} label="Verified this week" tone="green" /><Metric icon="account-outline" value={Object.keys(summaries).length} label="Sales people" tone="orange" /><Pressable onPress={() => void load()} style={({ pressed }) => [styles.refresh, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable></View>
+      <View style={[styles.metrics, compact && styles.metricsCompact]}>
+        <Metric icon="clock-outline" value={pending.length} label="Awaiting review" tone="blue" />
+        <Metric icon="account-outline" value={Object.keys(summaries).length} label="Sales people" tone="orange" />
+        <View style={[styles.syncControls, compact && styles.syncControlsCompact]}>
+          <Pressable disabled={refreshing || submitting} onPress={() => void load()} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}>
+            <Icon source="refresh" size={17} color="#3156C8" />
+            <Text style={styles.refreshText}>Sync data</Text>
+          </Pressable>
+          <View style={styles.autoRefreshBadge}>
+            <View style={styles.autoRefreshDot} />
+            <Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : 'Auto-refresh'}</Text>
+            <View style={styles.countdownBadge}>
+              {refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{refreshSeconds}s</Text>}
+            </View>
+          </View>
+        </View>
+      </View>
+      {refreshError ? <Text style={styles.error}>Sync failed. Retrying automatically in 10 seconds.</Text> : null}
       <View style={[styles.tabs, compact && styles.tabsCompact]}>{TABS.map((item) => <Pressable key={item.key} onPress={() => setTab(item.key)} style={[styles.tab, tab === item.key && styles.tabActive]}><View style={[styles.tabIcon, tab === item.key && styles.tabIconActive]}><Icon source={item.icon} size={14} color={tab === item.key ? '#FFFFFF' : '#7C879B'} /></View><Text style={[styles.tabText, tab === item.key && styles.tabTextActive]}>{item.label}</Text>{item.key === 'today' ? <Text style={[styles.badge, tab === item.key && styles.badgeActive]}>{pending.length}</Text> : null}</Pressable>)}</View>
     </View>
     <View style={styles.contentPanel}><View style={styles.contentHeading}><View><Text style={styles.contentTitle}>{TABS.find((item) => item.key === tab)?.label}</Text><Text style={styles.contentSubtitle}>{tab === 'today' ? `${pending.length} meetings waiting for verification` : tab === 'responses' ? `${verified.length} meetings already verified by the Sales Coordinator` : tab === 'assign' ? 'Create a physical lead and assign it to a sales person' : 'Track ownership and meeting progress'}</Text></View></View>
@@ -279,13 +318,22 @@ function Cards({ items, empty, action, onOpen, verified = false }: { items: read
     ['NEXT PLAN DATE', (m: MeetingResponse) => m.nextMeetingDate],
     ['JOINED', (m: MeetingResponse) => m.aloneWith],
   ] as const;
-  return <View style={styles.desktopTable}>{items.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.listRow, styles.desktopRow, i % 2 === 1 && styles.listRowAlternate]}><View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.avatar}><Text style={styles.avatarText}>{String(m.clientName ?? '?').slice(0, 1).toUpperCase()}</Text></View><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>{columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn]}><Text numberOfLines={1} style={styles.cellMain}>{show(value(m))}</Text></View>)}{onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : <View style={styles.desktopActionColumn} />}</View>)}</View>;
+  return <View style={styles.desktopTable}>{items.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.listRow, styles.desktopRow, i % 2 === 1 && styles.listRowAlternate]}><View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.avatar}><Text style={styles.avatarText}>{String(m.clientName ?? '?').slice(0, 1).toUpperCase()}</Text></View><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>{columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn]}><Text numberOfLines={1} style={[styles.cellMain, label === 'LEAD STATUS' && styles.status, label === 'LEAD STATUS' && m.leadStatus === 'CONVERTED_CLIENT' && styles.statusVerified, label === 'JOINED' && styles.joinedBadge]}>{label === 'LEAD STATUS' ? show(value(m)).replace(/_/g, ' ') : show(value(m))}</Text></View>)}{onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : <View style={styles.desktopActionColumn} />}</View>)}</View>;
 }
 function Details({ meeting: m }: { meeting: MeetingResponse }) { const fields = [...baseFields(m), ['Lead Status', m.leadStatus], ['Remarks', m.remarks ?? m.meetingRemarks], ['Next Meeting Date', m.nextMeetingDate], ['Joined / Alone With', m.aloneWith], ['Person Name', m.personName]] as const; return <View><Text style={styles.sectionTitle}>Sales Person Meeting Information</Text><View style={styles.detailGrid}>{fields.map(([label, field]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(field)}</Text></View>)}</View></View>; }
 function VerificationDetails({ meeting: m }: { meeting: MeetingResponse }) { return <View style={styles.formSection}><Text style={styles.sectionTitle}>Process Coordinator Response</Text><View style={styles.detailGrid}>{FIELDS.map((f) => <View key={f.key} style={styles.detail}><Text style={styles.label}>{f.label}</Text><Text style={styles.detailValue}>{show(m[f.key])}</Text></View>)}</View></View>; }
 function State({ message, loading = false }: { message: string; loading?: boolean }) { return <View style={styles.state}>{loading ? <ActivityIndicator color="#4F46E5" /> : <Icon source="clipboard-text-outline" size={34} color="#94A3B8" />}<Text style={styles.stateText}>{message}</Text></View>; }
 
 const styles = StyleSheet.create({
+  joinedBadge: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, color: '#0F766E', backgroundColor: '#DFF5EF', fontSize: 8, fontWeight: '700' },
+  syncControls: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, minHeight: 44, borderRadius: 11, borderWidth: 1, borderColor: '#A7DFD7', backgroundColor: '#ECFDF8' },
+  syncControlsCompact: { width: '100%', justifyContent: 'space-between' },
+  syncButton: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 36, paddingHorizontal: 4 },
+  autoRefreshBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 10, borderLeftWidth: 1, borderLeftColor: '#B6E4DA' },
+  autoRefreshDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' },
+  autoRefreshLabel: { fontSize: 10, fontWeight: '700', color: '#0F766E' },
+  countdownBadge: { minWidth: 34, height: 28, borderRadius: 8, backgroundColor: '#0F766E', alignItems: 'center', justifyContent: 'center' },
+  countdownText: { fontSize: 12, fontWeight: '800', color: '#FFFFFF', fontVariant: ['tabular-nums'] },
   assignWrap: { width: '100%', maxWidth: 980, alignSelf: 'center', gap: 14, padding: 22 },
   assignIntro: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#E7EAF0' },
   assignIntroIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#EEF3FF' },
@@ -304,7 +352,7 @@ const styles = StyleSheet.create({
   assignError: { backgroundColor: '#FEF2F2' },
   assignFeedbackText: { color: '#15803D', fontSize: 9, fontWeight: '800' },
   assignErrorText: { color: '#B91C1C' },
-  assignButton: { minWidth: 170, height: 42, alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 20, borderRadius: 9, backgroundColor: '#2949B6', shadowColor: '#2949B6', shadowOpacity: 0.2, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
+  assignButton: { minWidth: 170, height: 42, alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 20, borderRadius: 9, backgroundColor: '#4F46E5', shadowColor: '#4F46E5', shadowOpacity: 0.2, shadowRadius: 7, shadowOffset: { width: 0, height: 3 }, elevation: 2 },
   assignButtonText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
   desktopRow: { gap: 4, paddingHorizontal: 10 },
   fluidColumn: { width: 'auto', minWidth: 0, flex: 1 },
@@ -312,17 +360,17 @@ const styles = StyleSheet.create({
   desktopActionColumn: { width: 128, flexShrink: 0 },
   tableScroll: { flexGrow: 1 },
   desktopTable: { width: '100%' },
-  mobileRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#EDF0F4', backgroundColor: '#FFFFFF' },
+  mobileRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#DAE1F3', backgroundColor: '#EEF0FF' },
   mobileMeeting: { minWidth: 90, flex: 1 },
-  mobileAction: { width: 24, height: 28, alignItems: 'center', justifyContent: 'center' },
+  mobileAction: { width: 30, height: 32, borderRadius: 8, backgroundColor: '#E9EEFF', alignItems: 'center', justifyContent: 'center' },
   page: { flex: 1, minHeight: 0, gap: 8, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#F7F8FA' }, pageCompact: { gap: 7, padding: 8 }, topSection: { flexShrink: 0, gap: 6 },
   pageHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 20 }, pageHeaderCompact: { alignItems: 'flex-start', flexDirection: 'column' },
   hero: { minHeight: 150 }, heroCompact: { minHeight: 0 }, heroCopy: { flex: 1 }, eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 7 }, eyebrowDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#60A5FA' }, eyebrow: { color: '#3156C8', fontSize: 9, fontWeight: '900', letterSpacing: 1.35 }, title: { marginTop: 8, color: '#161F33', fontSize: 27, fontWeight: '900', letterSpacing: -0.6 }, titleCompact: { fontSize: 23 }, subtitle: { marginTop: 5, color: '#7B8495', fontSize: 12, fontWeight: '600', lineHeight: 19 },
   heroAside: { flexDirection: 'row', alignItems: 'center', gap: 10 }, heroAsideCompact: { justifyContent: 'space-between', gap: 6 }, heroStat: { minWidth: 60 }, heroStatValue: { color: '#111827', fontSize: 16, fontWeight: '900' }, heroStatLabel: { color: '#64748B', fontSize: 8, fontWeight: '700' }, heroDivider: { width: 1, height: 24, backgroundColor: '#E5E7EB' }, refresh: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, borderWidth: 1, borderColor: '#DDE3EE', borderRadius: 8, backgroundColor: '#FFFFFF' }, refreshText: { color: '#3156C8', fontSize: 9, fontWeight: '900' }, pressed: { opacity: 0.7 },
-  metrics: { flexDirection: 'row', gap: 7 }, metricsCompact: { flexWrap: 'wrap' }, metric: { minWidth: 150, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, height: 38, paddingHorizontal: 10, borderWidth: 1, borderColor: '#E3E8F0', borderLeftWidth: 3, borderRadius: 9, backgroundColor: '#FFFFFF', shadowColor: '#1E293B', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, metricAccentBlue: { borderLeftColor: '#4F6FE7' }, metricAccentGreen: { borderLeftColor: '#20A878' }, metricAccentOrange: { borderLeftColor: '#E59A2F' }, metricIcon: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center', borderRadius: 7 }, metricBlue: { backgroundColor: '#EEF3FF' }, metricGreen: { backgroundColor: '#ECF9F4' }, metricOrange: { backgroundColor: '#FFF6E8' }, metricValue: { color: '#172033', fontSize: 13, fontWeight: '900' }, metricLabel: { color: '#727E91', fontSize: 8, fontWeight: '700' },
-  workspace: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, workspaceCompact: { flexDirection: 'column', alignItems: 'stretch' }, contentPanel: { minWidth: 0, minHeight: 0, flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#DDE3EC', borderRadius: 11, backgroundColor: '#FFFFFF', shadowColor: '#1E293B', shadowOpacity: 0.045, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 }, contentHeading: { flexShrink: 0, paddingHorizontal: 14, paddingVertical: 7, borderLeftWidth: 3, borderLeftColor: '#3156C8', borderBottomWidth: 1, borderBottomColor: '#E7EAF0', backgroundColor: '#FCFDFF' }, contentTitle: { color: '#15213A', fontSize: 13, fontWeight: '900', letterSpacing: -0.15 }, contentSubtitle: { marginTop: 1, color: '#7C879A', fontSize: 8, fontWeight: '600' }, resultsScroll: { flex: 1, minHeight: 0 }, resultsContent: { flexGrow: 1 },
-  tabs: { width: '100%', height: 36, flexDirection: 'row', gap: 3, padding: 3, borderWidth: 1, borderColor: '#DFE4ED', borderRadius: 9, backgroundColor: '#FFFFFF', shadowColor: '#1E293B', shadowOpacity: 0.035, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }, tabsCompact: { height: 'auto', flexDirection: 'column' }, tabsLabel: { color: '#A1A9B7', fontSize: 8, fontWeight: '900' }, tab: { minHeight: 28, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 7, borderRadius: 6 }, tabActive: { backgroundColor: '#2949B6', shadowColor: '#2949B6', shadowOpacity: 0.18, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } }, tabIcon: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 5, backgroundColor: '#F3F5F8' }, tabIconActive: { backgroundColor: 'rgba(255,255,255,0.14)' }, tabText: { color: '#566276', fontSize: 9, fontWeight: '700' }, tabTextActive: { color: '#FFFFFF', fontWeight: '900' }, badge: { minWidth: 18, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden', borderRadius: 9, color: '#697386', textAlign: 'center', fontSize: 7, fontWeight: '900', backgroundColor: '#ECEFF4' }, badgeActive: { color: '#2949B6', backgroundColor: '#FFFFFF' }, permission: { color: '#64748B', fontSize: 8, fontWeight: '600' },
-  state: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12, backgroundColor: '#FFFFFF' }, stateText: { color: '#64748B', textAlign: 'center', fontSize: 9, fontWeight: '700' }, list: { width: '100%' }, listHeader: { height: 25, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, borderBottomWidth: 1, borderBottomColor: '#E4E8EF', backgroundColor: '#F4F6F9' }, listHeaderCompact: { display: 'none' }, columnLabel: { width: 120, color: '#788499', fontSize: 7, fontWeight: '900', letterSpacing: 0.6 }, personColumn: { width: 200 }, personColumnCompact: { width: '100%' }, actionColumn: { width: 150 }, listRow: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#EDF0F4', backgroundColor: '#FFFFFF' }, listRowAlternate: { backgroundColor: '#FAFBFD' }, listRowCompact: { height: 'auto', minHeight: 74, flexWrap: 'wrap', paddingVertical: 8 }, personCell: { flexDirection: 'row', alignItems: 'center', gap: 8 }, avatar: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#DCE5FF', borderRadius: 13, backgroundColor: '#EDF2FF' }, avatarText: { color: '#3156C8', fontSize: 10, fontWeight: '900' }, cellCopy: { minWidth: 0, flex: 1 }, cell: { width: 120 }, cellCompact: { width: '30%', flexGrow: 1 }, cellMain: { color: '#263248', fontSize: 9, fontWeight: '800' }, cellSub: { marginTop: 1, color: '#8A95A7', fontSize: 7, fontWeight: '600' }, client: { color: '#142039', fontSize: 9, fontWeight: '900' }, code: { marginTop: 1, color: '#8A95A7', fontSize: 7, fontWeight: '600' }, status: { alignSelf: 'flex-start', paddingHorizontal: 7, paddingVertical: 3, overflow: 'hidden', borderWidth: 1, borderColor: '#F3DFC1', borderRadius: 99, color: '#A95A08', fontSize: 7, fontWeight: '900', letterSpacing: 0.3, backgroundColor: '#FFF7EA' }, statusVerified: { color: '#117A54', borderColor: '#CDEBDE', backgroundColor: '#EAF8F1' }, rowAction: { width: 150, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 2, paddingVertical: 4, paddingHorizontal: 6, borderRadius: 6 }, rowActionCompact: { flexGrow: 1 }, rowActionPressed: { backgroundColor: '#EDF2FF' }, rowActionText: { color: '#2D52C7', fontSize: 8, fontWeight: '900' }, label: { color: '#8390A6', fontSize: 7, fontWeight: '900', letterSpacing: 0.3, textTransform: 'uppercase' },
+  metrics: { flexDirection: 'row', gap: 7 }, metricsCompact: { flexWrap: 'wrap' }, metric: { minWidth: 150, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, paddingHorizontal: 12, borderWidth: 1, borderColor: '#E3E8F0', borderLeftWidth: 3, borderRadius: 9, backgroundColor: '#FFFFFF', shadowColor: '#1E293B', shadowOpacity: 0.035, shadowRadius: 7, shadowOffset: { width: 0, height: 2 }, elevation: 1 }, metricAccentBlue: { borderLeftColor: '#4F46E5', borderColor: '#C7D2FE', backgroundColor: '#EEF2FF' }, metricAccentGreen: { borderLeftColor: '#20A878' }, metricAccentOrange: { borderLeftColor: '#F59E0B', borderColor: '#FDE0AE', backgroundColor: '#FFF7E8' }, metricIcon: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center', borderRadius: 7 }, metricBlue: { backgroundColor: '#DCE4FF' }, metricGreen: { backgroundColor: '#ECF9F4' }, metricOrange: { backgroundColor: '#FFE7BD' }, metricValue: { color: '#172033', fontSize: 13, fontWeight: '900' }, metricLabel: { color: '#727E91', fontSize: 8, fontWeight: '700' },
+  workspace: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 }, workspaceCompact: { flexDirection: 'column', alignItems: 'stretch' }, contentPanel: { minWidth: 0, minHeight: 0, flex: 1, overflow: 'hidden', borderWidth: 1, borderColor: '#DDE3EC', borderRadius: 11, backgroundColor: '#FFFFFF', shadowColor: '#1E293B', shadowOpacity: 0.045, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 2 }, contentHeading: { flexShrink: 0, paddingHorizontal: 16, paddingVertical: 11, borderLeftWidth: 4, borderLeftColor: '#38BDF8', borderBottomWidth: 1, borderBottomColor: '#293D7C', backgroundColor: '#22356F' }, contentTitle: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', letterSpacing: -0.15 }, contentSubtitle: { marginTop: 3, color: '#CBD9FF', fontSize: 9, fontWeight: '500' }, resultsScroll: { flex: 1, minHeight: 0 }, resultsContent: { flexGrow: 1 },
+  tabs: { width: '100%', height: 36, flexDirection: 'row', gap: 3, padding: 3, borderWidth: 1, borderColor: '#DFE4ED', borderRadius: 9, backgroundColor: '#FFFFFF', shadowColor: '#1E293B', shadowOpacity: 0.035, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } }, tabsCompact: { height: 'auto', flexDirection: 'column' }, tabsLabel: { color: '#A1A9B7', fontSize: 8, fontWeight: '900' }, tab: { minHeight: 28, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 7, borderRadius: 6 }, tabActive: { backgroundColor: '#4F46E5', shadowColor: '#4F46E5', shadowOpacity: 0.18, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } }, tabIcon: { width: 22, height: 22, alignItems: 'center', justifyContent: 'center', borderRadius: 5, backgroundColor: '#E8EDFF' }, tabIconActive: { backgroundColor: 'rgba(255,255,255,0.14)' }, tabText: { color: '#566276', fontSize: 9, fontWeight: '700' }, tabTextActive: { color: '#FFFFFF', fontWeight: '900' }, badge: { minWidth: 18, paddingHorizontal: 5, paddingVertical: 2, overflow: 'hidden', borderRadius: 9, color: '#697386', textAlign: 'center', fontSize: 7, fontWeight: '900', backgroundColor: '#ECEFF4' }, badgeActive: { color: '#2949B6', backgroundColor: '#FFFFFF' }, permission: { color: '#64748B', fontSize: 8, fontWeight: '600' },
+  state: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12, backgroundColor: '#FFFFFF' }, stateText: { color: '#64748B', textAlign: 'center', fontSize: 9, fontWeight: '700' }, list: { width: '100%' }, listHeader: { height: 29, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, borderBottomWidth: 1, borderBottomColor: '#DCE5FA', backgroundColor: '#EAF0FD' }, listHeaderCompact: { display: 'none' }, columnLabel: { width: 120, color: '#4B6093', fontSize: 7, fontWeight: '800', letterSpacing: 0.6 }, personColumn: { width: 200 }, personColumnCompact: { width: '100%' }, actionColumn: { width: 150 }, listRow: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#DAE1F3', backgroundColor: '#EEF0FF' }, listRowAlternate: { backgroundColor: '#E9F7F3' }, listRowCompact: { height: 'auto', minHeight: 74, flexWrap: 'wrap', paddingVertical: 8 }, personCell: { flexDirection: 'row', alignItems: 'center', gap: 8 }, avatar: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 10, backgroundColor: '#E0E7FF' }, avatarText: { color: '#4338CA', fontSize: 10, fontWeight: '800' }, cellCopy: { minWidth: 0, flex: 1 }, cell: { width: 120 }, cellCompact: { width: '30%', flexGrow: 1 }, cellMain: { color: '#334155', fontSize: 9, fontWeight: '600' }, cellSub: { marginTop: 1, color: '#8A95A7', fontSize: 7, fontWeight: '600' }, client: { color: '#142039', fontSize: 9, fontWeight: '900' }, code: { marginTop: 1, color: '#8A95A7', fontSize: 7, fontWeight: '600' }, status: { alignSelf: 'flex-start', paddingHorizontal: 7, paddingVertical: 3, overflow: 'hidden', borderWidth: 1, borderColor: '#F3DFC1', borderRadius: 99, color: '#A95A08', fontSize: 7, fontWeight: '900', letterSpacing: 0.3, backgroundColor: '#FFF7EA' }, statusVerified: { color: '#117A54', borderColor: '#CDEBDE', backgroundColor: '#EAF8F1' }, rowAction: { width: 150, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 7, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#E9EEFF', borderWidth: 1, borderColor: '#CFDAFF' }, rowActionCompact: { flexGrow: 1 }, rowActionPressed: { backgroundColor: '#EDF2FF' }, rowActionText: { color: '#2D52C7', fontSize: 8, fontWeight: '900' }, label: { color: '#8390A6', fontSize: 7, fontWeight: '900', letterSpacing: 0.3, textTransform: 'uppercase' },
   taskSection: { gap: 16 }, summaries: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, summary: { minWidth: 210, flexGrow: 1, padding: 15, borderWidth: 1, borderColor: '#DDE7FF', borderRadius: 15, backgroundColor: '#F4F7FF' }, summaryName: { color: '#1E3A8A', fontWeight: '900' }, summaryLine: { marginTop: 4, color: '#58667D', fontSize: 10, fontWeight: '700' }, filters: { flexDirection: 'row', alignItems: 'center', gap: 10 }, filtersCompact: { flexDirection: 'column', alignItems: 'stretch' }, filterInput: { minWidth: 240, paddingHorizontal: 13, paddingVertical: 11, borderWidth: 1, borderColor: '#D7DDE8', borderRadius: 12, backgroundColor: '#FFFFFF' }, chips: { gap: 6 }, chip: { paddingHorizontal: 12, paddingVertical: 9, borderRadius: 99, backgroundColor: '#E9EDF5' }, chipActive: { backgroundColor: '#3156C8' }, chipText: { color: '#536078', fontSize: 9, fontWeight: '900' }, chipTextActive: { color: '#FFFFFF' },
   backdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: 'rgba(15,23,42,.65)' }, modal: { width: '100%', maxWidth: 900, maxHeight: '92%', overflow: 'hidden', borderRadius: 21, backgroundColor: '#fff' }, modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 19, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', backgroundColor: '#F8FAFC' }, modalEyebrow: { color: '#4F46E5', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, modalTitle: { marginTop: 3, color: '#0F172A', fontSize: 20, fontWeight: '900' }, close: { width: 37, height: 37, alignItems: 'center', justifyContent: 'center', borderRadius: 19, backgroundColor: '#E2E8F0' }, modalBody: { gap: 20, padding: 19 }, sectionTitle: { marginBottom: 9, color: '#172554', fontSize: 14, fontWeight: '900' }, detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, detail: { width: '30%', minWidth: 170, flexGrow: 1, padding: 10, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 10, backgroundColor: '#F8FAFC' }, detailValue: { marginTop: 5, color: '#0F172A', fontSize: 10, fontWeight: '700' }, formSection: { gap: 10, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#E2E8F0' }, help: { color: '#64748B', fontSize: 10, fontWeight: '600' }, formGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, field: { width: '47%', minWidth: 230, flexGrow: 1, gap: 5 }, fieldLabel: { color: '#334155', fontSize: 10, fontWeight: '800' }, input: { padding: 11, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, color: '#0F172A' }, timePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 5 }, timePicker: { width: 112, minWidth: 0, flexGrow: 0, flexShrink: 1 }, timeSeparator: { color: '#64748B', fontSize: 14, fontWeight: '900' }, secondsBox: { width: 46, height: 42, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, backgroundColor: '#F1F5F9' }, secondsValue: { color: '#475569', fontSize: 10, fontWeight: '900' }, error: { color: '#DC2626', fontSize: 10, fontWeight: '800' }, submit: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 13, borderRadius: 11, backgroundColor: '#4F46E5' }, disabled: { opacity: .6 }, submitText: { color: '#fff', fontWeight: '900' },
 });
