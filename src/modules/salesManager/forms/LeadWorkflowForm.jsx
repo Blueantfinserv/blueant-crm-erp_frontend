@@ -34,6 +34,14 @@ const getLocalDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
+const getFollowupDateBounds = () => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const latestDate = new Date(today);
+  latestDate.setDate(latestDate.getDate() + 24);
+  return { today, latestDate };
+};
+
 const getClientSideAddress = async (latitude, longitude) => {
   const query = new URLSearchParams({
     latitude: String(latitude),
@@ -134,8 +142,14 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       if (!form.liveLocation) nextErrors.liveLocation = "Live location is required.";
       // Temporarily disabled while the backend visiting-card flow is being fixed.
       // if (!form.cardImage) nextErrors.cardImage = "Card image is required.";
-      if (form.leadStatus === "Work In Progress" && !form.nextPlanDate) {
-        nextErrors.nextPlanDate = "Next plan date is required.";
+      if (form.leadStatus === "Work In Progress") {
+        const { today, latestDate } = getFollowupDateBounds();
+        const nextPlanDate = new Date(`${form.nextPlanDate}T00:00:00`);
+        if (!form.nextPlanDate) {
+          nextErrors.nextPlanDate = "Next plan date is required.";
+        } else if (Number.isNaN(nextPlanDate.getTime()) || nextPlanDate < today || nextPlanDate > latestDate) {
+          nextErrors.nextPlanDate = "Choose a follow-up date from today through 24 days from today.";
+        }
       }
     }
     setErrors(nextErrors);
@@ -445,7 +459,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                       <Icon source="calendar-month-outline" size={18} color="#6D28D9" />
                     </View>
                     <View style={styles.dateCopy}>
-                      <Text style={styles.dateCaption}>Choose follow-up date</Text>
+                      <Text style={styles.dateCaption}>Choose follow-up date (up to 24 days from today)</Text>
                       <Text style={form.nextPlanDate ? styles.inputText : styles.placeholder}>
                         {form.nextPlanDate
                           ? new Intl.DateTimeFormat("en-IN", {
@@ -525,10 +539,11 @@ function CompactCalendar({ viewedMonth, selectedDate, onChangeMonth, onSelect })
   );
   while (cells.length % 7) cells.push(null);
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const { today, latestDate } = getFollowupDateBounds();
   const firstAllowedMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const lastAllowedMonth = new Date(latestDate.getFullYear(), latestDate.getMonth(), 1);
   const canGoBack = viewedMonth > firstAllowedMonth;
+  const canGoForward = viewedMonth < lastAllowedMonth;
   const monthLabel = new Intl.DateTimeFormat("en-IN", {
     month: "long",
     year: "numeric",
@@ -546,10 +561,11 @@ function CompactCalendar({ viewedMonth, selectedDate, onChangeMonth, onSelect })
         </Pressable>
         <Text style={styles.calendarMonth}>{monthLabel}</Text>
         <Pressable
+          disabled={!canGoForward}
           onPress={() => onChangeMonth(new Date(year, month + 1, 1))}
-          style={styles.calendarArrow}
+          style={[styles.calendarArrow, !canGoForward && styles.calendarArrowDisabled]}
         >
-          <Icon source="chevron-right" size={17} color="#6D28D9" />
+          <Icon source="chevron-right" size={17} color={canGoForward ? "#6D28D9" : "#CBD5E1"} />
         </Pressable>
       </View>
       <View style={styles.calendarGrid}>
@@ -559,7 +575,7 @@ function CompactCalendar({ viewedMonth, selectedDate, onChangeMonth, onSelect })
         {cells.map((day, index) => {
           if (!day) return <View key={`empty-${index}`} style={styles.calendarCell} />;
           const date = new Date(year, month, day);
-          const disabled = date < today;
+          const disabled = date < today || date > latestDate;
           const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
           const selected = value === selectedDate;
           return (

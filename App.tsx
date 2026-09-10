@@ -239,7 +239,7 @@ function AppShell() {
     }
     if (auth.isAuthenticated && auth.user?.role) {
       if (screen === 'splash' || screen === 'login') {
-        setScreen('dashboard');
+        setScreen(isSalesWorkspaceExperience(experience) ? 'leads' : 'dashboard');
       }
       return;
     }
@@ -247,7 +247,7 @@ function AppShell() {
       screenHistory.current = [];
       setScreen('login');
     }
-  }, [auth.isAuthenticated, auth.isInitialized, auth.user?.role, screen]);
+  }, [auth.isAuthenticated, auth.isInitialized, auth.user?.role, experience, screen]);
 
   useEffect(() => {
     if (isSalesWorkspaceExperience(experience)) {

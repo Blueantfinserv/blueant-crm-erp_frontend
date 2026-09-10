@@ -6,10 +6,17 @@ import { leadService } from '../services/LeadService';
 import { meetingService } from '../services/MeetingService';
 import type { MeetingResponse, MeetingVerificationRequest } from '../types/meeting';
 import { theme } from '../theme/theme';
+import { createMeetingVerificationForm } from './meetingVerificationForm';
 
 type Tab = 'today' | 'responses' | 'tasks' | 'assign';
 type VerificationField = NonNullable<keyof MeetingVerificationRequest>;
 type VerificationForm = Record<VerificationField, string>;
+const isVerificationFieldVisible = (field: VerificationField, meetingWith: string) => {
+  if (field !== 'personName' && field !== 'position') return true;
+  return ['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(
+    meetingWith.trim().toUpperCase().replace(/\s+/g, '_'),
+  );
+};
 const TABS: readonly { key: Tab; label: string; icon: string }[] = [
   { key: 'today', label: 'Today Meetings', icon: 'calendar-check-outline' },
   { key: 'responses', label: 'PC Meeting Response', icon: 'clipboard-check-outline' },
@@ -30,27 +37,40 @@ const FIELDS: readonly { key: VerificationField; label: string; placeholder: str
 ];
 const emptyForm = (): VerificationForm => ({ meetingTiming: '', ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '', meetingWith: '', personName: '', position: '' });
 const HOURS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
-const MINUTES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
-const AGE_GROUP_OPTIONS = ['AGE_18_25', 'AGE_25_35', 'AGE_36_45', 'AGE_46_55', 'AGE_56_65', 'AGE_65_PLUS'] as const;
-const PROFESSION_OPTIONS = [
-  'DOCTOR',
-  'ENGINEER',
-  'LAWYER',
-  'ADVOCATE',
-  'BUSINESS_OWNER',
-  'SALARIED',
-  'GOVERNMENT_EMPLOYEE',
-  'PRIVATE_EMPLOYEE',
-  'PROFESSOR',
-  'CA',
-  'STUDENT',
-  'RETIRED',
-  'HOMEMAKER',
-  'SELF_EMPLOYED',
-  'OTHER',
-] as const;
+const AGE_GROUP_LABELS: Record<string, string> = {
+  BELOW_25: 'Below 25', AGE_25_35: '25–35', AGE_36_45: '36–45',
+  AGE_46_55: '46–55', AGE_56_65: '56–65', ABOVE_65: '65+',
+};
+const AGE_GROUP_OPTIONS = Object.keys(AGE_GROUP_LABELS);
+const PROFESSION_LABELS: Record<string, string> = {
+  SALARIED_EMPLOYEE: 'Salaried Employee',
+  BUSINESS_OWNER: 'Business Owner',
+  SELF_EMPLOYED: 'Self Employed',
+  DOCTOR: 'Doctor',
+  LAWYER_ADVOCATE: 'Lawyer / Advocate',
+  CHARTERED_ACCOUNTANT: 'Chartered Accountant (CA)',
+  COMPANY_SECRETARY: 'Company Secretary (CS)',
+  ENGINEER: 'Engineer',
+  ARCHITECT: 'Architect',
+  CONSULTANT: 'Consultant',
+  TEACHER_PROFESSOR: 'Teacher / Professor',
+  GOVERNMENT_EMPLOYEE: 'Government Employee',
+  BANKING_FINANCE_PROFESSIONAL: 'Banking / Finance Professional',
+  IT_SOFTWARE_PROFESSIONAL: 'IT / Software Professional',
+  HEALTHCARE_PROFESSIONAL: 'Healthcare Professional',
+  SALES_MARKETING_PROFESSIONAL: 'Sales / Marketing Professional',
+  REAL_ESTATE_PROFESSIONAL: 'Real Estate Professional',
+  TRADER_INVESTOR: 'Trader / Investor',
+  RETIRED: 'Retired',
+  STUDENT: 'Student',
+  HOMEMAKER: 'Homemaker',
+  OTHER: 'Other',
+  NOT_DISCLOSED: 'Not Disclosed',
+};
+const PROFESSION_OPTIONS = Object.keys(PROFESSION_LABELS);
+const POSITION_OPTIONS = ['Sales person', 'Team Leader', 'Admin', 'Super Admin'] as const;
 const show = (v: unknown) => v === undefined || v === null || v === '' ? '—' : String(v);
 const dateOnly = (v?: string) => { const m = v?.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
 const localToday = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
@@ -120,13 +140,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   };
 
   const openVerify = (meeting: MeetingResponse) => {
-    const previous = verified.filter((m) => m.leadCode && m.leadCode === meeting.leadCode).sort((a, b) => (b.meetingVerificationDate ?? '').localeCompare(a.meetingVerificationDate ?? ''))[0];
-    setForm({
-      meetingTiming: meeting.meetingTiming ?? previous?.meetingTiming ?? '', ageGroup: meeting.ageGroup ?? previous?.ageGroup ?? '',
-      existingSip: meeting.existingSip ?? previous?.existingSip ?? '', profession: meeting.profession ?? previous?.profession ?? '',
-      professionDetail: meeting.professionDetail ?? previous?.professionDetail ?? '', bestTimeForMeeting: meeting.bestTimeForMeeting ?? previous?.bestTimeForMeeting ?? '',
-      meetingWith: meeting.meetingWith ?? previous?.meetingWith ?? '', personName: meeting.personName ?? previous?.personName ?? '', position: meeting.position ?? previous?.position ?? '',
-    });
+    setForm(createMeetingVerificationForm(meeting, verified));
     setSubmitError(null); setSelected(meeting);
   };
   const verify = async () => {
@@ -135,7 +149,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       setSubmitError('Meeting Time must use HH:mm:ss format.'); return;
     }
     const payload = Object.fromEntries(
-      FIELDS.map((field) => [field.key, form[field.key].trim()]).filter(([, fieldValue]) => Boolean(fieldValue)),
+      FIELDS.filter((field) => isVerificationFieldVisible(field.key, form.meetingWith))
+        .map((field) => [field.key, form[field.key].trim()]).filter(([, fieldValue]) => Boolean(fieldValue)),
     ) as MeetingVerificationRequest;
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);
     try {
@@ -192,29 +207,25 @@ function VerificationFormField({
 }) {
   const update = (value: string) => setForm((current) => ({ ...current, [field.key]: value }));
 
+  if (!isVerificationFieldVisible(field.key, form.meetingWith)) return null;
+
   if (field.key === 'meetingTiming') {
-    const [selectedHour = '', selectedMinute = ''] = form.meetingTiming.split(':');
-    const updateTime = (hour: string, minute: string) => {
-      if (!hour && !minute) return update('');
-      update(`${hour || '00'}:${minute || '00'}:00`);
+    const [selectedHour = ''] = form.meetingTiming.split(':');
+    const updateTime = (hour: string) => {
+      update(hour ? `${hour}:00:00` : '');
     };
     return (
       <View style={styles.field}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
         <View style={styles.timePickerRow}>
           <View style={[styles.pickerShell, styles.timePicker]}>
-            <Picker selectedValue={selectedHour} onValueChange={(hour) => updateTime(hour, selectedMinute)} style={styles.picker}>
+            <Picker selectedValue={selectedHour} onValueChange={updateTime} style={styles.picker}>
               <Picker.Item label="Hour" value="" />
               {HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} />)}
             </Picker>
           </View>
           <Text style={styles.timeSeparator}>:</Text>
-          <View style={[styles.pickerShell, styles.timePicker]}>
-            <Picker selectedValue={selectedMinute} onValueChange={(minute) => updateTime(selectedHour, minute)} style={styles.picker}>
-              <Picker.Item label="Minute" value="" />
-              {MINUTES.map((minute) => <Picker.Item key={minute} label={minute} value={minute} />)}
-            </Picker>
-          </View>
+          <View style={styles.secondsBox}><Text style={styles.secondsValue}>00</Text></View>
           <Text style={styles.timeSeparator}>:</Text>
           <View style={styles.secondsBox}><Text style={styles.secondsValue}>00</Text></View>
         </View>
@@ -230,7 +241,9 @@ function VerificationFormField({
         ? AGE_GROUP_OPTIONS
         : field.key === 'profession'
           ? PROFESSION_OPTIONS
-          : null;
+          : field.key === 'position'
+            ? POSITION_OPTIONS
+            : null;
   if (options) {
     return (
       <View style={styles.field}>
@@ -238,7 +251,7 @@ function VerificationFormField({
         <View style={styles.pickerShell}>
           <Picker selectedValue={form[field.key]} onValueChange={update} style={styles.picker}>
             <Picker.Item label="Select an option" value="" />
-            {options.map((option) => <Picker.Item key={option} label={option} value={option} />)}
+            {options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : option} value={option} />)}
           </Picker>
         </View>
       </View>
