@@ -1,7 +1,7 @@
 import { SecureStorageService } from '../services/SecureStorageService';
 import type { ActiveMeetingResponse, ApiResponse, CancelMeetingRequest, CreateMeetingRequest, MeetingDetail, MeetingDropdown, MeetingResponse, MeetingSearchRequest, MeetingSummary, MeetingUpdate, PageResponse, RescheduleMeetingRequest, ScheduleMeetingRequest, MeetingWorkflowRequest, MeetingVerificationRequest } from '../types/meeting';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://blueant-crm-erp.up.railway.app/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
 export class MeetingApiError extends Error { constructor(message: string, public code: string) { super(message); this.name = 'MeetingApiError'; } }
 const messageOf = (value: unknown) => typeof value === 'object' && value !== null && 'message' in value && typeof value.message === 'string' ? value.message : null;
 

@@ -1,6 +1,6 @@
 import { SecureStorageService } from '../services/SecureStorageService';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://blueant-crm-erp.up.railway.app/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
 
 export type UploadDocumentAsset = {
   uri: string;

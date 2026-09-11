@@ -193,8 +193,8 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const [search, setSearch] = useState('');
-  const [taskType, setTaskType] = useState<TaskTypeFilter>('All Tasks');
-  const [taskStage, setTaskStage] = useState<TaskStageFilter>('Leads');
+  const [taskType, setTaskType] = useState<TaskTypeFilter>('Today');
+  const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
   const [leadFilter, setLeadFilter] = useState<'Active Leads' | 'Removed Leads'>('Active Leads');
   const [meetingFilter, setMeetingFilter] = useState('All Meetings');
   const [openDropdown, setOpenDropdown] = useState<'task' | 'lead' | 'meeting' | null>(null);

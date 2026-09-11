@@ -1,7 +1,7 @@
 import { SecureStorageService } from '../services/SecureStorageService';
 import type { ApiResponsePageResponseLeadResponse, LeadSearchRequest } from '../types/lead';
 
-const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://blueant-crm-erp.up.railway.app/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
 
 export class LeadSearchApiError extends Error {
   code: string;
