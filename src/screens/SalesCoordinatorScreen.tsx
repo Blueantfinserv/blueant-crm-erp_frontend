@@ -279,6 +279,7 @@ function VerificationFormField({
   setForm: React.Dispatch<React.SetStateAction<VerificationForm>>;
 }) {
   const update = (value: string) => setForm((current) => ({ ...current, [field.key]: value }));
+  const tone = field.key === 'meetingTiming' || field.key === 'ageGroup' ? styles.fieldToneBlue : field.key === 'existingSip' || field.key === 'profession' ? styles.fieldToneTeal : field.key === 'professionDetail' || field.key === 'bestTimeForMeeting' ? styles.fieldToneViolet : styles.fieldToneAmber;
 
   if (!isVerificationFieldVisible(field.key, form.meetingWith)) return null;
 
@@ -288,7 +289,7 @@ function VerificationFormField({
       update(hour ? `${hour}:00:00` : '');
     };
     return (
-      <View style={styles.field}>
+      <View style={[styles.field, tone]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
         <View style={styles.timePickerRow}>
           <View style={[styles.pickerShell, styles.timePicker]}>
@@ -319,7 +320,7 @@ function VerificationFormField({
             : null;
   if (options) {
     return (
-      <View style={styles.field}>
+      <View style={[styles.field, tone]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
         <View style={styles.pickerShell}>
           <Picker selectedValue={form[field.key]} onValueChange={update} style={styles.picker}>
@@ -331,7 +332,7 @@ function VerificationFormField({
     );
   }
 
-  return <View style={styles.field}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={styles.input} /></View>;
+  return <View style={[styles.field, tone]}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={styles.input} /></View>;
 }
 
 const FILTER_COLUMNS: { key: keyof MeetingColumnFilter; label: string }[] = [
@@ -372,8 +373,8 @@ function Details({ meeting: m }: { meeting: MeetingResponse }) {
   const overviewFields = [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate], ['Lead Status', m.leadStatus?.replace(/_/g, ' ')]] as const;
   const contactFields = [['Mobile Number', m.mobileNumber], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
   return <View style={styles.detailsWrap}>
-    <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, index === 3 && styles.overviewStatusCard]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
-    <View style={styles.contactGrid}>{contactFields.map(([label, field]) => <View key={label} style={styles.contactCard}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
+    <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
+    <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
     <View style={styles.contextGrid}>{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{meetingPlace ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>MEETING LOCATION</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={[styles.mapButton, styles.mapButtonCompact]}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
   </View>;
 }
@@ -385,6 +386,7 @@ const styles = StyleSheet.create({
   assignPicker: { height: 42, color: '#172033', fontSize: 11, fontWeight: '700' },
   detailsWrap: { gap: 11 },
   overviewGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  toneBlue: { borderColor: '#C9D8FF', backgroundColor: '#F2F6FF' }, toneViolet: { borderColor: '#DED4FE', backgroundColor: '#F8F5FF' }, toneTeal: { borderColor: '#BDE8E0', backgroundColor: '#F0FCF9' }, toneAmber: { borderColor: '#F5D9A7', backgroundColor: '#FFF9EE' }, toneSlate: { borderColor: '#DCE3ED', backgroundColor: '#F8FAFC' },
   overviewCard: { minWidth: 145, flex: 1, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#D7E0FA', borderRadius: 10, backgroundColor: '#F3F6FF' },
   overviewStatusCard: { borderColor: '#F5D9AA', backgroundColor: '#FFF8EC' },
   overviewValue: { marginTop: 3, color: '#1E3A8A', fontSize: 10, fontWeight: '900' },
