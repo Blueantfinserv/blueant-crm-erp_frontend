@@ -369,16 +369,12 @@ function Cards({ items, filters = {}, empty, action, onOpen, verified = false }:
 function Details({ meeting: m }: { meeting: MeetingResponse }) {
   const meetingPlace = m.meetingLocation ?? m.location ?? m.address;
   const mapUrl = mapUrlFor(m);
-  const primaryFields = [['Mobile Number', m.mobileNumber], ['Sales Person', m.employeeName], ['Meeting Mode', m.meetingMode], ['Joined With', m.aloneWith], ...(m.aloneWith !== 'SELF' ? [['Person Name', m.personName] as const] : [])] as const;
+  const overviewFields = [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate], ['Lead Status', m.leadStatus?.replace(/_/g, ' ')]] as const;
+  const contactFields = [['Mobile Number', m.mobileNumber], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
   return <View style={styles.detailsWrap}>
-    <View style={styles.meetingOverview}>
-      <View style={styles.overviewIcon}><Icon source="calendar-check-outline" size={20} color="#3156C8" /></View>
-      <View style={styles.overviewCopy}><Text style={styles.overviewTitle}>{show(m.meetingTitle ?? m.meetingType)}</Text><Text style={styles.overviewSub}>{show(m.meetingDate)} · Next follow-up: {show(m.nextMeetingDate)} · {show(m.employeeCode)}</Text></View>
-      <View style={styles.overviewStatus}><Text style={styles.overviewStatusText}>{show(m.leadStatus).replace(/_/g, ' ')}</Text></View>
-    </View>
-    <View><Text style={styles.sectionTitle}>Meeting details</Text><View style={styles.detailGrid}>{primaryFields.map(([label, field]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View></View>
-    {(meetingPlace || m.remarks || m.meetingRemarks) ? <View style={styles.contextGrid}>{meetingPlace ? <View style={[styles.contextCard, styles.locationCard]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>MEETING LOCATION</Text></View><Text style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}</View> : null}
-    {(m.latitude != null || m.longitude != null || mapUrl) ? <View style={styles.locationSection}><View style={styles.locationTitleRow}><Text style={styles.sectionTitle}>Live location</Text><Text style={styles.locationHint}>Captured during meeting</Text></View><View style={styles.detailGrid}><View style={styles.detail}><Text style={styles.label}>LATITUDE</Text><Text style={styles.detailValue}>{show(m.latitude)}</Text></View><View style={styles.detail}><Text style={styles.label}>LONGITUDE</Text><Text style={styles.detailValue}>{show(m.longitude)}</Text></View>{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={styles.mapButton}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View></View> : null}
+    <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, index === 3 && styles.overviewStatusCard]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
+    <View style={styles.contactGrid}>{contactFields.map(([label, field]) => <View key={label} style={styles.contactCard}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
+    <View style={styles.contextGrid}>{meetingPlace ? <View style={[styles.contextCard, styles.locationCard]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>MEETING LOCATION</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={styles.mapButton}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
   </View>;
 }
 function VerificationDetails({ meeting: m }: { meeting: MeetingResponse }) { const fields = [['Verified By', m.verifiedBy], ['Verification Date', m.meetingVerificationDate], ...FIELDS.map((field) => [field.label, m[field.key]] as const)]; return <View style={styles.formSection}><Text style={styles.sectionTitle}>Process Coordinator Response</Text><View style={styles.detailGrid}>{fields.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View></View>; }
@@ -388,15 +384,21 @@ const styles = StyleSheet.create({
   assignPickerShell: { height: 42, overflow: 'hidden', borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, backgroundColor: '#FFFFFF' },
   assignPicker: { height: 42, color: '#172033', fontSize: 11, fontWeight: '700' },
   detailsWrap: { gap: 11 },
+  overviewGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  overviewCard: { minWidth: 145, flex: 1, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#D7E0FA', borderRadius: 10, backgroundColor: '#F3F6FF' },
+  overviewStatusCard: { borderColor: '#F5D9AA', backgroundColor: '#FFF8EC' },
+  overviewValue: { marginTop: 3, color: '#1E3A8A', fontSize: 10, fontWeight: '900' },
+  contactGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  contactCard: { minWidth: 130, flex: 1, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 9, backgroundColor: '#F8FAFC' },
   meetingOverview: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10, borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 11, backgroundColor: '#F2F5FF' },
   overviewIcon: { width: 33, height: 33, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#DFE7FF' },
   overviewCopy: { minWidth: 0, flex: 1 },
   overviewTitle: { color: '#172554', fontSize: 12, fontWeight: '900' },
   overviewSub: { marginTop: 2, color: '#62718C', fontSize: 8, fontWeight: '700' },
   overviewStatus: { maxWidth: 170, paddingHorizontal: 9, paddingVertical: 6, borderWidth: 1, borderColor: '#F7D6A4', borderRadius: 99, backgroundColor: '#FFF7E8' },
-  overviewStatusText: { color: '#A95A08', fontSize: 8, fontWeight: '900', textAlign: 'center' },
+  overviewStatusText: { color: '#A95A08', fontSize: 9, fontWeight: '900' },
   contextGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  contextCard: { minWidth: 240, flex: 1, gap: 4, padding: 9, borderRadius: 10 },
+  contextCard: { minWidth: 220, flex: 1, gap: 4, padding: 9, borderRadius: 10 },
   locationCard: { borderWidth: 1, borderColor: '#BEE8DE', backgroundColor: '#F0FDFA' },
   remarksCard: { borderWidth: 1, borderColor: '#F5DEB5', backgroundColor: '#FFFBEB' },
   contextHeading: { flexDirection: 'row', alignItems: 'center', gap: 5 },
