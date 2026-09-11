@@ -292,7 +292,7 @@ function VerificationFormField({
       <View style={[styles.field, tone]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
         <View style={styles.timePickerRow}>
-          <View style={styles.timePicker}><StyledSelect value={selectedHour} onChange={updateTime} placeholder="Hour" options={HOURS.map((hour) => ({ value: hour, label: hour }))} /></View>
+          <View style={[styles.pickerShell, styles.timePicker]}><Picker selectedValue={selectedHour} onValueChange={updateTime} style={styles.picker}><Picker.Item label="Hour" value="" />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} />)}</Picker></View>
           <Text style={styles.timeSeparator}>:</Text>
           <View style={styles.secondsBox}><Text style={styles.secondsValue}>00</Text></View>
           <Text style={styles.timeSeparator}>:</Text>
@@ -317,7 +317,7 @@ function VerificationFormField({
     return (
       <View style={[styles.field, tone]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
-        <StyledSelect value={form[field.key]} onChange={update} placeholder="Select an option" options={options.map((option) => ({ value: option, label: field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : option }))} />
+        <View style={styles.pickerShell}><Picker selectedValue={form[field.key]} onValueChange={update} style={styles.picker}><Picker.Item label="Select an option" value="" />{options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : option} value={option} />)}</Picker></View>
       </View>
     );
   }
@@ -463,7 +463,7 @@ const styles = StyleSheet.create({
   selectBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: 'rgba(15,23,42,0.24)' },
   selectMenu: { position: 'absolute', top: 35, left: 0, right: 0, maxHeight: 250, overflow: 'hidden', borderWidth: 1, borderColor: '#7895E9', borderTopWidth: 0, borderBottomLeftRadius: 10, borderBottomRightRadius: 10, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOpacity: 0.18, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 12 },
   selectMenuTitle: { paddingHorizontal: 15, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E8EDF4', color: '#1E3A8A', fontSize: 11, fontWeight: '900' }, selectOptions: { maxHeight: 250 },
-  selectOption: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#F0F3F7' }, selectOptionActive: { backgroundColor: '#F1F5FF' }, selectOptionText: { color: '#334155', fontSize: 11, fontWeight: '650' }, selectOptionTextActive: { color: '#3156C8', fontWeight: '900' },
+  selectOption: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#F0F3F7' }, selectOptionActive: { backgroundColor: '#F1F5FF' }, selectOptionText: { color: '#334155', fontSize: 11, fontWeight: '600' }, selectOptionTextActive: { color: '#3156C8', fontWeight: '900' },
   assignWarning: { color: '#B45309', fontSize: 9, fontWeight: '700' },
   assignFeedback: { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, borderRadius: 8 },
   assignSuccess: { backgroundColor: '#ECFDF3' },
