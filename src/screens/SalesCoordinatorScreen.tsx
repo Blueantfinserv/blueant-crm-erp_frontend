@@ -292,12 +292,7 @@ function VerificationFormField({
       <View style={[styles.field, tone]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
         <View style={styles.timePickerRow}>
-          <View style={[styles.pickerShell, styles.timePicker]}>
-            <Picker selectedValue={selectedHour} onValueChange={updateTime} style={styles.picker}>
-              <Picker.Item label="Hour" value="" />
-              {HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} />)}
-            </Picker>
-          </View>
+          <View style={styles.timePicker}><StyledSelect value={selectedHour} onChange={updateTime} placeholder="Hour" options={HOURS.map((hour) => ({ value: hour, label: hour }))} /></View>
           <Text style={styles.timeSeparator}>:</Text>
           <View style={styles.secondsBox}><Text style={styles.secondsValue}>00</Text></View>
           <Text style={styles.timeSeparator}>:</Text>
@@ -322,17 +317,18 @@ function VerificationFormField({
     return (
       <View style={[styles.field, tone]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
-        <View style={styles.pickerShell}>
-          <Picker selectedValue={form[field.key]} onValueChange={update} style={styles.picker}>
-            <Picker.Item label="Select an option" value="" />
-            {options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : option} value={option} />)}
-          </Picker>
-        </View>
+        <StyledSelect value={form[field.key]} onChange={update} placeholder="Select an option" options={options.map((option) => ({ value: option, label: field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : option }))} />
       </View>
     );
   }
 
   return <View style={[styles.field, tone]}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={styles.input} /></View>;
+}
+
+function StyledSelect({ value, onChange, placeholder, options }: { value: string; onChange: (value: string) => void; placeholder: string; options: readonly { value: string; label: string }[] }) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value);
+  return <><Pressable onPress={() => setOpen(true)} style={({ pressed }) => [styles.styledSelect, pressed && styles.pressed]}><Text numberOfLines={1} style={[styles.styledSelectText, !selected && styles.styledSelectPlaceholder]}>{selected?.label ?? placeholder}</Text><Icon source="chevron-down" size={18} color="#3156C8" /></Pressable><Modal transparent visible={open} animationType="fade" onRequestClose={() => setOpen(false)}><Pressable style={styles.selectBackdrop} onPress={() => setOpen(false)}><Pressable style={styles.selectMenu} onPress={() => undefined}><Text style={styles.selectMenuTitle}>{placeholder}</Text><ScrollView style={styles.selectOptions}>{options.map((option) => <Pressable key={option.value} onPress={() => { onChange(option.value); setOpen(false); }} style={[styles.selectOption, value === option.value && styles.selectOptionActive]}><Text style={[styles.selectOptionText, value === option.value && styles.selectOptionTextActive]}>{option.label}</Text>{value === option.value ? <Icon source="check" size={16} color="#3156C8" /> : null}</Pressable>)}</ScrollView></Pressable></Pressable></Modal></>;
 }
 
 const FILTER_COLUMNS: { key: keyof MeetingColumnFilter; label: string }[] = [
@@ -461,6 +457,12 @@ const styles = StyleSheet.create({
   assignInput: { height: 42, paddingHorizontal: 12, borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, color: '#172033', fontSize: 11, fontWeight: '700', backgroundColor: '#FFFFFF' },
   pickerShell: { height: 36, justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: '#D4DCE8', borderRadius: 10, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   picker: { height: 36, color: '#1F2937', fontSize: 11, fontWeight: '600' },
+  styledSelect: { height: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 11, borderWidth: 1, borderColor: '#D4DCE8', borderRadius: 10, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
+  styledSelectText: { minWidth: 0, flex: 1, color: '#1F2937', fontSize: 11, fontWeight: '700' }, styledSelectPlaceholder: { color: '#64748B' },
+  selectBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20, backgroundColor: 'rgba(15,23,42,0.24)' },
+  selectMenu: { width: '100%', maxWidth: 340, maxHeight: '70%', overflow: 'hidden', borderWidth: 1, borderColor: '#D9E1EE', borderRadius: 14, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOpacity: 0.22, shadowRadius: 18, shadowOffset: { width: 0, height: 9 }, elevation: 12 },
+  selectMenuTitle: { paddingHorizontal: 15, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#E8EDF4', color: '#1E3A8A', fontSize: 11, fontWeight: '900' }, selectOptions: { maxHeight: 340 },
+  selectOption: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, borderBottomWidth: 1, borderBottomColor: '#F0F3F7' }, selectOptionActive: { backgroundColor: '#F1F5FF' }, selectOptionText: { color: '#334155', fontSize: 11, fontWeight: '650' }, selectOptionTextActive: { color: '#3156C8', fontWeight: '900' },
   assignWarning: { color: '#B45309', fontSize: 9, fontWeight: '700' },
   assignFeedback: { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, borderRadius: 8 },
   assignSuccess: { backgroundColor: '#ECFDF3' },
