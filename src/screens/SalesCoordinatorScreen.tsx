@@ -3,12 +3,14 @@ import { ActivityIndicator, Alert, Linking, Modal, Platform, Pressable, ScrollVi
 import { Picker } from '@react-native-picker/picker';
 import { Icon } from 'react-native-paper';
 import { leadService } from '../services/LeadService';
+import { leadSearchApi } from '../api/leadSearch';
+import type { LeadResponse } from '../types/lead';
 import { meetingService } from '../services/MeetingService';
 import type { MeetingResponse, MeetingVerificationRequest } from '../types/meeting';
 import { theme } from '../theme/theme';
 import { createMeetingVerificationForm } from './meetingVerificationForm';
 
-type Tab = 'today' | 'responses' | 'tasks' | 'assign';
+type Tab = 'today' | 'responses' | 'tasks' | 'assign' | 'assignedLeads';
 type VerificationField = NonNullable<keyof MeetingVerificationRequest>;
 type VerificationForm = Record<VerificationField, string>;
 type MeetingColumnFilter = Partial<Record<'clientName' | 'mobileNumber' | 'meetingTitle' | 'employeeName' | 'leadStatus' | 'meetingDate' | 'nextMeetingDate' | 'aloneWith' | 'verifiedBy', string>>;
@@ -20,9 +22,10 @@ const isVerificationFieldVisible = (field: VerificationField, meetingWith: strin
 };
 const TABS: readonly { key: Tab; label: string; icon: string }[] = [
   { key: 'today', label: 'Today Meetings', icon: 'calendar-check-outline' },
-  { key: 'responses', label: 'PC Meeting Response', icon: 'clipboard-check-outline' },
+  { key: 'responses', label: 'Verified Meetings', icon: 'clipboard-check-outline' },
   { key: 'tasks', label: 'Sales Person Tasks', icon: 'account-group-outline' },
   { key: 'assign', label: 'Assign New Lead', icon: 'account-plus-outline' },
+  { key: 'assignedLeads', label: 'Assigned Leads', icon: 'account-arrow-right-outline' },
 ];
 const emptyAssignForm = () => ({ clientName: '', mobileNumber: '', location: '', clinicAddress: '', speciality: '', salesPersonEmployeeCode: '' });
 const FIELDS: readonly { key: VerificationField; label: string; placeholder: string }[] = [
@@ -121,6 +124,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [assignForm, setAssignForm] = useState(emptyAssignForm);
   const [assigning, setAssigning] = useState(false);
   const [assignMessage, setAssignMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [assignedLeads, setAssignedLeads] = useState<LeadResponse[]>([]);
+  const [coordinatorFilter, setCoordinatorFilter] = useState('');
 
   const exportCurrentList = () => {
     const responseTab = tab === 'responses';
@@ -136,9 +141,9 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     if (!hasLoaded.current) setLoading(true);
     setRefreshing(true);
     try {
-      const [p, v, all] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), meetingService.getVerificationMeetings('VERIFIED'), meetingService.getAllMeetingRecords()]);
+      const [p, v, all, leadResult] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), meetingService.getVerificationMeetings('VERIFIED'), meetingService.getAllMeetingRecords(), leadSearchApi.search({ page: 0, size: 200 })]);
       if (generation !== dataGeneration.current) return;
-      setPending(p); setVerified(v); setMeetings(all);
+      setPending(p); setVerified(v); setMeetings(all); setAssignedLeads((leadResult.data?.content ?? []).filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator));
       hasLoaded.current = true;
       setError(null); setRefreshError(null);
     } catch (e) {
@@ -240,7 +245,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       </View>
       {refreshError ? <Text style={styles.error}>Sync failed. Retrying automatically in 10 seconds.</Text> : null}
     </View>
-    <View style={styles.contentPanel}><View style={styles.contentHeading}><View style={styles.contentHeadingRow}><View><Text style={styles.contentTitle}>{TABS.find((item) => item.key === tab)?.label}</Text><Text style={styles.contentSubtitle}>{tab === 'today' ? `${pending.length} meetings waiting for verification` : tab === 'responses' ? `${verified.length} meetings already verified by the Sales Coordinator` : tab === 'assign' ? 'Create a physical lead and assign it to a sales person' : 'Track ownership and meeting progress'}</Text></View>{(tab === 'today' || tab === 'responses') ? <Pressable onPress={exportCurrentList} style={({ pressed }) => [styles.exportButton, pressed && styles.pressed]}><Icon source="file-excel-outline" size={15} color="#FFFFFF" /><Text style={styles.exportButtonText}>Export Excel</Text></Pressable> : null}</View></View>
+    <View style={styles.contentPanel}><View style={styles.contentHeading}><View style={styles.contentHeadingRow}><View><Text style={styles.contentTitle}>{TABS.find((item) => item.key === tab)?.label}</Text><Text style={styles.contentSubtitle}>{tab === 'today' ? `${pending.length} meetings waiting for verification` : tab === 'responses' ? `${verified.length} meetings already verified by the Sales Coordinator` : tab === 'assign' ? 'Create a physical lead and assign it to a sales person' : tab === 'assignedLeads' ? `${assignedLeads.length} leads assigned by Sales Coordinators` : 'Track ownership and meeting progress'}</Text></View>{(tab === 'today' || tab === 'responses') ? <Pressable onPress={exportCurrentList} style={({ pressed }) => [styles.exportButton, pressed && styles.pressed]}><Icon source="file-excel-outline" size={15} color="#FFFFFF" /><Text style={styles.exportButtonText}>Export Excel</Text></Pressable> : null}</View></View>
     {!compact && !loading && !error && tab !== 'assign' && tab !== 'tasks' ? <MeetingTableHeader verified={tab === 'responses'} records={tab === 'responses' ? verified : pending} filters={tab === 'responses' ? responseColumnFilters : todayColumnFilters} onFiltersChange={tab === 'responses' ? setResponseColumnFilters : setTodayColumnFilters} /> : null}
     <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator={false}>
     {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
@@ -248,6 +253,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     {!loading && !error && tab === 'today' ? <Cards items={pending} filters={todayColumnFilters} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
     {!loading && !error && tab === 'responses' ? <Cards items={verified} filters={responseColumnFilters} empty="No meetings have been verified by the Sales Coordinator yet." action="View Response" onOpen={setSelected} verified /> : null}
     {!loading && !error && tab === 'assign' ? <View style={styles.assignWrap}><View style={styles.assignIntro}><View style={styles.assignIntroIcon}><Icon source="account-arrow-right-outline" size={24} color="#3156C8" /></View><View><Text style={styles.assignIntroTitle}>Lead information</Text><Text style={styles.assignIntroText}>Enter the client details and the employee code that should own this lead.</Text></View></View><View style={styles.assignGrid}>{([['clientName', 'Client Name', 'e.g. Dr. Rajesh Kumar'], ['mobileNumber', 'Mobile Number', '10-digit mobile number'], ['location', 'Location', 'City or area'], ['clinicAddress', 'Clinic Address', 'Complete clinic address'], ['speciality', 'Speciality', 'e.g. Cardiologist'], ['salesPersonEmployeeCode', 'Employee Code', 'e.g. EMP000011']] as const).map(([key, label, placeholder]) => <View key={key} style={[styles.assignField, compact && styles.assignFieldCompact]}><Text style={styles.assignLabel}>{label}</Text>{key === 'salesPersonEmployeeCode' ? <View style={styles.assignPickerShell}><Picker selectedValue={assignForm.salesPersonEmployeeCode} onValueChange={(value) => setAssignForm((current) => ({ ...current, salesPersonEmployeeCode: String(value) }))} style={styles.assignPicker}><Picker.Item label="Select employee code" value="" />{SALES_PERSON_CODES.map((code) => <Picker.Item key={code} label={code} value={code} />)}</Picker></View> : <TextInput value={assignForm[key]} onChangeText={(text) => setAssignForm((current) => ({ ...current, [key]: key === 'mobileNumber' ? text.replace(/\D/g, '').slice(0, 10) : text }))} placeholder={placeholder} placeholderTextColor="#A1A9B7" autoCapitalize="sentences" keyboardType={key === 'mobileNumber' ? 'phone-pad' : 'default'} style={styles.assignInput} />}</View>)}</View>{assignMessage ? <View style={[styles.assignFeedback, assignMessage.type === 'success' ? styles.assignSuccess : styles.assignError]}><Icon source={assignMessage.type === 'success' ? 'check-circle-outline' : 'alert-circle-outline'} size={16} color={assignMessage.type === 'success' ? '#15803D' : '#B91C1C'} /><Text style={[styles.assignFeedbackText, assignMessage.type === 'error' && styles.assignErrorText]}>{assignMessage.text}</Text></View> : null}<Pressable disabled={assigning} onPress={() => void assignLead()} style={({ pressed }) => [styles.assignButton, assigning && styles.disabled, pressed && styles.pressed]}>{assigning ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Icon source="account-check-outline" size={18} color="#FFFFFF" />}<Text style={styles.assignButtonText}>{assigning ? 'Assigning...' : 'Assign Lead'}</Text></Pressable></View> : null}
+    {!loading && !error && tab === 'assignedLeads' ? <AssignedLeadCards leads={assignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} /> : null}
     {!loading && !error && tab === 'tasks' ? <View style={styles.taskSection}>
       <View style={styles.summaries}>{Object.entries(summaries).map(([key, row]) => <View key={key} style={styles.summary}><Text style={styles.summaryName}>{row.name}</Text><Text style={styles.summaryLine}>Today {row.TODAY} · Pending {row.PENDING}</Text><Text style={styles.summaryLine}>Overdue {row.OVERDUE} · Completed {row.COMPLETED}</Text></View>)}</View>
       <View style={[styles.filters, compact && styles.filtersCompact]}><TextInput value={employeeFilter} onChangeText={setEmployeeFilter} placeholder="Filter by sales person" style={styles.filterInput} /><ScrollView horizontal contentContainerStyle={styles.chips}>{(['ALL', 'TODAY', 'PENDING', 'OVERDUE', 'COMPLETED'] as const).map((s) => <Pressable key={s} onPress={() => setStatusFilter(s)} style={[styles.chip, statusFilter === s && styles.chipActive]}><Text style={[styles.chipText, statusFilter === s && styles.chipTextActive]}>{s}</Text></Pressable>)}</ScrollView></View>
@@ -390,8 +396,10 @@ function Details({ meeting: m }: { meeting: MeetingResponse }) {
 }
 function VerificationDetails({ meeting: m }: { meeting: MeetingResponse }) { const fields = [['Verified By', m.verifiedBy], ['Verification Date', m.meetingVerificationDate], ...FIELDS.map((field) => [field.label, m[field.key]] as const)]; return <View style={styles.formSection}><Text style={styles.sectionTitle}>Process Coordinator Response</Text><View style={styles.detailGrid}>{fields.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View></View>; }
 function State({ message, loading = false }: { message: string; loading?: boolean }) { return <View style={styles.state}>{loading ? <ActivityIndicator color="#4F46E5" /> : <Icon source="clipboard-text-outline" size={34} color="#94A3B8" />}<Text style={styles.stateText}>{message}</Text></View>; }
+function AssignedLeadCards({ leads, coordinatorFilter, setCoordinatorFilter }: { leads: LeadResponse[]; coordinatorFilter: string; setCoordinatorFilter: (value: string) => void }) { const coordinators = [...new Set(leads.map((lead) => lead.assignedByEmployeeName).filter(Boolean))] as string[]; const visible = leads.filter((lead) => !coordinatorFilter || lead.assignedByEmployeeName === coordinatorFilter); return <View style={styles.assignedLeadWrap}><View style={styles.assignedLeadFilter}><Text style={styles.assignLabel}>Sales Coordinator</Text><View style={styles.assignPickerShell}><Picker selectedValue={coordinatorFilter} onValueChange={(value) => setCoordinatorFilter(String(value))} style={styles.assignPicker}><Picker.Item label="All Sales Coordinators" value="" />{coordinators.map((name) => <Picker.Item key={name} label={name} value={name} />)}</Picker></View></View>{visible.length ? visible.map((lead) => <View key={lead.leadId ?? lead.leadCode} style={styles.assignedLeadCard}><View><Text style={styles.assignedLeadName}>{show(lead.clientName)}</Text><Text style={styles.assignedLeadMeta}>{show(lead.leadCode)} · {show(lead.mobileNumber)}</Text></View><View><Text style={styles.assignLabel}>ASSIGNED BY</Text><Text style={styles.assignedLeadValue}>{show(lead.assignedByEmployeeName)}</Text><Text style={styles.assignedLeadMeta}>{show(lead.assignedByEmployeeCode)} · {show(lead.assignedAt)}</Text></View><View><Text style={styles.assignLabel}>ASSIGNED TO</Text><Text style={styles.assignedLeadValue}>{show(lead.assignedEmployeeName)}</Text><Text style={styles.assignedLeadMeta}>{show(lead.assignedEmployeeCode)}</Text></View><View style={styles.leadStatusPill}><Text style={styles.leadStatusPillText}>{show(lead.leadStatus).replace(/_/g, ' ')}</Text></View></View>) : <State message="No assigned leads match this Sales Coordinator." />}</View>; }
 
 const styles = StyleSheet.create({
+  assignedLeadWrap: { gap: 9, padding: 14 }, assignedLeadFilter: { width: 250, gap: 4 }, assignedLeadCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 14, padding: 13, borderWidth: 1, borderColor: '#DCE3ED', borderRadius: 11, backgroundColor: '#FAFBFD' }, assignedLeadName: { color: '#172554', fontSize: 12, fontWeight: '900' }, assignedLeadMeta: { marginTop: 3, color: '#71809A', fontSize: 8, fontWeight: '700' }, assignedLeadValue: { marginTop: 3, color: '#1E293B', fontSize: 10, fontWeight: '900' }, leadStatusPill: { paddingHorizontal: 9, paddingVertical: 6, borderRadius: 99, backgroundColor: '#FFF7E8' }, leadStatusPillText: { color: '#A95A08', fontSize: 8, fontWeight: '900' },
   assignPickerShell: { height: 42, overflow: 'hidden', borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, backgroundColor: '#FFFFFF' },
   assignPicker: { height: 42, color: '#172033', fontSize: 11, fontWeight: '700' },
   detailsWrap: { gap: 11 },

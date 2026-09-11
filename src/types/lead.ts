@@ -123,6 +123,12 @@ export type LeadResponse = {
   assignedUserId?: number;
   assignedEmployeeCode?: string;
   assignedEmployeeName?: string;
+  assignedByEmployeeCode?: string;
+  assignedByEmployeeName?: string;
+  assignedAt?: string;
+  assignmentSource?: string;
+  assignedByCoordinator?: boolean;
+  assignmentLabel?: string;
   nextPlanDate?: string;
   remarks?: string;
   currentActiveMeeting?: {
