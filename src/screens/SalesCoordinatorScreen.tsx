@@ -37,7 +37,7 @@ const FIELDS: readonly { key: VerificationField; label: string; placeholder: str
   { key: 'position', label: 'Position', placeholder: 'Position' },
 ];
 const emptyForm = (): VerificationForm => ({ meetingTiming: '', ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '', meetingWith: '', personName: '', position: '' });
-const HOURS = Array.from({ length: 24 }, (_, index) => String(index).padStart(2, '0'));
+const HOURS = Array.from({ length: 14 }, (_, index) => String(index + 9).padStart(2, '0'));
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
 const AGE_GROUP_LABELS: Record<string, string> = {
@@ -256,7 +256,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     </ScrollView>
     </View>
     <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View style={styles.modal}>
-      <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text>{selected ? <Text style={styles.modalMeta}>{show(selected.meetingTitle ?? selected.meetingType)} · {show(selected.meetingDate)} · {show(selected.employeeName)}</Text> : null}</View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
+      <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
       <ScrollView contentContainerStyle={styles.modalBody}>{selected ? <Details meeting={selected} /> : null}{tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected ? <View style={styles.formSection}><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting} onPress={() => void verify()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : 'Verify Meeting'}</Text></Pressable></View> : null}</ScrollView>
     </View></View></Modal>
   </View>;
@@ -387,6 +387,7 @@ const styles = StyleSheet.create({
   detailsWrap: { gap: 11 },
   overviewGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   toneBlue: { borderColor: '#C9D8FF', backgroundColor: '#F2F6FF' }, toneViolet: { borderColor: '#DED4FE', backgroundColor: '#F8F5FF' }, toneTeal: { borderColor: '#BDE8E0', backgroundColor: '#F0FCF9' }, toneAmber: { borderColor: '#F5D9A7', backgroundColor: '#FFF9EE' }, toneSlate: { borderColor: '#DCE3ED', backgroundColor: '#F8FAFC' },
+  fieldToneBlue: { borderColor: '#C9D8FF', backgroundColor: '#F2F6FF' }, fieldToneTeal: { borderColor: '#BDE8E0', backgroundColor: '#F0FCF9' }, fieldToneViolet: { borderColor: '#DED4FE', backgroundColor: '#F8F5FF' }, fieldToneAmber: { borderColor: '#F5D9A7', backgroundColor: '#FFF9EE' },
   overviewCard: { minWidth: 145, flex: 1, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#D7E0FA', borderRadius: 10, backgroundColor: '#F3F6FF' },
   overviewStatusCard: { borderColor: '#F5D9AA', backgroundColor: '#FFF8EC' },
   overviewValue: { marginTop: 3, color: '#1E3A8A', fontSize: 10, fontWeight: '900' },
@@ -458,8 +459,8 @@ const styles = StyleSheet.create({
   assignFieldCompact: { width: '100%', minWidth: 0 },
   assignLabel: { color: '#44516A', fontSize: 9, fontWeight: '900' },
   assignInput: { height: 42, paddingHorizontal: 12, borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, color: '#172033', fontSize: 11, fontWeight: '700', backgroundColor: '#FFFFFF' },
-  pickerShell: { height: 42, justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, backgroundColor: '#FFFFFF' },
-  picker: { height: 42, color: '#172033', fontSize: 11 },
+  pickerShell: { height: 42, justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: '#BFD0FA', borderRadius: 10, backgroundColor: '#F7F9FF', shadowColor: '#3156C8', shadowOpacity: 0.06, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
+  picker: { height: 42, color: '#1E3A8A', fontSize: 11, fontWeight: '700' },
   assignWarning: { color: '#B45309', fontSize: 9, fontWeight: '700' },
   assignFeedback: { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 10, borderRadius: 8 },
   assignSuccess: { backgroundColor: '#ECFDF3' },
