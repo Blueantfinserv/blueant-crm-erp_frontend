@@ -374,7 +374,7 @@ function Details({ meeting: m }: { meeting: MeetingResponse }) {
   return <View style={styles.detailsWrap}>
     <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, index === 3 && styles.overviewStatusCard]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
     <View style={styles.contactGrid}>{contactFields.map(([label, field]) => <View key={label} style={styles.contactCard}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
-    <View style={styles.contextGrid}>{meetingPlace ? <View style={[styles.contextCard, styles.locationCard]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>MEETING LOCATION</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={styles.mapButton}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
+    <View style={styles.contextGrid}>{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{meetingPlace ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>MEETING LOCATION</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={[styles.mapButton, styles.mapButtonCompact]}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
   </View>;
 }
 function VerificationDetails({ meeting: m }: { meeting: MeetingResponse }) { const fields = [['Verified By', m.verifiedBy], ['Verification Date', m.meetingVerificationDate], ...FIELDS.map((field) => [field.label, m[field.key]] as const)]; return <View style={styles.formSection}><Text style={styles.sectionTitle}>Process Coordinator Response</Text><View style={styles.detailGrid}>{fields.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View></View>; }
@@ -399,6 +399,8 @@ const styles = StyleSheet.create({
   overviewStatusText: { color: '#A95A08', fontSize: 9, fontWeight: '900' },
   contextGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   contextCard: { minWidth: 220, flex: 1, gap: 4, padding: 9, borderRadius: 10 },
+  remarksWide: { flex: 50, minWidth: 280 },
+  locationNarrow: { flex: 35, minWidth: 210 },
   locationCard: { borderWidth: 1, borderColor: '#BEE8DE', backgroundColor: '#F0FDFA' },
   remarksCard: { borderWidth: 1, borderColor: '#F5DEB5', backgroundColor: '#FFFBEB' },
   contextHeading: { flexDirection: 'row', alignItems: 'center', gap: 5 },
@@ -408,6 +410,7 @@ const styles = StyleSheet.create({
   locationTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   locationHint: { color: '#8190A8', fontSize: 8, fontWeight: '700' },
   mapButton: { minWidth: 190, flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 15, borderRadius: 10, backgroundColor: '#0F766E' },
+  mapButtonCompact: { minWidth: 145, flex: 15, flexGrow: 0, paddingHorizontal: 8 },
   mapButtonText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
   contentHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
   exportButton: { minHeight: 31, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, borderRadius: 8, backgroundColor: '#15803D', shadowColor: '#14532D', shadowOpacity: 0.2, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } },
