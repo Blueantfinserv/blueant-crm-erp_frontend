@@ -493,7 +493,7 @@ const historyStyles = StyleSheet.create({
   statusCompleted: { color: '#15803D', backgroundColor: '#DCFCE7' },
   statusScheduled: { color: '#2563EB', backgroundColor: '#DBEAFE' },
   statusPending: { color: '#B45309', backgroundColor: '#FEF3C7' },
-  meetingRemark: { width: '100%', color: '#334155', fontSize: 9, fontWeight: '600', lineHeight: 12 },
+  meetingRemark: { minWidth: 0, flex: 1, flexBasis: '74%', marginLeft: 120, paddingLeft: 8, borderLeftWidth: 2, borderLeftColor: '#94A3B8', color: '#334155', fontSize: 9, fontWeight: '600', lineHeight: 12 },
 });
 const styles = StyleSheet.create({
   headerSearch: { width: 190, height: 32, paddingHorizontal: 10, borderWidth: 1, borderColor: '#91A7E0', borderRadius: 7, color: '#FFFFFF', fontSize: 9, fontWeight: '700', backgroundColor: 'rgba(255,255,255,0.12)' }, headerSearchCompact: { width: '100%', height: 38, fontSize: 11 },
