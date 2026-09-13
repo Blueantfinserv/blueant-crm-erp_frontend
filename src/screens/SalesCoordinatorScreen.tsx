@@ -466,7 +466,7 @@ const historyStyles = StyleSheet.create({
   assignmentSection: { borderColor: '#CDECE5', backgroundColor: '#F2FCF9' },
   verificationSection: { borderColor: '#E4DAFC', backgroundColor: '#F9F7FF' },
   sectionTitle: { color: '#1E3A8A', fontSize: 10, fontWeight: '900' },
-  detail: { paddingHorizontal: 7, paddingVertical: 4, borderColor: '#E1E8F3', backgroundColor: 'rgba(255,255,255,0.76)' },
+  detail: { width: undefined, minWidth: 0, flexBasis: 0, flexGrow: 1, paddingHorizontal: 7, paddingVertical: 4, borderColor: '#E1E8F3', backgroundColor: 'rgba(255,255,255,0.76)' },
   meetingList: { gap: 5 },
   meetingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 2, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: '#DCE5F3', borderRadius: 10, backgroundColor: '#F7F9FE' },
   meetingRowAlt: { borderColor: '#D8EDE7', backgroundColor: '#F4FBF8' },
