@@ -461,12 +461,12 @@ function LeadHistoryContentStable({ lead, meetings, loading, error }: { lead: Le
   return <View style={styles.historyWrap}>{section('Lead details', leadFields, 'lead')}{section('Assignment details', assignmentFields, 'assignment')}{section('SC verification details', scFields, 'verification')}<View style={styles.historyTitleRow}><Text style={styles.sectionTitle}>Meeting history</Text><Text style={styles.historyCount}>{loading ? 'Loading...' : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}`}</Text></View>{error ? <Text style={styles.error}>{error}</Text> : null}{loading ? <State loading message="Loading lead history..." /> : meetings.length ? <View style={historyStyles.meetingList}>{meetings.map((meeting, index) => { const completed = ['COMPLETED', 'VERIFIED'].includes(String(meeting.meetingStatus ?? meeting.verificationStatus ?? '').toUpperCase()); const remark = completed ? meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion : null; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={[historyStyles.meetingRow, index % 2 === 1 && historyStyles.meetingRowAlt]}><View style={historyStyles.meetingTitleBlock}><Text style={historyStyles.meetingTitle}>{show(meeting.meetingTitle ?? meeting.meetingType)}</Text><Text style={historyStyles.meetingDate}>{show(meeting.meetingDate)}</Text></View><Text style={historyStyles.meetingField}>{meeting.meetingTiming ? `Time: ${meeting.meetingTiming}` : ''}</Text><Text style={historyStyles.meetingField}>{meeting.meetingWith ? `Joined: ${meeting.meetingWith.replace(/_/g, ' ')}` : ''}</Text><Text style={historyStyles.meetingStatus}>{show(meeting.meetingStatus ?? meeting.leadStatus).replace(/_/g, ' ')}</Text>{remark ? <Text numberOfLines={1} style={historyStyles.meetingRemark}>{remark}</Text> : null}</View>; })}</View> : <State message="No meeting history is available for this lead yet." />}</View>;
 }
 const historyStyles = StyleSheet.create({
-  section: { gap: 7, padding: 9, borderWidth: 1, borderRadius: 11 },
+  section: { gap: 5, padding: 7, borderWidth: 1, borderRadius: 10 },
   leadSection: { borderColor: '#D6E3FC', backgroundColor: '#F5F8FF' },
   assignmentSection: { borderColor: '#CDECE5', backgroundColor: '#F2FCF9' },
   verificationSection: { borderColor: '#E4DAFC', backgroundColor: '#F9F7FF' },
-  sectionTitle: { color: '#1E3A8A', fontSize: 11, fontWeight: '900' },
-  detail: { borderColor: '#E1E8F3', backgroundColor: 'rgba(255,255,255,0.76)' },
+  sectionTitle: { color: '#1E3A8A', fontSize: 10, fontWeight: '900' },
+  detail: { paddingHorizontal: 7, paddingVertical: 4, borderColor: '#E1E8F3', backgroundColor: 'rgba(255,255,255,0.76)' },
   meetingList: { gap: 5 },
   meetingRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 14, rowGap: 2, paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: '#DCE5F3', borderRadius: 10, backgroundColor: '#F7F9FE' },
   meetingRowAlt: { borderColor: '#D8EDE7', backgroundColor: '#F4FBF8' },
