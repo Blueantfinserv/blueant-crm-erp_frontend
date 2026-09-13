@@ -204,7 +204,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   };
 
   const openVerify = (meeting: MeetingResponse) => {
-    setForm(createMeetingVerificationForm(meeting, verified));
+    setForm(createMeetingVerificationForm(meeting, [...verified, ...meetings]));
     setSubmitError(null); setSelected(meeting);
   };
   const verify = async () => {
