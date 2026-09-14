@@ -102,9 +102,7 @@ export type AssignLeadRequest = {
   clinicAddress: string;
   speciality: string;
   salesPersonEmployeeCode: string;
-  assignedAt?: string;
-  assignedDate?: string;
-  assignmentDate?: string;
+  assignmentDate: string;
 };
 
 export type LeadResponse = {
