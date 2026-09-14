@@ -115,6 +115,16 @@ const exportMeetingCsv = (items: readonly MeetingResponse[], fileName: string, i
   link.href = url; link.download = `${fileName}.csv`; link.click();
   URL.revokeObjectURL(url);
 };
+const loadCoordinatorAssignedLeads = async () => {
+  const firstPage = await leadSearchApi.search({ page: 0, size: 100, sortBy: 'assignedAt', sortDirection: 'DESC' });
+  const leads = [...(firstPage.data?.content ?? [])];
+  const totalPages = firstPage.data?.totalPages ?? 1;
+  for (let page = 1; page < totalPages; page += 1) {
+    const response = await leadSearchApi.search({ page, size: 100, sortBy: 'assignedAt', sortDirection: 'DESC' });
+    leads.push(...(response.data?.content ?? []));
+  }
+  return leads.filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator);
+};
 
 export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly string[] | null }) {
   const compact = useWindowDimensions().width < 760;
@@ -167,9 +177,9 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     if (!hasLoaded.current) setLoading(true);
     setRefreshing(true);
     try {
-      const [p, v, all, leadResult] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), meetingService.getVerificationMeetings('VERIFIED'), meetingService.getAllMeetingRecords(), leadSearchApi.search({ page: 0, size: 200 })]);
+      const [p, v, all, coordinatorAssignedLeads] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), meetingService.getVerificationMeetings('VERIFIED'), meetingService.getAllMeetingRecords(), loadCoordinatorAssignedLeads()]);
       if (generation !== dataGeneration.current) return;
-      setPending(p); setVerified(v); setMeetings(all); setAssignedLeads((leadResult.data?.content ?? []).filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator));
+      setPending(p); setVerified(v); setMeetings(all); setAssignedLeads(coordinatorAssignedLeads);
       hasLoaded.current = true;
       setError(null); setRefreshError(null);
     } catch (e) {
