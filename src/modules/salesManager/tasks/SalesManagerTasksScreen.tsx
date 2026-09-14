@@ -24,7 +24,7 @@ const parseBackendCalendarDate = (value?: string | null) => {
 };
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
-const LEAD_FILTER_OPTIONS = ['Active Leads', 'Removed Leads'] as const;
+const LEAD_FILTER_OPTIONS = ['Today Leads', 'Pending Leads', 'Removed Leads'] as const;
 const SERVICE_REQUEST_FORM_URL = 'https://docs.google.com/forms/d/14H3qkLVigG18GVMhcIqGb0PrR2hk3C5L9EHHDKxbqD0/viewform?edit_requested=true';
 const SHOW_NEW_LEAD_ACTION = false;
 const isHiddenCompletedLead = (status?: LeadResponse['leadStatus'] | MeetingResponse['leadStatus']) => (
@@ -45,6 +45,15 @@ const formatTimestamp = (timestamp?: string | null) => {
   return `${date.day} ${MONTH_LABELS[date.month - 1]}`;
 };
 
+const todayCalendarDate = () => {
+  const now = new Date();
+  return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
+};
+
+const assignedOnToday = (assignedAt?: string) => (
+  String(assignedAt ?? '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] === todayCalendarDate()
+);
+
 const meetingTitleOrder = (title: string) => {
   const match = title.match(/^(\d+)/);
   return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
@@ -59,6 +68,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     meetingCode: lead.currentActiveMeeting?.meetingCode,
     leadId: lead.leadId,
     leadStatus: lead.leadStatus,
+    assignedAt: lead.assignedAt,
     name: lead.clientName ?? 'Unnamed lead',
     phone: lead.mobileNumber ?? '',
     locationText: lead.location ?? 'Location unavailable',
@@ -195,7 +205,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const [search, setSearch] = useState('');
   const [taskType, setTaskType] = useState<TaskTypeFilter>('Today');
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
-  const [leadFilter, setLeadFilter] = useState<'Active Leads' | 'Removed Leads'>('Active Leads');
+  const [leadFilter, setLeadFilter] = useState<typeof LEAD_FILTER_OPTIONS[number]>('Today Leads');
   const [meetingFilter, setMeetingFilter] = useState('All Meetings');
   const [openDropdown, setOpenDropdown] = useState<'task' | 'lead' | 'meeting' | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -307,7 +317,9 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
     });
     const activeLeads = countableTasks.filter((task) => (
       task.taskKind === 'LEAD' && task.leadStatus !== 'REMOVED' && task.leadStatus !== 'NOT_INTERESTED'
-    )).length;
+    ));
+    const todayLeads = activeLeads.filter((task) => assignedOnToday(task.assignedAt)).length;
+    const pendingLeads = activeLeads.filter((task) => !assignedOnToday(task.assignedAt)).length;
     const removedLeads = countableTasks.filter((task) => (
       task.taskKind === 'LEAD' && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED')
     )).length;
@@ -316,11 +328,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       if (task.meetingTitle) counts[task.meetingTitle] = (counts[task.meetingTitle] ?? 0) + 1;
       return counts;
     }, {});
-    return { activeLeads, removedLeads, meetings: meetings.length, meetingsByTitle };
+    return { todayLeads, pendingLeads, removedLeads, meetings: meetings.length, meetingsByTitle };
   }, [search, taskType, tasks]);
 
   const getLeadFilterCount = (option: typeof LEAD_FILTER_OPTIONS[number]) => (
-    option === 'Removed Leads' ? filterCounts.removedLeads : filterCounts.activeLeads
+    option === 'Today Leads' ? filterCounts.todayLeads : option === 'Pending Leads' ? filterCounts.pendingLeads : filterCounts.removedLeads
   );
   const getMeetingFilterCount = (option: string) => (
     option === 'All Meetings' ? filterCounts.meetings : (filterCounts.meetingsByTitle[option] ?? 0)
@@ -338,10 +350,13 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       const matchesTaskType = taskType === 'All Tasks' || task.schedule === taskType;
       const matchesStage = (taskStage === 'Leads' && task.taskKind === 'LEAD')
         || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
+      const isRemovedLead = task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED';
       const matchesLead = taskStage !== 'Leads'
         || (leadFilter === 'Removed Leads'
-          ? task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED'
-          : task.leadStatus !== 'REMOVED' && task.leadStatus !== 'NOT_INTERESTED');
+          ? isRemovedLead
+          : leadFilter === 'Today Leads'
+            ? !isRemovedLead && assignedOnToday(task.assignedAt)
+            : !isRemovedLead && !assignedOnToday(task.assignedAt));
       const matchesMeeting = taskStage !== 'Meetings'
         || meetingFilter === 'All Meetings'
         || task.meetingTitle === meetingFilter;
@@ -455,7 +470,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                         numberOfLines={1}
                         style={[styles.stageTabText, taskStage === 'Leads' && styles.stageTabTextSelected]}
                       >
-                        {leadFilter === 'Active Leads' ? 'Leads' : leadFilter} ({getLeadFilterCount(leadFilter)})
+                        {leadFilter} ({getLeadFilterCount(leadFilter)})
                       </Text>
                       <Icon
                         source={openDropdown === 'lead' ? 'chevron-up' : 'chevron-down'}
