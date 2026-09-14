@@ -1,4 +1,4 @@
-export const taskTypeOptions = ['All Meetings', 'Today', 'Pending', 'Future 3 Days'] as const;
+export const taskTypeOptions = ['All Tasks', 'Today', 'Pending', 'Future 3 Days'] as const;
 
 export const taskStageOptions = ['Leads', 'Meetings'] as const;
 
