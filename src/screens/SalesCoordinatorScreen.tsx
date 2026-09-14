@@ -123,7 +123,7 @@ const loadCoordinatorAssignedLeads = async () => {
     const response = await leadSearchApi.search({ page, size: 100, sortBy: 'assignedAt', sortDirection: 'DESC' });
     leads.push(...(response.data?.content ?? []));
   }
-  return leads.map((lead) => ({ ...lead, assignedAt: lead.assignedAt ?? lead.assignedDate ?? lead.assignmentDate })).filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator);
+  return leads.map((lead) => ({ ...lead, assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt })).filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator);
 };
 
 export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly string[] | null }) {
