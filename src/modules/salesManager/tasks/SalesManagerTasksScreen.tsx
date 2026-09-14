@@ -725,7 +725,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   primaryAction: {
-    minHeight: 26,
+    minHeight: 32,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: theme.spacing.md,
@@ -743,7 +743,7 @@ const styles = StyleSheet.create({
     fontWeight: '900',
   },
   refreshAction: {
-    minHeight: 26,
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -770,7 +770,7 @@ const styles = StyleSheet.create({
   },
   searchContainer: {
     minWidth: 220,
-    minHeight: 30,
+    minHeight: 36,
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
@@ -819,7 +819,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   stageTabs: {
-    minHeight: 30,
+    minHeight: 36,
     flexDirection: 'row',
     padding: 2,
     borderWidth: 1,
@@ -860,13 +860,13 @@ const styles = StyleSheet.create({
   },
   leadStageButton: {
     minWidth: 84,
-    minHeight: 26,
+    minHeight: 32,
     flexDirection: 'row',
     gap: 4,
   },
   leadStageMenu: {
     position: 'absolute',
-    top: 32,
+    top: 38,
     left: 0,
     width: 150,
     padding: 3,
@@ -878,13 +878,13 @@ const styles = StyleSheet.create({
   },
   meetingStageButton: {
     minWidth: 96,
-    minHeight: 26,
+    minHeight: 32,
     flexDirection: 'row',
     gap: 4,
   },
   meetingStageMenu: {
     position: 'absolute',
-    top: 32,
+    top: 38,
     right: 0,
     width: 180,
     maxHeight: 190,
@@ -907,7 +907,7 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   dropdownButton: {
-    minHeight: 30,
+    minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -930,7 +930,7 @@ const styles = StyleSheet.create({
   },
   dropdownMenu: {
     position: 'absolute',
-    top: 34,
+    top: 40,
     left: 0,
     right: 0,
     maxHeight: 190,
@@ -945,7 +945,7 @@ const styles = StyleSheet.create({
     padding: 3,
   },
   dropdownOption: {
-    minHeight: 24,
+    minHeight: 30,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
