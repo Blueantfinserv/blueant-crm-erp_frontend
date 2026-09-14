@@ -199,6 +199,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const [meetingFilter, setMeetingFilter] = useState('All Meetings');
   const [openDropdown, setOpenDropdown] = useState<'task' | 'lead' | 'meeting' | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [leadState, setLeadState] = useState<LeadSearchState>(() => leadSearchService.getState());
   const [meetingState, setMeetingState] = useState<MeetingQueueState>(() => meetingService.getState());
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
@@ -260,6 +261,16 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
     void leadSearchService.loadLeads();
     return unsubscribe;
   }, []);
+
+  const refreshTasks = async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await Promise.all([leadSearchService.loadLeads(), meetingService.loadMeetings()]);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   useEffect(() => {
     const unsubscribe = meetingService.subscribe(setMeetingState);
@@ -352,6 +363,17 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                 <Text style={styles.title}>Your Tasks</Text>
               </View>
               <View style={[styles.headingActions, isMobile && styles.mobileHeadingActions]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Refresh tasks"
+                  accessibilityState={{ disabled: isRefreshing }}
+                  disabled={isRefreshing}
+                  onPress={() => void refreshTasks()}
+                  style={({ pressed }) => [styles.refreshAction, isRefreshing && styles.refreshActionDisabled, pressed && styles.pressed]}
+                >
+                  {isRefreshing ? <ActivityIndicator size="small" color={theme.colors.primary} /> : <Icon source="refresh" size={16} color={theme.colors.primary} />}
+                  <Text style={styles.refreshActionText}>{isRefreshing ? 'Refreshing' : 'Refresh'}</Text>
+                </Pressable>
                 {SHOW_NEW_LEAD_ACTION ? (
                   <Pressable
                     accessibilityRole="button"
@@ -720,6 +742,20 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '900',
   },
+  refreshAction: {
+    minHeight: 26,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingHorizontal: theme.spacing.sm,
+    borderWidth: 1,
+    borderColor: '#CBD9EE',
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  refreshActionDisabled: { opacity: 0.62 },
+  refreshActionText: { color: theme.colors.primary, fontSize: 9, fontWeight: '900' },
   filters: {
     flexDirection: 'row',
     alignItems: 'flex-start',
