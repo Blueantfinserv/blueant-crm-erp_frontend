@@ -316,7 +316,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       return matchesSearch;
     });
     const countableTasks = searchedTasks.filter((task) => {
-      const matchesTaskType = taskType === 'All Tasks' || (task.taskKind === 'MEETING' && task.schedule === taskType);
+      const matchesTaskType = task.taskKind === 'LEAD' || taskType === 'All Meetings' || task.schedule === taskType;
       return matchesTaskType;
     });
     const activeLeads = searchedTasks.filter((task) => (
@@ -350,7 +350,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         !normalizedSearch ||
         task.name.toLowerCase().includes(normalizedSearch) ||
         (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
-      const matchesTaskType = taskType === 'All Tasks' || (task.taskKind === 'MEETING' && task.schedule === taskType);
+      const matchesTaskType = task.taskKind === 'LEAD' || taskType === 'All Meetings' || task.schedule === taskType;
       const matchesStage = (taskStage === 'Leads' && task.taskKind === 'LEAD')
         || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
       const isRemovedLead = task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED';
@@ -382,7 +382,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Show leads assigned today"
-                  onPress={() => { setTaskType('All Tasks'); setTaskStage('Leads'); setLeadFilter('All Leads'); setTodayAssignedOnly(true); setOpenDropdown(null); }}
+                  onPress={() => { setTaskType('All Meetings'); setTaskStage('Leads'); setLeadFilter('All Leads'); setTodayAssignedOnly(true); setOpenDropdown(null); }}
                   style={({ pressed }) => [styles.todayLeadsAction, todayAssignedOnly && styles.todayLeadsActionActive, pressed && styles.pressed]}
                 >
                   <Icon source="calendar-today-outline" size={15} color={todayAssignedOnly ? '#FFFFFF' : theme.colors.primary} />
@@ -443,7 +443,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
               </View>
 
               <View style={[styles.dropdowns, isMobile && styles.mobileDropdowns]}>
-                <FilterDropdown
+                {taskStage === 'Meetings' ? <FilterDropdown
                   value={taskType}
                   options={taskTypeOptions}
                   compactWidth={isMobile}
@@ -452,13 +452,13 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                   onSelect={(value) => {
                     setTaskType(value);
                     setTodayAssignedOnly(false);
-                    setTaskStage(value === 'All Tasks' ? 'Leads' : 'Meetings');
+                    setTaskStage('Meetings');
                     setOpenDropdown(null);
                   }}
-                  accessibilityLabel="Filter by task type"
-                />
+                  accessibilityLabel="Filter meetings by schedule"
+                /> : null}
                 <View style={[styles.stageTabs, isMobile && styles.mobileStageTabs]}>
-                  {taskType === 'All Tasks' ? <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
+                  <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Filter leads by status"
@@ -468,6 +468,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                       }}
                       onPress={() => {
                         setTaskStage('Leads');
+                        setTodayAssignedOnly(false);
                         setOpenDropdown((current) => (current === 'lead' ? null : 'lead'));
                       }}
                       style={({ pressed }) => [
@@ -521,19 +522,20 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                         })}
                       </View>
                     ) : null}
-                  </View> : null}
+                  </View>
 
                   <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Filter meetings by backend title"
+                      accessibilityLabel="Show meetings"
                       accessibilityState={{
                         expanded: openDropdown === 'meeting',
                         selected: taskStage === 'Meetings',
                       }}
                       onPress={() => {
                         setTaskStage('Meetings');
-                        setOpenDropdown((current) => (current === 'meeting' ? null : 'meeting'));
+                        setMeetingFilter('All Meetings');
+                        setOpenDropdown(null);
                       }}
                       style={({ pressed }) => [
                         styles.stageTab,
@@ -547,13 +549,8 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                         numberOfLines={1}
                         style={[styles.stageTabText, taskStage === 'Meetings' && styles.stageTabTextSelected]}
                       >
-                        {meetingFilter === 'All Meetings' ? 'Meetings' : meetingFilter} ({getMeetingFilterCount(meetingFilter)})
+                        Meetings ({filterCounts.meetings})
                       </Text>
-                      <Icon
-                        source={openDropdown === 'meeting' ? 'chevron-up' : 'chevron-down'}
-                        size={16}
-                        color={taskStage === 'Meetings' ? '#FFFFFF' : theme.colors.muted}
-                      />
                     </Pressable>
 
                     {openDropdown === 'meeting' ? (
