@@ -252,7 +252,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     } catch (e) { setHistoryError(e instanceof Error ? e.message : 'Lead history could not be loaded.'); setHistoryMeetings(localMeetings); }
     finally { setHistoryLoading(false); }
   };
-  const metricsBlock = <View style={styles.metrics}><Metric icon="clock-outline" value={pending.length} label="Awaiting review" tone="blue" /><Metric icon="account-outline" value={Object.keys(summaries).length} label="Sales people" tone="orange" /></View>;
+  const metricsBlock = <View style={styles.metrics}><Metric icon="clock-outline" value={pending.length} label="To review" tone="blue" /><Metric icon="account-outline" value={Object.keys(summaries).length} label="Sales people" tone="orange" /></View>;
   const syncBlock = <View style={[styles.syncControls, compact && styles.syncControlsCompact]}><Pressable disabled={refreshing || submitting} onPress={() => void load()} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable><View style={styles.autoRefreshBadge}><View style={styles.autoRefreshDot} /><Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : 'Auto-refresh'}</Text><View style={styles.countdownBadge}>{refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{refreshSeconds}s</Text>}</View></View></View>;
   return <View style={[styles.page, compact && styles.pageCompact]}>
     <View style={styles.topSection}>
