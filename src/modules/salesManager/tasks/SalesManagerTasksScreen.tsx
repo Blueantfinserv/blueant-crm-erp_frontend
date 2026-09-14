@@ -68,7 +68,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     meetingCode: lead.currentActiveMeeting?.meetingCode,
     leadId: lead.leadId,
     leadStatus: lead.leadStatus,
-    assignedAt: lead.assignedAt,
+    assignedAt: lead.assignedAt ?? lead.assignedDate ?? lead.assignmentDate,
     name: lead.clientName ?? 'Unnamed lead',
     phone: lead.mobileNumber ?? '',
     locationText: lead.location ?? 'Location unavailable',

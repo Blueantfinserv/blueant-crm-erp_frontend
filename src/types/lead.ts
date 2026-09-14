@@ -103,6 +103,8 @@ export type AssignLeadRequest = {
   speciality: string;
   salesPersonEmployeeCode: string;
   assignedAt?: string;
+  assignedDate?: string;
+  assignmentDate?: string;
 };
 
 export type LeadResponse = {
@@ -127,6 +129,8 @@ export type LeadResponse = {
   assignedByEmployeeCode?: string;
   assignedByEmployeeName?: string;
   assignedAt?: string;
+  assignedDate?: string;
+  assignmentDate?: string;
   assignmentSource?: string;
   assignedByCoordinator?: boolean;
   assignmentLabel?: string;

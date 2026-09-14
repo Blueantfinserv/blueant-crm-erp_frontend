@@ -65,12 +65,13 @@ export class LeadSearchService {
       });
       const leads = await Promise.all((response.data?.content ?? []).map(async (lead) => {
         const uniqueLeadId = lead.uniqueLeadId?.trim();
-        if (!uniqueLeadId) return lead;
+        if (!uniqueLeadId) return { ...lead, assignedAt: lead.assignedAt ?? lead.assignedDate ?? lead.assignmentDate };
         try {
           const details = (await leadApi.getLeadDetails(uniqueLeadId)).data;
-          return details ? { ...lead, ...details } : lead;
+          const mergedLead = details ? { ...lead, ...details } : lead;
+          return { ...mergedLead, assignedAt: mergedLead.assignedAt ?? mergedLead.assignedDate ?? mergedLead.assignmentDate };
         } catch {
-          return lead;
+          return { ...lead, assignedAt: lead.assignedAt ?? lead.assignedDate ?? lead.assignmentDate };
         }
       }));
       if (generation !== this.requestGeneration) return;
