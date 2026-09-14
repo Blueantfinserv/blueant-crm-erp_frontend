@@ -24,7 +24,7 @@ const parseBackendCalendarDate = (value?: string | null) => {
 };
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
-const LEAD_FILTER_OPTIONS = ['Today Leads', 'Pending Leads', 'Removed Leads'] as const;
+const LEAD_FILTER_OPTIONS = ['All Leads', 'Removed Leads'] as const;
 const SERVICE_REQUEST_FORM_URL = 'https://docs.google.com/forms/d/14H3qkLVigG18GVMhcIqGb0PrR2hk3C5L9EHHDKxbqD0/viewform?edit_requested=true';
 const SHOW_NEW_LEAD_ACTION = false;
 const isHiddenCompletedLead = (status?: LeadResponse['leadStatus'] | MeetingResponse['leadStatus']) => (
@@ -205,7 +205,8 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const [search, setSearch] = useState('');
   const [taskType, setTaskType] = useState<TaskTypeFilter>('Today');
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
-  const [leadFilter, setLeadFilter] = useState<typeof LEAD_FILTER_OPTIONS[number]>('Today Leads');
+  const [leadFilter, setLeadFilter] = useState<typeof LEAD_FILTER_OPTIONS[number]>('All Leads');
+  const [todayAssignedOnly, setTodayAssignedOnly] = useState(false);
   const [meetingFilter, setMeetingFilter] = useState('All Meetings');
   const [openDropdown, setOpenDropdown] = useState<'task' | 'lead' | 'meeting' | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -307,20 +308,22 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const filterCounts = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     const normalizedPhoneSearch = search.replace(/\D/g, '');
-    const countableTasks = tasks.filter((task) => {
+    const searchedTasks = tasks.filter((task) => {
       const matchesSearch =
         !normalizedSearch
         || task.name.toLowerCase().includes(normalizedSearch)
         || (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
-      const matchesTaskType = taskType === 'All Tasks' || task.schedule === taskType;
-      return matchesSearch && matchesTaskType;
+      return matchesSearch;
     });
-    const activeLeads = countableTasks.filter((task) => (
+    const countableTasks = searchedTasks.filter((task) => {
+      const matchesTaskType = taskType === 'All Tasks' || (task.taskKind === 'MEETING' && task.schedule === taskType);
+      return matchesTaskType;
+    });
+    const activeLeads = searchedTasks.filter((task) => (
       task.taskKind === 'LEAD' && task.leadStatus !== 'REMOVED' && task.leadStatus !== 'NOT_INTERESTED'
     ));
     const todayLeads = activeLeads.filter((task) => assignedOnToday(task.assignedAt)).length;
-    const pendingLeads = activeLeads.filter((task) => !assignedOnToday(task.assignedAt)).length;
-    const removedLeads = countableTasks.filter((task) => (
+    const removedLeads = searchedTasks.filter((task) => (
       task.taskKind === 'LEAD' && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED')
     )).length;
     const meetings = countableTasks.filter((task) => task.taskKind === 'MEETING');
@@ -328,11 +331,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       if (task.meetingTitle) counts[task.meetingTitle] = (counts[task.meetingTitle] ?? 0) + 1;
       return counts;
     }, {});
-    return { todayLeads, pendingLeads, removedLeads, meetings: meetings.length, meetingsByTitle };
+    return { todayLeads, activeLeads: activeLeads.length, removedLeads, meetings: meetings.length, meetingsByTitle };
   }, [search, taskType, tasks]);
 
   const getLeadFilterCount = (option: typeof LEAD_FILTER_OPTIONS[number]) => (
-    option === 'Today Leads' ? filterCounts.todayLeads : option === 'Pending Leads' ? filterCounts.pendingLeads : filterCounts.removedLeads
+    option === 'All Leads' ? filterCounts.activeLeads : filterCounts.removedLeads
   );
   const getMeetingFilterCount = (option: string) => (
     option === 'All Meetings' ? filterCounts.meetings : (filterCounts.meetingsByTitle[option] ?? 0)
@@ -347,22 +350,20 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         !normalizedSearch ||
         task.name.toLowerCase().includes(normalizedSearch) ||
         (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
-      const matchesTaskType = taskType === 'All Tasks' || task.schedule === taskType;
+      const matchesTaskType = taskType === 'All Tasks' || (task.taskKind === 'MEETING' && task.schedule === taskType);
       const matchesStage = (taskStage === 'Leads' && task.taskKind === 'LEAD')
         || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
       const isRemovedLead = task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED';
       const matchesLead = taskStage !== 'Leads'
         || (leadFilter === 'Removed Leads'
           ? isRemovedLead
-          : leadFilter === 'Today Leads'
-            ? !isRemovedLead && assignedOnToday(task.assignedAt)
-            : !isRemovedLead && !assignedOnToday(task.assignedAt));
+          : !isRemovedLead && (!todayAssignedOnly || assignedOnToday(task.assignedAt)));
       const matchesMeeting = taskStage !== 'Meetings'
         || meetingFilter === 'All Meetings'
         || task.meetingTitle === meetingFilter;
       return matchesSearch && matchesTaskType && matchesStage && matchesLead && matchesMeeting;
     });
-  }, [leadFilter, meetingFilter, search, taskStage, taskType, tasks]);
+  }, [leadFilter, meetingFilter, search, taskStage, taskType, tasks, todayAssignedOnly]);
 
   return (
     <View style={styles.page}>
@@ -378,6 +379,15 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                 <Text style={styles.title}>Your Tasks</Text>
               </View>
               <View style={[styles.headingActions, isMobile && styles.mobileHeadingActions]}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Show leads assigned today"
+                  onPress={() => { setTaskType('All Tasks'); setTaskStage('Leads'); setLeadFilter('All Leads'); setTodayAssignedOnly(true); setOpenDropdown(null); }}
+                  style={({ pressed }) => [styles.todayLeadsAction, todayAssignedOnly && styles.todayLeadsActionActive, pressed && styles.pressed]}
+                >
+                  <Icon source="calendar-today-outline" size={15} color={todayAssignedOnly ? '#FFFFFF' : theme.colors.primary} />
+                  <Text style={[styles.todayLeadsActionText, todayAssignedOnly && styles.todayLeadsActionTextActive]}>Today Leads ({filterCounts.todayLeads})</Text>
+                </Pressable>
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="Refresh tasks"
@@ -441,12 +451,14 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                   onToggle={() => setOpenDropdown((current) => (current === 'task' ? null : 'task'))}
                   onSelect={(value) => {
                     setTaskType(value);
+                    setTodayAssignedOnly(false);
+                    setTaskStage(value === 'All Tasks' ? 'Leads' : 'Meetings');
                     setOpenDropdown(null);
                   }}
                   accessibilityLabel="Filter by task type"
                 />
                 <View style={[styles.stageTabs, isMobile && styles.mobileStageTabs]}>
-                  <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
+                  {taskType === 'All Tasks' ? <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel="Filter leads by status"
@@ -491,6 +503,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                               onPress={() => {
                                 setLeadFilter(option);
                                 setTaskStage('Leads');
+                                setTodayAssignedOnly(false);
                                 setOpenDropdown(null);
                               }}
                               style={({ pressed }) => [
@@ -508,7 +521,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                         })}
                       </View>
                     ) : null}
-                  </View>
+                  </View> : null}
 
                   <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
                     <Pressable
@@ -771,6 +784,10 @@ const styles = StyleSheet.create({
   },
   refreshActionDisabled: { opacity: 0.62 },
   refreshActionText: { color: theme.colors.primary, fontSize: 9, fontWeight: '900' },
+  todayLeadsAction: { minHeight: 32, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingHorizontal: theme.spacing.sm, borderWidth: 1, borderColor: '#BFDBFE', borderRadius: 8, backgroundColor: '#EFF6FF' },
+  todayLeadsActionActive: { borderColor: theme.colors.primary, backgroundColor: theme.colors.primary },
+  todayLeadsActionText: { color: theme.colors.primary, fontSize: 9, fontWeight: '900' },
+  todayLeadsActionTextActive: { color: '#FFFFFF' },
   filters: {
     flexDirection: 'row',
     alignItems: 'flex-start',
