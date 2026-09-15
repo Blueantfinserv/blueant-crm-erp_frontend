@@ -23,8 +23,12 @@ export const getTaskSchedule = (dateValue?: string): SalesTask['schedule'] => {
   return 'Later';
 };
 
-const isHiddenCompletedLead = (status?: string) => (
+export const isHiddenCompletedLead = (status?: string) => (
   status === 'ALREADY_CLIENT' || status === 'CONVERTED' || status === 'CONVERTED_CLIENT'
+);
+
+export const isRemovedLead = (status?: string) => (
+  status === 'REMOVED' || status === 'NOT_INTERESTED' || status === 'CLIENT_REMOVED' || status === 'CLIENT_NOT_INTERESTED'
 );
 
 export const getActionableTaskMeetings = (
@@ -36,5 +40,8 @@ export const getActionableTaskMeetings = (
     (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
     || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
   ));
-  return !isHiddenCompletedLead(lead?.leadStatus) && !isHiddenCompletedLead(meeting.leadStatus);
+  return !isHiddenCompletedLead(lead?.leadStatus)
+    && !isHiddenCompletedLead(meeting.leadStatus)
+    && !isRemovedLead(lead?.leadStatus)
+    && !isRemovedLead(meeting.leadStatus);
 });

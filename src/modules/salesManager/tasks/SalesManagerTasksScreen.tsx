@@ -14,7 +14,7 @@ import { leadService } from '../../../services/LeadService';
 import type { LeadResponse, LeadSearchState } from '../../../types/lead';
 import { meetingService } from '../../../services/MeetingService';
 import type { MeetingQueueState, MeetingResponse } from '../../../types/meeting';
-import { getActionableTaskMeetings, getTaskSchedule } from './taskMeetingSelectors';
+import { getActionableTaskMeetings, getTaskSchedule, isHiddenCompletedLead, isRemovedLead } from './taskMeetingSelectors';
 
 const parseBackendCalendarDate = (value?: string | null) => {
   const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -256,6 +256,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         task.leadId !== undefined ? `id:${task.leadId}` : '',
       ]).filter(Boolean));
       const leadTasks = leadState.leads
+        .filter((lead) => !isHiddenCompletedLead(lead.leadStatus))
         .filter((lead) => {
           const keys = [lead.leadCode ? `code:${lead.leadCode}` : '', lead.leadId !== undefined ? `id:${lead.leadId}` : ''].filter(Boolean);
           return keys.every((key) => !meetingLeadKeys.has(key));
@@ -333,11 +334,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       return matchesTaskType;
     });
     const activeLeads = countableTasks.filter((task) => (
-      task.taskKind === 'LEAD' && task.leadStatus !== 'REMOVED' && task.leadStatus !== 'NOT_INTERESTED'
+      task.taskKind === 'LEAD' && !isRemovedLead(task.leadStatus)
     ));
     const todayLeads = activeLeads.filter((task) => assignedOnToday(task.assignedAt)).length;
     const removedLeads = countableTasks.filter((task) => (
-      task.taskKind === 'LEAD' && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED')
+      task.taskKind === 'LEAD' && isRemovedLead(task.leadStatus)
     )).length;
     const meetings = countableTasks.filter((task) => task.taskKind === 'MEETING');
     const meetingsByTitle = meetings.reduce<Record<string, number>>((counts, task) => {
@@ -368,11 +369,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         : taskType === 'All Tasks' || task.schedule === taskType;
       const matchesStage = (taskStage === 'Leads' && task.taskKind === 'LEAD')
         || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
-      const isRemovedLead = task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED';
+      const removedLead = isRemovedLead(task.leadStatus);
       const matchesLead = taskStage !== 'Leads'
         || (leadFilter === 'Removed Leads'
-          ? isRemovedLead
-          : !isRemovedLead);
+          ? removedLead
+          : !removedLead);
       const matchesMeeting = taskStage !== 'Meetings'
         || meetingFilter === 'All Meetings'
         || task.meetingTitle === meetingFilter;
