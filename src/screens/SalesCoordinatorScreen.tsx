@@ -127,7 +127,8 @@ const loadCoordinatorAssignedLeads = async () => {
 };
 
 export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly string[] | null }) {
-  const compact = useWindowDimensions().width < 760;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const compact = windowWidth < 760;
   const [tab, setTab] = useState<Tab>('today');
   const [pending, setPending] = useState<MeetingResponse[]>([]);
   const [verified, setVerified] = useState<MeetingResponse[]>([]);
@@ -327,7 +328,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     {!loading && !error && tab === 'tasks' ? <View style={[styles.taskDashboard, styles.taskDashboardFill, compact && styles.taskDashboardCompact]}>
       <View style={[styles.taskSummaryPanel, compact && styles.taskSummaryPanelCompact]}><View style={styles.summaries}>{Object.entries(summaries).map(([key, row]) => <View key={key} style={[styles.summary, compact && styles.summaryCompact]}><Text numberOfLines={1} style={styles.summaryName}>{row.name}</Text><View style={styles.summaryCounts}><Text style={styles.summaryLine}>Today <Text style={styles.summaryCount}>{row.TODAY}</Text></Text><Text style={styles.summaryLine}>Pending <Text style={styles.summaryCount}>{row.PENDING}</Text></Text><Text style={styles.summaryLine}>Overdue <Text style={[styles.summaryCount, styles.overdueCount]}>{row.OVERDUE}</Text></Text></View></View>)}</View></View>
       <View style={styles.taskListPanel}><View style={[styles.filters, compact && styles.filtersCompact]}><TextInput value={taskSearch} onChangeText={setTaskSearch} placeholder="Search lead name or number" placeholderTextColor="#94A3B8" style={styles.filterInput} /><View style={styles.chips}>{(['ALL', 'TODAY', 'PENDING', 'OVERDUE'] as const).map((s) => <Pressable key={s} onPress={() => setStatusFilter(s)} style={[styles.chip, statusFilter === s && styles.chipActive]}><Text style={[styles.chipText, statusFilter === s && styles.chipTextActive]}>{s === 'ALL' ? 'ALL TASKS' : `${s} TASKS`}</Text></Pressable>)}</View></View>
-        <View style={[styles.taskList, styles.taskListFill]}>{!compact ? <MeetingTableHeader taskOnly records={taskMeetings} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}<ScrollView style={styles.taskRowsScroll} showsVerticalScrollIndicator><Cards taskOnly items={filteredTasks} empty="No meeting tasks match these client-side filters." /></ScrollView></View>
+        <View style={[styles.taskList, styles.taskListFill]}>{!compact ? <MeetingTableHeader taskOnly records={taskMeetings} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}<ScrollView style={[styles.taskRowsScroll, !compact && { height: Math.max(280, windowHeight - 300), flexGrow: 0 }]} showsVerticalScrollIndicator><Cards taskOnly items={filteredTasks} empty="No meeting tasks match these client-side filters." /></ScrollView></View>
       </View>
     </View> : null}
     </ScrollView>
