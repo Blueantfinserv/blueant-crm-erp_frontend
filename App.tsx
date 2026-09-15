@@ -40,7 +40,6 @@ import { meetingService } from './src/services/MeetingService';
 import { documentApi } from './src/api/document';
 import type { CreateLeadRequest } from './src/types/lead';
 import type {
-  CreateMeetingRequest,
   MeetingFormSubmission,
   MeetingLeadStatus,
   MeetingWorkflowRequest,
@@ -55,21 +54,6 @@ const MEETING_LEAD_STATUS: Record<MeetingFormSubmission['leadStatus'], MeetingLe
   'Client Not Interested': 'CLIENT_NOT_INTERESTED',
   'Remove This Client': 'CLIENT_REMOVED',
   'Already Blueant Client': 'ALREADY_CLIENT',
-};
-
-const toCreateMeeting = (form: MeetingFormSubmission, lead: SalesTask): CreateMeetingRequest => {
-  if (!lead.uniqueLeadId) throw new Error('No backend lead identifier is available for this lead.');
-  return {
-    leadId: lead.uniqueLeadId,
-    meetingMode: form.meetingMode === 'Physical' ? 'PHYSICAL' : 'VIRTUAL/ONLINE',
-    meetingDate: form.meetingDate,
-    meetingLocation: lead.locationText,
-    meetingRemarks: form.remarks.trim(),
-    meetingStatus: 'COMPLETED',
-    ...(form.leadStatus === 'Work In Progress' && form.nextPlanDate
-      ? { nextMeetingDate: form.nextPlanDate }
-      : {}),
-  };
 };
 
 const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; workflow: MeetingWorkflowRequest } => {
@@ -701,14 +685,18 @@ function AppShell() {
                     : async (form: MeetingFormSubmission) => {
                           const task = leadForm.lead;
                           if (!task) throw new Error('Lead task is unavailable.');
-                          const meetingCode = task.taskKind === 'LEAD'
-                            ? await meetingService.createMeeting(toCreateMeeting(form, task))
-                            : form.meetingCode;
+                          let meetingCode = form.meetingCode?.trim() || task.meetingCode?.trim() || null;
+                          if (!meetingCode && task.uniqueLeadId) {
+                            meetingCode = await meetingService.resolveActiveMeetingCode(task.uniqueLeadId).catch(() => null);
+                          }
+                          if (!meetingCode) {
+                            throw new Error('No active meeting is available for this lead. Please refresh and try again.');
+                          }
                           const visitingCard = form.cardImage
                             ? await documentApi.upload(form.cardImage)
                             : undefined;
                           const submission = toMeetingWorkflow({ ...form, meetingCode, visitingCard });
-                          const nextMeeting = await meetingService.submitWorkflow(submission.meetingCode, submission.workflow);
+                          await meetingService.submitWorkflow(submission.meetingCode, submission.workflow);
                           if (form.leadStatus === 'Converted as Client' || form.leadStatus === 'Already Blueant Client') {
                             const leadIdentity = {
                               leadId: task.leadId,
@@ -719,19 +707,6 @@ function AppShell() {
                             meetingService.hideLeadFromTasks(leadIdentity);
                           }
                           await leadSearchService.loadLeads();
-                          if (nextMeeting.meetingCode) {
-                            const synchronizeNextMeeting = (task: SalesTask): SalesTask => ({
-                              ...task,
-                              id: nextMeeting.meetingCode!,
-                              meetingCode: nextMeeting.meetingCode,
-                              meetingNumber: nextMeeting.meetingNumber,
-                              meetingTitle: nextMeeting.meetingTitle,
-                              meetingType: nextMeeting.meetingType,
-                              meetingStatus: nextMeeting.meetingStatus,
-                              taskLabel: nextMeeting.meetingTitle ?? task.taskLabel,
-                            });
-                            setSelectedSalesTask((current) => current ? synchronizeNextMeeting(current) : current);
-                          }
                           return 'Meeting submitted successfully.';
                         }
                   }
