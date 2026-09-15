@@ -24,6 +24,7 @@ type Props = {
 const infoFields = (lead: SalesTask) => [
   { label: 'Lead ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
   { label: 'Email', value: lead.email ?? '------', icon: 'email-outline' },
+  { label: 'Clinic Address', value: lead.clinicAddress ?? '------', icon: 'hospital-building' },
   { label: 'Lead Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
 ] as const;
 

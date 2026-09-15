@@ -97,7 +97,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
       <View style={styles.locationRow}>
         <Icon source="map-marker-outline" size={15} color={tone.accent} />
         <View style={styles.locationCopy}>
-          <Text numberOfLines={1} style={styles.location}>{task.clinicAddress || 'Clinic address unavailable'}</Text>
+          <Text numberOfLines={1} style={styles.location}>{task.locationText || 'Location unavailable'}</Text>
         </View>
       </View>
 
