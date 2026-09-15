@@ -1,5 +1,5 @@
 import { SecureStorageService } from '../services/SecureStorageService';
-import type { ActiveMeetingResponse, ApiResponse, CancelMeetingRequest, CreateMeetingRequest, MeetingDetail, MeetingDropdown, MeetingResponse, MeetingSearchRequest, MeetingSummary, MeetingUpdate, PageResponse, RescheduleMeetingRequest, ScheduleMeetingRequest, MeetingWorkflowRequest, MeetingVerificationRequest } from '../types/meeting';
+import type { ActiveMeetingResponse, ApiResponse, CancelMeetingRequest, MeetingDetail, MeetingDropdown, MeetingResponse, MeetingSearchRequest, MeetingSummary, MeetingUpdate, PageResponse, RescheduleMeetingRequest, ScheduleMeetingRequest, MeetingWorkflowRequest, MeetingVerificationRequest } from '../types/meeting';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
 export class MeetingApiError extends Error { constructor(message: string, public code: string) { super(message); this.name = 'MeetingApiError'; } }
@@ -45,7 +45,6 @@ const directCall = async <T>(path: string, init: RequestInit): Promise<T> => {
 
 export const meetingApi = {
   getMeetings: (query = '') => call<MeetingResponse[]>(`/v1/meetings${query}`),
-  createMeeting: (body: CreateMeetingRequest) => call<MeetingResponse>('/v1/meetings', json(body)),
   getMeeting: (code: string) => call<MeetingDetail>(`/v1/meetings/${codePath(code)}`),
   submitWorkflowUpdate: (code: string, body: MeetingWorkflowRequest) => call<MeetingResponse>(`/v1/meetings/${codePath(code)}/workflow-update`, json(body)),
   getActiveMeeting: (leadId: string) => call<ActiveMeetingResponse>(`/v1/meetings/lead/${encodeURIComponent(leadId)}/active`),
