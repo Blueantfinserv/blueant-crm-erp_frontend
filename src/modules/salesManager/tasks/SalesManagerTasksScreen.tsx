@@ -251,7 +251,15 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           ))[0];
         return [mapMeetingToSalesTask(meeting, index, lead, locationMeeting)];
       });
+      const meetingLeadKeys = new Set(meetingTasks.flatMap((task) => [
+        task.leadCode ? `code:${task.leadCode}` : '',
+        task.leadId !== undefined ? `id:${task.leadId}` : '',
+      ]).filter(Boolean));
       const leadTasks = leadState.leads
+        .filter((lead) => {
+          const keys = [lead.leadCode ? `code:${lead.leadCode}` : '', lead.leadId !== undefined ? `id:${lead.leadId}` : ''].filter(Boolean);
+          return keys.every((key) => !meetingLeadKeys.has(key));
+        })
         .map(mapLeadToSalesTask);
       return [...leadTasks, ...meetingTasks];
     },
