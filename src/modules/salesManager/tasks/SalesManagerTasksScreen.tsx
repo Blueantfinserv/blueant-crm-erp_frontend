@@ -27,9 +27,6 @@ const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 const LEAD_FILTER_OPTIONS = ['All Leads', 'Removed Leads'] as const;
 const SERVICE_REQUEST_FORM_URL = 'https://docs.google.com/forms/d/14H3qkLVigG18GVMhcIqGb0PrR2hk3C5L9EHHDKxbqD0/viewform?edit_requested=true';
 const SHOW_NEW_LEAD_ACTION = false;
-const isHiddenCompletedLead = (status?: LeadResponse['leadStatus'] | MeetingResponse['leadStatus']) => (
-  status === 'ALREADY_CLIENT' || status === 'CONVERTED' || status === 'CONVERTED_CLIENT'
-);
 
 const formatDate = (dateValue?: string) => {
   if (!dateValue) return 'Not scheduled';
@@ -238,7 +235,6 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
           || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
         ));
-        if (isHiddenCompletedLead(lead?.leadStatus) || isHiddenCompletedLead(meeting.leadStatus)) return [];
         const locationMeeting = meetingState.meetings
           .filter((candidate) => (
             Number.isFinite(candidate.latitude)
@@ -255,16 +251,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           ))[0];
         return [mapMeetingToSalesTask(meeting, index, lead, locationMeeting)];
       });
-      const meetingLeadKeys = new Set(meetingTasks.flatMap((task) => [
-        task.leadCode ? `code:${task.leadCode}` : '',
-        task.leadId !== undefined ? `id:${task.leadId}` : '',
-      ]).filter(Boolean));
       const leadTasks = leadState.leads
-        .filter((lead) => {
-          if (isHiddenCompletedLead(lead.leadStatus)) return false;
-          const keys = [lead.leadCode ? `code:${lead.leadCode}` : '', lead.leadId !== undefined ? `id:${lead.leadId}` : ''].filter(Boolean);
-          return keys.every((key) => !meetingLeadKeys.has(key));
-        })
         .map(mapLeadToSalesTask);
       return [...leadTasks, ...meetingTasks];
     },

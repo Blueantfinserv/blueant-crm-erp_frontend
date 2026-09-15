@@ -58,12 +58,20 @@ export class LeadSearchService {
     const assignedUserId = this.assignedUserId;
     this.setState({ isLoading: true, error: null });
     try {
-      const response = await leadSearchApi.search({
+      const request = {
         ...(assignedUserId !== null ? { filter: { assignedUserId } } : {}),
-        page: 0,
         size: 100,
-      });
-      const leads = await Promise.all((response.data?.content ?? []).map(async (lead) => {
+      };
+      const response = await leadSearchApi.search({ ...request, page: 0 });
+      const totalPages = response.data?.totalPages ?? 1;
+      const remainingPages = await Promise.all(Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => (
+        leadSearchApi.search({ ...request, page: index + 1 })
+      )));
+      const allLeads = [
+        ...(response.data?.content ?? []),
+        ...remainingPages.flatMap((page) => page.data?.content ?? []),
+      ];
+      const leads = await Promise.all(allLeads.map(async (lead) => {
         const uniqueLeadId = lead.uniqueLeadId?.trim();
         if (!uniqueLeadId) return { ...lead, assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt };
         try {
