@@ -32,7 +32,7 @@ import { dashboardListsData } from './src/modules/salesManager/dashboard/mock/da
 import type { DashboardListCard } from './src/modules/salesManager/dashboard/types/dashboard';
 import { SalesManagerTasksScreen } from './src/modules/salesManager/tasks/SalesManagerTasksScreen';
 import LeadWorkflowForm from './src/modules/salesManager/forms/LeadWorkflowForm';
-import type { SalesTask } from './src/modules/salesManager/tasks/types/tasks';
+import { getTaskLeadIdentifier, type SalesTask } from './src/modules/salesManager/tasks/types/tasks';
 import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/SalesManagerLeadDetailScreen';
 import { leadService } from './src/services/LeadService';
 import { leadSearchService } from './src/services/LeadSearchService';
@@ -171,7 +171,23 @@ function AppShell() {
       return;
     }
 
-    setMessage('This lead does not have its own active meeting code yet. Please refresh and try again.');
+    const leadId = getTaskLeadIdentifier(task);
+    if (!leadId) {
+      setMessage('No backend lead identifier is available for this meeting.');
+      return;
+    }
+    try {
+      const meetingCode = await meetingService.resolveActiveMeetingCode(leadId);
+      if (!meetingCode) {
+        setMessage('No active meeting is available for this lead.');
+        return;
+      }
+      const resolvedTask = { ...task, meetingCode };
+      setSelectedSalesTask((current) => current?.id === task.id ? resolvedTask : current);
+      setLeadForm({ type: 'meeting', lead: resolvedTask });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Active meeting could not be loaded.');
+    }
   };
 
   useEffect(() => {
