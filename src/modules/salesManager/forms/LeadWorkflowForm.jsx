@@ -368,7 +368,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                 <Select value={form.meetingMode} options={MEETING_MODES} onChange={(value) => update("meetingMode", value)} />
               </Field>
               <Field label="Meeting Date" required error={errors.meetingDate}>
-                <Input value={form.meetingDate} onChangeText={(value) => update("meetingDate", value)} placeholder="YYYY-MM-DD" />
+                <Input value={form.meetingDate} editable={false} selectTextOnFocus={false} style={styles.readOnlyInput} />
               </Field>
               <Field label="Lead Status" required error={errors.leadStatus}>
                 <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
@@ -693,6 +693,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: "#E3E2EE", borderRadius: 13,
     backgroundColor: "#FBFAFF", color: "#1E1B4B", fontSize: 14,
   },
+  readOnlyInput: { color: "#64748B", backgroundColor: "#F1F5F9", borderColor: "#D8E0EB" },
   inputText: { color: "#0F172A", fontSize: 14 },
   placeholder: { color: "#94A3B8", fontSize: 14 },
   dateInput: {
