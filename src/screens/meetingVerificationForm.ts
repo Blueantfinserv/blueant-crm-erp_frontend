@@ -22,8 +22,8 @@ export const createMeetingVerificationForm = (
   const form = {
     meetingTiming: '',
     meetingWith: meeting.meetingWith?.trim() || meeting.aloneWith?.trim() || '',
-    personName: meeting.personName?.trim() || '',
-    position: meeting.position?.trim() || '',
+    personName: '',
+    position: '',
     ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '',
   };
   for (const field of LEAD_FIELDS) {
