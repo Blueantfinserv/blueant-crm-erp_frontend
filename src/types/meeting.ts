@@ -49,6 +49,7 @@ export type MeetingWorkflowRequest = {
   visitingCard?: string;
 };
 export type MeetingVerificationRequest = {
+  meetingDate?: string;
   meetingTiming?: string;
   ageGroup?: string;
   existingSip?: string;

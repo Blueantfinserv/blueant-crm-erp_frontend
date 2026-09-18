@@ -32,6 +32,7 @@ const TABS: readonly { key: Tab; label: string; icon: string }[] = [
 ];
 const emptyAssignForm = () => ({ clientName: '', mobileNumber: '', location: '', clinicAddress: '', speciality: '', salesPersonEmployeeCode: '', assignedAt: localToday() });
 const FIELDS: readonly { key: VerificationField; label: string; placeholder: string }[] = [
+  { key: 'meetingDate', label: 'Meeting Date', placeholder: 'Choose meeting date' },
   { key: 'meetingTiming', label: 'Meeting Time', placeholder: 'HH:mm:ss' },
   { key: 'ageGroup', label: 'Age Group', placeholder: 'Backend code, e.g. AGE_25_35' },
   { key: 'existingSip', label: 'Any Prior Investment', placeholder: 'Backend value, e.g. YES' },
@@ -42,7 +43,7 @@ const FIELDS: readonly { key: VerificationField; label: string; placeholder: str
   { key: 'personName', label: 'Person / Joined Person Name', placeholder: 'Person name' },
   { key: 'position', label: 'Position', placeholder: 'Position' },
 ];
-const emptyForm = (): VerificationForm => ({ meetingTiming: '', ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '', meetingWith: '', personName: '', position: '' });
+const emptyForm = (): VerificationForm => ({ meetingDate: '', meetingTiming: '', ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '', meetingWith: '', personName: '', position: '' });
 const HOURS = Array.from({ length: 14 }, (_, index) => String(index + 9).padStart(2, '0'));
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
@@ -326,6 +327,9 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   };
   const verify = async () => {
     if (!selected?.meetingCode || submittingRef.current) return;
+    if (!form.meetingDate) {
+      setSubmitError('Please choose the meeting date.'); return;
+    }
     if (form.meetingTiming && !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(form.meetingTiming)) {
       setSubmitError('Meeting Time must use HH:mm:ss format.'); return;
     }
@@ -431,10 +435,30 @@ function VerificationFormField({
   form: VerificationForm;
   setForm: React.Dispatch<React.SetStateAction<VerificationForm>>;
 }) {
+  const [datePickerVisible, setDatePickerVisible] = useState(false);
   const update = (value: string) => setForm((current) => ({ ...current, [field.key]: value }));
   const tone = field.key === 'meetingTiming' || field.key === 'ageGroup' ? styles.fieldToneBlue : field.key === 'existingSip' || field.key === 'profession' ? styles.fieldToneTeal : field.key === 'professionDetail' || field.key === 'bestTimeForMeeting' ? styles.fieldToneViolet : styles.fieldToneAmber;
 
   if (!isVerificationFieldVisible(field.key, form.meetingWith)) return null;
+
+  if (field.key === 'meetingDate') {
+    return (
+      <View style={[styles.field, tone]}>
+        <Text style={styles.fieldLabel}>{field.label}</Text>
+        <Pressable onPress={() => setDatePickerVisible(true)} style={styles.assignDatePicker}>
+          <Icon source="calendar-month-outline" size={18} color="#3156C8" />
+          <Text style={styles.assignDatePickerText}>{form.meetingDate || field.placeholder}</Text>
+          <Icon source="chevron-down" size={18} color="#64748B" />
+        </Pressable>
+        <CompactAssignmentCalendar
+          visible={datePickerVisible}
+          value={form.meetingDate}
+          onDismiss={() => setDatePickerVisible(false)}
+          onSelect={update}
+        />
+      </View>
+    );
+  }
 
   if (field.key === 'meetingTiming') {
     const [selectedHour = ''] = form.meetingTiming.split(':');

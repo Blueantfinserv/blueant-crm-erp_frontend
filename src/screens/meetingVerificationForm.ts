@@ -20,6 +20,7 @@ export const createMeetingVerificationForm = (
   });
 
   const form = {
+    meetingDate: '',
     meetingTiming: '',
     meetingWith: meeting.meetingWith?.trim() || meeting.aloneWith?.trim() || '',
     personName: '',
