@@ -31,6 +31,17 @@ const TABS: readonly { key: Tab; label: string; icon: string }[] = [
   { key: 'assignedLeads', label: 'Assigned Leads', icon: 'account-arrow-right-outline' },
 ];
 const emptyAssignForm = () => ({ clientName: '', mobileNumber: '', location: '', clinicAddress: '', speciality: '', salesPersonEmployeeCode: '', assignedAt: localToday() });
+const digitsOnly = (value: string | undefined) => String(value ?? '').replace(/\D/g, '');
+const isAlreadyAssignedError = (error: unknown) => /already\s+(assigned|exists)|assigned\s+already|duplicate/i.test(error instanceof Error ? error.message : '');
+const assignedSalesPersonForMobile = async (mobileNumber: string) => {
+  const response = await leadSearchApi.search({ keyword: mobileNumber, page: 0, size: 25 });
+  const matchedLead = response.data?.content?.find((lead) => digitsOnly(lead.mobileNumber) === digitsOnly(mobileNumber));
+  if (!matchedLead) return null;
+  if (matchedLead.assignedEmployeeName?.trim()) return matchedLead.assignedEmployeeName.trim();
+  const uniqueLeadId = matchedLead.uniqueLeadId?.trim();
+  if (!uniqueLeadId) return null;
+  return (await leadApi.getLeadDetails(uniqueLeadId)).data?.assignedEmployeeName?.trim() || null;
+};
 const FIELDS: readonly { key: VerificationField; label: string; placeholder: string }[] = [
   { key: 'meetingDate', label: 'Meeting Date', placeholder: 'Choose meeting date' },
   { key: 'meetingTiming', label: 'Meeting Time', placeholder: 'HH:mm:ss' },
@@ -317,7 +328,20 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       const lead = await leadService.assignLead({ ...leadValues, clientName: assignForm.clientName.trim(), mobileNumber: assignForm.mobileNumber.trim(), location: assignForm.location.trim(), clinicAddress: assignForm.clinicAddress.trim(), speciality: assignForm.speciality.trim(), salesPersonEmployeeCode: assignForm.salesPersonEmployeeCode.trim().toUpperCase(), assignmentDate: assignedAt });
       setAssignForm(emptyAssignForm());
       setAssignMessage({ type: 'success', text: `${lead.clientName ?? 'Lead'} assigned successfully${lead.assignedEmployeeName ? ` to ${lead.assignedEmployeeName}` : ''}.` });
-    } catch (e) { setAssignMessage({ type: 'error', text: e instanceof Error ? e.message : 'Lead assignment failed.' }); }
+    } catch (e) {
+      let text = e instanceof Error ? e.message : 'Lead assignment failed.';
+      if (isAlreadyAssignedError(e)) {
+        try {
+          const salesPersonName = await assignedSalesPersonForMobile(assignForm.mobileNumber);
+          text = salesPersonName
+            ? `This lead is assigned to ${salesPersonName}.`
+            : 'This mobile number already belongs to an existing lead.';
+        } catch {
+          // The original backend message remains visible if the optional name lookup is unavailable.
+        }
+      }
+      setAssignMessage({ type: 'error', text });
+    }
     finally { setAssigning(false); }
   };
 
