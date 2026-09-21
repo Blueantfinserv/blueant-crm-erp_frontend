@@ -90,7 +90,7 @@ const PROFESSION_LABELS: Record<string, string> = {
 };
 const PROFESSION_OPTIONS = Object.keys(PROFESSION_LABELS);
 const POSITION_OPTIONS = ['Sales person', 'Team Leader', 'RM', 'Admin', 'Super Admin'] as const;
-const SALES_PERSON_CODES = ['RK1507', 'AS0108', 'AK0107', 'RG1108', 'HP0605', 'AK0108', 'AKS0108', 'SM2403', 'GK0902', 'AS1909', 'US2601'] as const;
+const SALES_PERSON_CODES = ['RK1507', 'AS0108', 'AK0107', 'RG1108', 'HP0605', 'AKS0108', 'SM2403', 'GK0902', 'AS1909', 'US2601'] as const;
 const show = (v: unknown) => v === undefined || v === null || v === '' ? '—' : String(v);
 const maskedMobile = (value: unknown) => {
   const text = String(value ?? '');
