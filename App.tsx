@@ -157,6 +157,7 @@ function AppShell() {
     lead?: SalesTask;
   } | null>(null);
   const [selectedSalesTask, setSelectedSalesTask] = useState<SalesTask | null>(null);
+  const [salesTaskFilter, setSalesTaskFilter] = useState<'Today' | 'Pending'>('Today');
   const screenHistory = useRef<ScreenState[]>([]);
   const fade = useRef(new Animated.Value(0)).current;
   const authenticatedUserKey = auth.isAuthenticated && auth.user
@@ -372,6 +373,10 @@ function AppShell() {
                   setSelectedDashboardListId(listId);
                   navigate('dashboard-list');
                 }}
+                onOpenTaskFilter={(filter) => {
+                  setSalesTaskFilter(filter);
+                  navigate('leads');
+                }}
               />
             ) : (
               <ComingSoon title={comingSoonModule} />
@@ -516,6 +521,7 @@ function AppShell() {
           >
             {isSalesWorkspaceExperience(experience) ? (
               <SalesManagerTasksScreen
+                initialTaskType={salesTaskFilter}
                 onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
                 onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
                 onOpenLeadDetails={(lead) => {

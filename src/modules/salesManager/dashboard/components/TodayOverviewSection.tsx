@@ -6,9 +6,10 @@ import { RankingCircle, TodayOverviewCard } from './TodayOverviewCard';
 
 type Props = {
   cards: readonly TodayOverviewCardData[];
+  onOpenTaskFilter?: (filter: 'Today' | 'Pending') => void;
 };
 
-export const TodayOverviewSection = memo(function TodayOverviewSection({ cards }: Props) {
+export const TodayOverviewSection = memo(function TodayOverviewSection({ cards, onOpenTaskFilter }: Props) {
   const { width } = useWindowDimensions();
   const columns = useMemo<2 | 3 | 6>(() => {
     if (width >= 1200) return 6;
@@ -36,6 +37,7 @@ export const TodayOverviewSection = memo(function TodayOverviewSection({ cards }
                 notchPosition={(
                   ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const
                 )[index]}
+                onPress={card.id === 'todays-meetings' ? () => onOpenTaskFilter?.('Today') : card.id === 'pending-meetings' ? () => onOpenTaskFilter?.('Pending') : undefined}
               />
             ))}
             {scoreCard?.scoreDetails ? (
@@ -53,7 +55,7 @@ export const TodayOverviewSection = memo(function TodayOverviewSection({ cards }
       ) : (
         <View style={styles.grid}>
           {cards.map((card) => (
-            <TodayOverviewCard key={card.id} card={card} columns={columns} />
+            <TodayOverviewCard key={card.id} card={card} columns={columns} onPress={card.id === 'todays-meetings' ? () => onOpenTaskFilter?.('Today') : card.id === 'pending-meetings' ? () => onOpenTaskFilter?.('Pending') : undefined} />
           ))}
         </View>
       )}

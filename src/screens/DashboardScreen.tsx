@@ -43,6 +43,7 @@ type Props = {
   dashboardState?: 'loading' | 'success' | 'empty' | 'error';
   onRetryDashboard?: () => void;
   onOpenDashboardList?: (listId: DashboardListCard['id']) => void;
+  onOpenTaskFilter?: (filter: 'Today' | 'Pending') => void;
   experience: FrontendExperience;
 };
 
@@ -53,7 +54,7 @@ const insightCards = [
   'Reserved for future portfolio health widgets and exception monitoring panels.',
 ];
 
-export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuItems, experience, dashboardState = 'success', onRetryDashboard = () => {}, onOpenDashboardList = () => {} }: Props) {
+export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuItems, experience, dashboardState = 'success', onRetryDashboard = () => {}, onOpenDashboardList = () => {}, onOpenTaskFilter = () => {} }: Props) {
   const { width } = useWindowDimensions();
   const isCompactAnalyticsLayout = width < 768;
   const period = 'Current Week';
@@ -90,13 +91,8 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
 
   const salesOverviewCards = useMemo(() => {
     const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
-    const meetingLeadKeys = new Set(actionableMeetings.flatMap((meeting) => [
-      meeting.leadId !== undefined ? `id:${meeting.leadId}` : '',
-      meeting.leadCode ? `code:${meeting.leadCode}` : '',
-    ]).filter(Boolean));
     const actionableLeads = leadState.leads
-      .filter((lead) => !isHiddenCompletedLead(lead.leadStatus))
-      .filter((lead) => [lead.leadId !== undefined ? `id:${lead.leadId}` : '', lead.leadCode ? `code:${lead.leadCode}` : ''].filter(Boolean).every((key) => !meetingLeadKeys.has(key)));
+      .filter((lead) => !isHiddenCompletedLead(lead.leadStatus));
     const todayTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.nextMeetingDate) === 'Today').length
       + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt, 'Today')).length;
     const pendingTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.nextMeetingDate) === 'Pending').length
@@ -148,7 +144,7 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
         <View style={styles.shell}>
           {isSalesWorkspace ? (
             <>
-              <TodayOverviewSection cards={salesOverviewCards} />
+              <TodayOverviewSection cards={salesOverviewCards} onOpenTaskFilter={onOpenTaskFilter} />
               <SalesActivitySection cards={salesActivityCards} />
               <DashboardListsSection cards={dashboardListsData} onOpenList={onOpenDashboardList} />
               <ConversionPerformanceSection data={conversionPerformanceData} />

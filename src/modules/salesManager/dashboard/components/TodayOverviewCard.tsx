@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { Path, Svg } from 'react-native-svg';
 import { theme } from '../../../../theme/theme';
@@ -10,6 +10,7 @@ type Props = {
   columns: 2 | 3 | 6;
   showRankCircle?: boolean;
   notchPosition?: 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
+  onPress?: () => void;
 };
 
 const columnBasis: Record<Props['columns'], `${number}%`> = {
@@ -29,6 +30,7 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
   columns,
   showRankCircle = true,
   notchPosition,
+  onPress,
 }: Props) {
   const { width } = useWindowDimensions();
   const flexBasis = columns === 6
@@ -89,7 +91,9 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
   }
 
   return (
-    <View
+    <Pressable
+      disabled={!onPress}
+      onPress={onPress}
       accessible
       accessibilityLabel={`${card.title}: ${card.value}`}
       style={[
@@ -156,7 +160,7 @@ export const TodayOverviewCard = memo(function TodayOverviewCard({
           ) : null}
         </View>
       }
-    </View>
+    </Pressable>
   );
 });
 

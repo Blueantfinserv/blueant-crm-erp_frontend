@@ -213,13 +213,14 @@ type Props = {
   onCreateNewLead?: () => void;
   onUpdateMeeting?: (lead: SalesTask) => void;
   onOpenLeadDetails?: (lead: SalesTask) => void;
+  initialTaskType?: TaskTypeFilter;
 };
 
-export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails }: Props) {
+export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, initialTaskType = 'Today' }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const [search, setSearch] = useState('');
-  const [taskType, setTaskType] = useState<TaskTypeFilter>('Today');
+  const [taskType, setTaskType] = useState<TaskTypeFilter>(initialTaskType);
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
   const [leadFilter, setLeadFilter] = useState<typeof LEAD_FILTER_OPTIONS[number]>('All Leads');
   const [meetingFilter, setMeetingFilter] = useState('All Meetings');
