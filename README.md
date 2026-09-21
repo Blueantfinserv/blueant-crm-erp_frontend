@@ -1,4 +1,4 @@
-﻿# BlueAnt CRM ERP Frontend
+# BlueAnt CRM ERP Frontend
 
 A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales, and Sales Coordinator workflows. The application runs on Android, iOS, and web.
 
@@ -221,11 +221,13 @@ The backend must fix its follow-up meeting-code sequence/generation or cloned da
 | `src/api/meeting.ts` | Meeting API transport. |
 | `src/api/lead.ts` | Lead API transport. |
 
-## Detailed module handbook
+## Sales dashboard activity
 
-For field-level descriptions, export columns, detailed task status rules, filter behaviour, and validation notes, read:
-
-[Frontend Engineering Audit](docs/frontend-engineering-audit.md)
+- **Assigned Leads List** shows every lead assigned to the logged-in Sales Person, regardless of lead status.
+- **Meeting Conducted List** shows only meetings recorded as `CONDUCTED` or `COMPLETED`.
+- **Client Created List** shows assigned leads whose status is `CONVERTED` or `ALREADY_CLIENT`.
+- Each list and the Client Created / Meeting Conducted dashboard cards use **Today**, **This Week**, and **Last Month** date ranges.
+- Sales Coordinator lead assignment sends the backend `bestTimeForMeeting` enum: `NINE_TO_TWELVE`, `TWELVE_TO_THREE`, `THREE_TO_SIX`, or `SIX_TO_NINE`.
 
 ## Validation
 
@@ -238,4 +240,4 @@ git diff --check
 
 ## Documentation maintenance
 
-When functionality for Sales Person or Sales Coordinator changes, update this README and the detailed module guide in the same commit. This keeps the implementation and handover documentation aligned.
+When functionality for Sales Person or Sales Coordinator changes, update this README in the same commit. This keeps the implementation and handover documentation aligned.

@@ -101,6 +101,7 @@ export type AssignLeadRequest = {
   location: string;
   clinicAddress: string;
   speciality: string;
+  bestTimeForMeeting: 'NINE_TO_TWELVE' | 'TWELVE_TO_THREE' | 'THREE_TO_SIX' | 'SIX_TO_NINE';
   salesPersonEmployeeCode: string;
   assignmentDate: string;
 };

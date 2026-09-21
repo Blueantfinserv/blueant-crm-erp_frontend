@@ -11,7 +11,7 @@ export const salesActivityData: readonly SalesActivityCard[] = [
     values: [
       { label: 'Today', value: '-' },
       { label: 'This Week', value: '-' },
-      { label: 'This Month', value: '-' },
+      { label: 'Last Month', value: '-' },
     ],
   },
   {
@@ -24,7 +24,7 @@ export const salesActivityData: readonly SalesActivityCard[] = [
     values: [
       { label: 'Today Meeting', value: '-' },
       { label: 'This Week Meeting', value: '-' },
-      { label: 'This Month Meeting', value: '-' },
+      { label: 'Last Month Meeting', value: '-' },
     ],
   },
   {
@@ -35,7 +35,6 @@ export const salesActivityData: readonly SalesActivityCard[] = [
     cardBackgroundColor: '#FFFAF5',
     featured: true,
     actions: [
-      { id: 'new-lead', label: 'New Lead', icon: 'account-plus-outline' },
       { id: 'service-request', label: 'Service Request', icon: 'headset' },
       { id: 'future-action-one', label: '', disabled: true },
       { id: 'future-action-two', label: '', disabled: true },

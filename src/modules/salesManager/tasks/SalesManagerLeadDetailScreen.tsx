@@ -60,7 +60,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const [verifiedMeeting, setVerifiedMeeting] = useState<MeetingResponse | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(true);
   const [verificationError, setVerificationError] = useState<string | null>(null);
-  const [meetingHistory, setMeetingHistory] = useState<MeetingSummary[]>([]);
+  const [meetingHistory, setMeetingHistory] = useState<MeetingResponse[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const phone = lead.phone.replace(/[^\d+]/g, '');
@@ -117,7 +117,16 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
       setHistoryLoading(true); setHistoryError(null);
       try {
         const response = await meetingApi.getHistory(leadIdentifier);
-        if (active) setMeetingHistory(response.data ?? []);
+        const history = await Promise.all((response.data ?? []).map(async (meeting) => {
+          if (!meeting.meetingCode) return meeting;
+          try {
+            const detail = await meetingApi.getMeeting(meeting.meetingCode);
+            return detail.data ? { ...meeting, ...detail.data } : meeting;
+          } catch {
+            return meeting;
+          }
+        }));
+        if (active) setMeetingHistory(history);
       } catch (error) {
         if (active) { setMeetingHistory([]); setHistoryError(error instanceof Error ? error.message : 'Meeting history could not be loaded.'); }
       } finally {
@@ -301,7 +310,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
 
         <View style={[styles.panel, isMobile && styles.mobilePanel]}>
           <SectionHeading icon="history" title="Meeting History" subtitle={historyLoading ? 'Loading meeting history...' : `${meetingHistory.length} meeting${meetingHistory.length === 1 ? '' : 's'} recorded`} />
-          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(meeting.meetingTime) ? ` · ${meetingTimeText(meeting.meetingTime)}` : ''}</Text>{meeting.nextMeetingDate ? <Text style={styles.historyNext}>Next plan: {meeting.nextMeetingDate}</Text> : null}</View></View>)}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this lead.</Text></View>}
+          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(meeting.meetingTime) ? ` · ${meetingTimeText(meeting.meetingTime)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{meeting.nextMeetingDate ? <Text style={styles.historyNext}>Next plan: {meeting.nextMeetingDate}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this lead.</Text></View>}
         </View>
       </ScrollView>
     </View>
@@ -407,6 +416,7 @@ const styles = StyleSheet.create({
   historyTitle: { minWidth: 0, flex: 1, color: '#1E1B4B', fontSize: 11, fontWeight: '900' },
   historyStatus: { maxWidth: '42%', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 99, color: '#5B21B6', fontSize: 7, fontWeight: '900', backgroundColor: '#EDE9FE' },
   historyMeta: { marginTop: 4, color: '#64748B', fontSize: 9, fontWeight: '700' },
+  historyRemarks: { marginTop: 5, color: '#475569', fontSize: 10, lineHeight: 15, fontWeight: '600' },
   historyNext: { marginTop: 3, color: '#2563EB', fontSize: 9, fontWeight: '800' },
   locationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderWidth: 1, borderColor: '#FFEDD5', borderRadius: 13, backgroundColor: '#FFF7ED' },
   locationCardPressed: { opacity: 0.72, transform: [{ scale: 0.995 }] },

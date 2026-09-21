@@ -372,7 +372,6 @@ function AppShell() {
                   setSelectedDashboardListId(listId);
                   navigate('dashboard-list');
                 }}
-                onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
               />
             ) : (
               <ComingSoon title={comingSoonModule} />

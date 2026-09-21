@@ -17,7 +17,7 @@ import { SalesActivitySection } from '../modules/salesManager/dashboard/componen
 import { salesActivityData } from '../modules/salesManager/dashboard/mock/salesActivityData';
 import { DashboardListsSection } from '../modules/salesManager/dashboard/components/DashboardListsSection';
 import { dashboardListsData } from '../modules/salesManager/dashboard/mock/dashboardListsData';
-import { DashboardListCard } from '../modules/salesManager/dashboard/types/dashboard';
+import { DashboardListCard, SalesActivityCard } from '../modules/salesManager/dashboard/types/dashboard';
 import { ConversionPerformanceSection } from '../modules/salesManager/dashboard/components/ConversionPerformanceSection';
 import { conversionPerformanceData } from '../modules/salesManager/dashboard/mock/conversionPerformanceData';
 import { FrontendExperience, isSalesWorkspaceExperience } from '../navigation/roleExperience';
@@ -42,7 +42,6 @@ type Props = {
   dashboardState?: 'loading' | 'success' | 'empty' | 'error';
   onRetryDashboard?: () => void;
   onOpenDashboardList?: (listId: DashboardListCard['id']) => void;
-  onCreateNewLead?: () => void;
   experience: FrontendExperience;
 };
 
@@ -53,7 +52,7 @@ const insightCards = [
   'Reserved for future portfolio health widgets and exception monitoring panels.',
 ];
 
-export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuItems, experience, dashboardState = 'success', onRetryDashboard = () => {}, onOpenDashboardList = () => {}, onCreateNewLead = () => {} }: Props) {
+export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuItems, experience, dashboardState = 'success', onRetryDashboard = () => {}, onOpenDashboardList = () => {} }: Props) {
   const { width } = useWindowDimensions();
   const isCompactAnalyticsLayout = width < 768;
   const period = 'Current Week';
@@ -99,6 +98,40 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
     });
   }, [leadState.leads, meetingState.meetings]);
 
+  const salesActivityCards = useMemo<readonly SalesActivityCard[]>(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    const asDate = (value?: string) => {
+      const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
+    };
+    const countForPeriods = (values: readonly (string | undefined)[]) => values.reduce((counts, value) => {
+      const date = asDate(value);
+      if (!date) return counts;
+      if (date.getTime() === today.getTime()) counts.today += 1;
+      if (date >= weekStart && date <= today) counts.week += 1;
+      if (date >= lastMonthStart && date <= lastMonthEnd) counts.lastMonth += 1;
+      return counts;
+    }, { today: 0, week: 0, lastMonth: 0 });
+    const clientDates = leadState.leads
+      .filter((lead) => ['CONVERTED', 'ALREADY_CLIENT'].includes(String(lead.leadStatus ?? '').toUpperCase()))
+      .map((lead) => lead.audit?.updatedAt ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt);
+    const meetingDates = meetingState.meetings
+      .filter((meeting) => meeting.meetingConducted === 'CONDUCTED' || meeting.meetingStatus === 'COMPLETED')
+      .map((meeting) => meeting.workflowUpdatedAt ?? meeting.updatedAt ?? meeting.lastModifiedDate ?? meeting.meetingDate);
+    const clients = countForPeriods(clientDates);
+    const meetings = countForPeriods(meetingDates);
+    return salesActivityData.map((card) => {
+      if (card.id === 'clients-created' && card.type === 'summary') return { ...card, values: [{ label: 'Today', value: clients.today }, { label: 'This Week', value: clients.week }, { label: 'Last Month', value: clients.lastMonth }] };
+      if (card.id === 'meetings-done' && card.type === 'summary') return { ...card, values: [{ label: 'Today Meeting', value: meetings.today }, { label: 'This Week Meeting', value: meetings.week }, { label: 'Last Month Meeting', value: meetings.lastMonth }] };
+      return card;
+    });
+  }, [leadState.leads, meetingState.meetings]);
+
   if (!isSuperAdmin) {
     return (
       <View style={styles.container}>
@@ -106,9 +139,7 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
           {isSalesWorkspace ? (
             <>
               <TodayOverviewSection cards={salesOverviewCards} />
-              <SalesActivitySection cards={salesActivityData} onActionPress={(actionId) => {
-                if (actionId === 'new-lead') onCreateNewLead();
-              }} />
+              <SalesActivitySection cards={salesActivityCards} />
               <DashboardListsSection cards={dashboardListsData} onOpenList={onOpenDashboardList} />
               <ConversionPerformanceSection data={conversionPerformanceData} />
             </>

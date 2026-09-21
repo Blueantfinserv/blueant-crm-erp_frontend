@@ -27,10 +27,10 @@ export interface SalesMetricPeriod {
   label:
     | 'Today'
     | 'This Week'
-    | 'This Month'
+    | 'Last Month'
     | 'Today Meeting'
     | 'This Week Meeting'
-    | 'This Month Meeting';
+    | 'Last Month Meeting';
   value: number | string;
 }
 
@@ -63,7 +63,7 @@ export interface QuickActionsCard {
 
 export type SalesActivityCard = SalesSummaryCard | QuickActionsCard;
 
-export type DashboardListPeriod = 'today' | 'thisWeek' | 'thisMonth';
+export type DashboardListPeriod = 'today' | 'thisWeek' | 'lastMonth';
 
 export interface DashboardListItem {
   id: string;

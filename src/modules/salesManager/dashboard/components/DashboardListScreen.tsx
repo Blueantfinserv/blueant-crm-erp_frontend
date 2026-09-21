@@ -22,29 +22,31 @@ const toCalendarDate = (value?: string) => {
   return match ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])) : null;
 };
 
-const getPeriod = (createdAt?: string): DashboardListPeriod | null => {
-  const created = toCalendarDate(createdAt);
-  if (!created) return null;
+const getPeriod = (dateValue?: string): DashboardListPeriod | null => {
+  const date = toCalendarDate(dateValue);
+  if (!date) return null;
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  if (created.getTime() === today.getTime()) return 'today';
+  if (date.getTime() === today.getTime()) return 'today';
   const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - today.getDay());
-  if (created >= weekStart && created <= today) return 'thisWeek';
-  if (created.getFullYear() === today.getFullYear() && created.getMonth() === today.getMonth()) return 'thisMonth';
+  weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  if (date >= weekStart && date <= today) return 'thisWeek';
+  const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+  if (date >= lastMonthStart && date <= lastMonthEnd) return 'lastMonth';
   return null;
 };
 
-const toLeadListItem = (lead: LeadResponse) => {
-  const period = getPeriod(lead.audit?.createdAt);
+const toLeadListItem = (lead: LeadResponse, eventDate = lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt) => {
+  const period = getPeriod(eventDate);
   if (!period) return null;
-  const createdAt = toCalendarDate(lead.audit?.createdAt);
+  const assignmentDate = toCalendarDate(eventDate);
   return {
     id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId),
     primaryText: lead.clientName ?? 'Unnamed lead',
     secondaryText: [lead.leadStatus, lead.leadStage].filter(Boolean).join(' · ') || 'Lead',
-    dateLabel: createdAt
-      ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(createdAt)
+    dateLabel: assignmentDate
+      ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(assignmentDate)
       : 'Date unavailable',
     period,
   };
@@ -72,14 +74,8 @@ const toMeetingListItem = (meeting: MeetingResponse) => {
 const periods: readonly { key: DashboardListPeriod; label: string; color: string }[] = [
   { key: 'today', label: 'Today', color: '#2563EB' },
   { key: 'thisWeek', label: 'This Week', color: '#8B5CF6' },
-  { key: 'thisMonth', label: 'This Month', color: '#F97316' },
+  { key: 'lastMonth', label: 'Last Month', color: '#F97316' },
 ];
-
-const periodWeight: Record<DashboardListPeriod, number> = {
-  today: 1,
-  thisWeek: 2,
-  thisMonth: 3,
-};
 
 const rowColors = [
   { accent: '#2563EB', background: '#F5F9FF', border: '#DBEAFE', soft: '#E8F0FF' },
@@ -92,14 +88,14 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
   const { width } = useWindowDimensions();
   const [period, setPeriod] = useState<DashboardListPeriod>('today');
   const [liveLeadItems, setLiveLeadItems] = useState(list.items);
-  const isLiveList = list.id === 'lead-collected-list' || list.id === 'meeting-done-list';
+  const isLiveList = ['lead-collected-list', 'meeting-done-list', 'client-created-list'].includes(list.id);
   const [loading, setLoading] = useState(isLiveList);
   const [loadError, setLoadError] = useState<string | null>(null);
   const isMobile = width < 600;
   const isCompactHeader = width < 980;
 
   useEffect(() => {
-    if (list.id !== 'lead-collected-list') return;
+    if (list.id !== 'lead-collected-list' && list.id !== 'client-created-list') return;
     let active = true;
     const load = async () => {
       setLoading(true);
@@ -127,10 +123,18 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
             return lead;
           }
         }));
-        const personallyCreatedLeads = userId === undefined
-          ? detailedLeads
-          : detailedLeads.filter((lead) => lead.audit?.createdBy?.id === userId);
-        if (active) setLiveLeadItems(personallyCreatedLeads.map(toLeadListItem).filter((item) => item !== null));
+        const assignedToSalesPerson = detailedLeads.filter((lead) => {
+          if (employeeCode) return lead.assignedEmployeeCode?.trim().toUpperCase() === employeeCode.trim().toUpperCase();
+          return userId === undefined || String(lead.assignedUserId ?? '') === String(userId);
+        });
+        const selectedLeads = list.id === 'client-created-list'
+          ? assignedToSalesPerson.filter((lead) => ['CONVERTED', 'ALREADY_CLIENT'].includes(String(lead.leadStatus ?? '').toUpperCase()))
+          : assignedToSalesPerson;
+        if (active) setLiveLeadItems(selectedLeads.map((lead) => (
+          list.id === 'client-created-list'
+            ? toLeadListItem(lead, lead.audit?.updatedAt ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt)
+            : toLeadListItem(lead)
+        )).filter((item) => item !== null));
       } catch (error) {
         if (active) setLoadError(error instanceof Error ? error.message : 'Leads could not be loaded.');
       } finally {
@@ -139,7 +143,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
     };
     void load();
     return () => { active = false; };
-  }, [list.id, userId]);
+  }, [employeeCode, list.id, userId]);
 
   useEffect(() => {
     if (list.id !== 'meeting-done-list') return;
@@ -163,9 +167,10 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
             return lead;
           }
         }));
-        const personalLeads = userId === undefined
-          ? detailedLeads
-          : detailedLeads.filter((lead) => String(lead.audit?.createdBy?.id ?? '') === String(userId));
+        const personalLeads = detailedLeads.filter((lead) => {
+          if (employeeCode) return lead.assignedEmployeeCode?.trim().toUpperCase() === employeeCode.trim().toUpperCase();
+          return userId === undefined || String(lead.assignedUserId ?? '') === String(userId);
+        });
         const meetingJourneys = await Promise.all(personalLeads.map(async (lead) => {
           const leadIdentifier = lead.uniqueLeadId ?? (lead.leadId !== undefined ? String(lead.leadId) : '');
           if (!leadIdentifier) return [];
@@ -191,8 +196,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
           meetingJourneys.flat().map((meeting) => [meeting.meetingCode ?? String(meeting.id), meeting]),
         ).values());
         const conductedMeetings = uniqueMeetings.filter((meeting) => (
-          meeting.meetingType === 'INTRO'
-          || meeting.meetingConducted === 'CONDUCTED'
+          meeting.meetingConducted === 'CONDUCTED'
           || meeting.meetingStatus === 'COMPLETED'
         ));
         if (!conductedMeetings.length) {
@@ -200,8 +204,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
           conductedMeetings.push(...(response.data ?? []).filter((meeting) => (
             (!employeeCode || !meeting.employeeCode || meeting.employeeCode.trim().toUpperCase() === employeeCode.trim().toUpperCase())
             && (
-            meeting.meetingType === 'INTRO'
-            || meeting.meetingConducted === 'CONDUCTED'
+            meeting.meetingConducted === 'CONDUCTED'
             || meeting.meetingStatus === 'COMPLETED'
             )
           )));
@@ -217,10 +220,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
     return () => { active = false; };
   }, [employeeCode, list.id, userId]);
 
-  const visibleItems = useMemo(
-    () => liveLeadItems.filter((item) => periodWeight[item.period] <= periodWeight[period]),
-    [liveLeadItems, period],
-  );
+  const visibleItems = useMemo(() => liveLeadItems.filter((item) => item.period === period), [liveLeadItems, period]);
 
   return (
     <View style={styles.screen}>
@@ -248,7 +248,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                     <Text style={[styles.eyebrowText, { color: list.accentColor }]}>PERSONAL ACTIVITY</Text>
                   </View>
                   <Text numberOfLines={1} style={styles.title}>{list.title}</Text>
-                  <Text numberOfLines={1} style={styles.subtitle}>Records added by {userName}</Text>
+                  <Text numberOfLines={1} style={styles.subtitle}>Activity assigned to {userName}</Text>
                 </View>
               </View>
 

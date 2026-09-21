@@ -3,11 +3,11 @@ import { DashboardListCard } from '../types/dashboard';
 export const dashboardListsData: readonly DashboardListCard[] = [
   {
     id: 'lead-collected-list',
-    title: 'Lead Collected List',
+    title: 'Assigned Leads List',
     icon: 'account-plus-outline',
     accentColor: '#2563EB',
     cardBackgroundColor: '#F8FBFF',
-    metricLabel: 'Leads Collected',
+    metricLabel: 'Assigned Leads',
     items: [],
   },
   {
