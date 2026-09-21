@@ -19,6 +19,15 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 - React Native Paper
 - Web, Android, and iOS targets
 
+## Latest updates — 21 September 2026
+
+- Sales Coordinator screens no longer display Excel export buttons.
+- The Assign New Lead employee dropdown shows `EMPLOYEE_CODE - Sales Person Name` when live employee data is available; its submitted value remains only the employee code.
+- Duplicate mobile-number feedback attempts to identify the already assigned Sales Person and shows that name when the existing lead data provides it.
+- The Sales Person task filter now displays **Today's Task**.
+- All Sales Person task actions now use the label **Update Meeting**.
+- Sales Person lead details now includes the lead's meeting history: meeting type, status, date/time, and next plan date.
+
 ## Run the project
 
 ```bash
@@ -216,7 +225,7 @@ The backend must fix its follow-up meeting-code sequence/generation or cloned da
 
 For field-level descriptions, export columns, detailed task status rules, filter behaviour, and validation notes, read:
 
-[Sales Person & Sales Coordinator Module Guide](docs/sales-person-sales-coordinator-guide.md)
+[Frontend Engineering Audit](docs/frontend-engineering-audit.md)
 
 ## Validation
 

@@ -153,6 +153,8 @@ type DropdownProps<T extends string> = {
   accessibilityLabel: string;
 };
 
+const taskFilterLabel = (value: string) => value === 'Today' ? "Today's Task" : value;
+
 function FilterDropdown<T extends string>({
   value,
   options,
@@ -171,7 +173,7 @@ function FilterDropdown<T extends string>({
         onPress={onToggle}
         style={({ pressed }) => [styles.dropdownButton, open && styles.dropdownButtonOpen, pressed && styles.pressed]}
       >
-        <Text numberOfLines={1} style={styles.dropdownValue}>{value}</Text>
+        <Text numberOfLines={1} style={styles.dropdownValue}>{taskFilterLabel(value)}</Text>
         <Icon source={open ? 'chevron-up' : 'chevron-down'} size={19} color={theme.colors.muted} />
       </Pressable>
 
@@ -196,7 +198,7 @@ function FilterDropdown<T extends string>({
                   pressed && styles.pressed,
                 ]}
               >
-                <Text style={[styles.optionText, selected && styles.selectedOptionText]}>{option}</Text>
+                <Text style={[styles.optionText, selected && styles.selectedOptionText]}>{taskFilterLabel(option)}</Text>
                 {selected ? <Icon source="check" size={17} color={theme.colors.primary} /> : null}
               </Pressable>
             );

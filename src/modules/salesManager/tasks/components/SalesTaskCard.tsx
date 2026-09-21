@@ -136,7 +136,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
             ]}
           >
             <Icon source="calendar-edit" size={12} color="#FFFFFF" />
-            <Text style={styles.updateMeetingText}>Update Form</Text>
+            <Text style={styles.updateMeetingText}>Update Meeting</Text>
           </Pressable>
         ) : null}
       </View>

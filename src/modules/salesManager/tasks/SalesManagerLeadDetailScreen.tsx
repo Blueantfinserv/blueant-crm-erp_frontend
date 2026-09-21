@@ -3,7 +3,8 @@ import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, us
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import { meetingService } from '../../../services/MeetingService';
-import type { MeetingResponse } from '../../../types/meeting';
+import { meetingApi } from '../../../api/meeting';
+import type { MeetingResponse, MeetingSummary } from '../../../types/meeting';
 import type { SalesTask } from './types/tasks';
 
 const formatLeadSource = (leadSource?: string) => {
@@ -49,12 +50,19 @@ const displayVerificationValue = (value?: string) => {
     .join(' ');
 };
 
+const meetingTimeText = (time?: MeetingSummary['meetingTime']) => time?.hour === undefined
+  ? ''
+  : [time.hour, time.minute ?? 0].map((value) => String(value).padStart(2, '0')).join(':');
+
 export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 600;
   const [verifiedMeeting, setVerifiedMeeting] = useState<MeetingResponse | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(true);
   const [verificationError, setVerificationError] = useState<string | null>(null);
+  const [meetingHistory, setMeetingHistory] = useState<MeetingSummary[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const phone = lead.phone.replace(/[^\d+]/g, '');
   const whatsapp = lead.phone.replace(/\D/g, '');
   const hasCoordinates = Boolean(lead.hasLocationPin)
@@ -98,6 +106,27 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
       active = false;
     };
   }, [lead.leadCode, lead.leadId, lead.meetingCode]);
+
+  useEffect(() => {
+    const leadIdentifier = lead.uniqueLeadId ?? (lead.leadId !== undefined ? String(lead.leadId) : '');
+    if (!leadIdentifier) {
+      setMeetingHistory([]); setHistoryError(null); setHistoryLoading(false); return;
+    }
+    let active = true;
+    const loadHistory = async () => {
+      setHistoryLoading(true); setHistoryError(null);
+      try {
+        const response = await meetingApi.getHistory(leadIdentifier);
+        if (active) setMeetingHistory(response.data ?? []);
+      } catch (error) {
+        if (active) { setMeetingHistory([]); setHistoryError(error instanceof Error ? error.message : 'Meeting history could not be loaded.'); }
+      } finally {
+        if (active) setHistoryLoading(false);
+      }
+    };
+    void loadHistory();
+    return () => { active = false; };
+  }, [lead.leadId, lead.uniqueLeadId]);
 
   return (
     <View style={styles.screen}>
@@ -143,7 +172,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 ]}
               >
                 <Icon source="calendar-edit" size={isMobile ? 12 : 15} color="#4C1D95" />
-                <Text style={[styles.updateActionText, isMobile && styles.mobileHeroActionText]}>Update Form</Text>
+                <Text style={[styles.updateActionText, isMobile && styles.mobileHeroActionText]}>Update Meeting</Text>
               </Pressable>
             </View>
 
@@ -269,6 +298,11 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
             </View>
           </View>
         </View>
+
+        <View style={[styles.panel, isMobile && styles.mobilePanel]}>
+          <SectionHeading icon="history" title="Meeting History" subtitle={historyLoading ? 'Loading meeting history...' : `${meetingHistory.length} meeting${meetingHistory.length === 1 ? '' : 's'} recorded`} />
+          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(meeting.meetingTime) ? ` · ${meetingTimeText(meeting.meetingTime)}` : ''}</Text>{meeting.nextMeetingDate ? <Text style={styles.historyNext}>Next plan: {meeting.nextMeetingDate}</Text> : null}</View></View>)}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this lead.</Text></View>}
+        </View>
       </ScrollView>
     </View>
   );
@@ -362,6 +396,18 @@ const styles = StyleSheet.create({
   verificationState: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderWidth: 1, borderColor: '#E7EAF0', borderRadius: 12, backgroundColor: '#F8FAFC' },
   verificationStateText: { color: '#64748B', fontSize: 10, fontWeight: '700', textAlign: 'center' },
   verificationError: { color: '#B91C1C' },
+  historyState: { minHeight: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderWidth: 1, borderColor: '#E7EAF0', borderRadius: 12, backgroundColor: '#F8FAFC' },
+  historyStateText: { color: '#64748B', fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  historyError: { color: '#B91C1C' },
+  historyList: { gap: 8 },
+  historyRow: { flexDirection: 'row', gap: 9, padding: 10, borderWidth: 1, borderColor: '#E4E8F0', borderRadius: 12, backgroundColor: '#FAFBFF' },
+  historyDot: { width: 9, height: 9, marginTop: 5, borderRadius: 5, backgroundColor: '#6D28D9' },
+  historyCopy: { minWidth: 0, flex: 1 },
+  historyTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  historyTitle: { minWidth: 0, flex: 1, color: '#1E1B4B', fontSize: 11, fontWeight: '900' },
+  historyStatus: { maxWidth: '42%', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 99, color: '#5B21B6', fontSize: 7, fontWeight: '900', backgroundColor: '#EDE9FE' },
+  historyMeta: { marginTop: 4, color: '#64748B', fontSize: 9, fontWeight: '700' },
+  historyNext: { marginTop: 3, color: '#2563EB', fontSize: 9, fontWeight: '800' },
   locationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderWidth: 1, borderColor: '#FFEDD5', borderRadius: 13, backgroundColor: '#FFF7ED' },
   locationCardPressed: { opacity: 0.72, transform: [{ scale: 0.995 }] },
   locationPin: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#FFEDD5' },
