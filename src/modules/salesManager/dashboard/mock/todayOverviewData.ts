@@ -3,7 +3,7 @@ import { TodayOverviewCard } from '../types/dashboard';
 export const todayOverviewData: readonly TodayOverviewCard[] = [
   {
     id: 'todays-meetings',
-    title: "Today's Meetings",
+    title: "Today's Task",
     value: '-',
     icon: 'calendar-today',
     accentColor: '#2563EB',
@@ -12,7 +12,7 @@ export const todayOverviewData: readonly TodayOverviewCard[] = [
   },
   {
     id: 'pending-meetings',
-    title: 'Pending Meetings',
+    title: 'Pending Task',
     value: '-',
     icon: 'calendar-clock',
     accentColor: '#F59E0B',
