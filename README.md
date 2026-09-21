@@ -223,10 +223,10 @@ The backend must fix its follow-up meeting-code sequence/generation or cloned da
 
 ## Sales dashboard activity
 
-- **Assigned Leads List** shows every lead assigned to the logged-in Sales Person, regardless of lead status.
-- **Meeting Conducted List** shows only meetings recorded as `CONDUCTED` or `COMPLETED`.
-- **Client Created List** shows assigned leads whose status is `CONVERTED` or `ALREADY_CLIENT`.
-- Each list and the Client Created / Meeting Conducted dashboard cards use **Today**, **This Week**, and **Last Month** date ranges.
+- **Assigned Leads List** shows every lead assigned to the logged-in Sales Person, regardless of lead status or assignment date.
+- **Meeting Conducted List** shows only meetings recorded as `CONDUCTED` or `COMPLETED`, filtered by **Today**, **This Week**, or the previous calendar month (**Last Month**).
+- **Client Created List** shows assigned leads whose status is `CONVERTED` or `ALREADY_CLIENT`, filtered by **Today**, **This Week**, or **This Month**.
+- Client Created and Meeting Conducted dashboard cards show the same live date-range counts as their respective lists.
 - Sales Coordinator lead assignment sends the backend `bestTimeForMeeting` enum: `NINE_TO_TWELVE`, `TWELVE_TO_THREE`, `THREE_TO_SIX`, or `SIX_TO_NINE`.
 
 ## Validation

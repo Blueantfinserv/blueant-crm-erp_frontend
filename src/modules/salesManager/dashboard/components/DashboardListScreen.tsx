@@ -31,6 +31,7 @@ const getPeriod = (dateValue?: string): DashboardListPeriod | null => {
   const weekStart = new Date(today);
   weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
   if (date >= weekStart && date <= today) return 'thisWeek';
+  if (date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth()) return 'thisMonth';
   const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
   const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
   if (date >= lastMonthStart && date <= lastMonthEnd) return 'lastMonth';
@@ -39,7 +40,7 @@ const getPeriod = (dateValue?: string): DashboardListPeriod | null => {
 
 const toLeadListItem = (lead: LeadResponse, eventDate = lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt) => {
   const period = getPeriod(eventDate);
-  if (!period) return null;
+  const resolvedPeriod = period ?? 'lastMonth';
   const assignmentDate = toCalendarDate(eventDate);
   return {
     id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId),
@@ -48,7 +49,8 @@ const toLeadListItem = (lead: LeadResponse, eventDate = lead.assignmentDate ?? l
     dateLabel: assignmentDate
       ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(assignmentDate)
       : 'Date unavailable',
-    period,
+    period: resolvedPeriod,
+    dateValue: eventDate,
   };
 };
 
@@ -68,13 +70,20 @@ const toMeetingListItem = (meeting: MeetingResponse) => {
       ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(meetingDate)
       : 'Date unavailable',
     period,
+    dateValue: conductedAt,
   };
 };
 
-const periods: readonly { key: DashboardListPeriod; label: string; color: string }[] = [
+const meetingPeriods: readonly { key: DashboardListPeriod; label: string; color: string }[] = [
   { key: 'today', label: 'Today', color: '#2563EB' },
   { key: 'thisWeek', label: 'This Week', color: '#8B5CF6' },
   { key: 'lastMonth', label: 'Last Month', color: '#F97316' },
+];
+
+const clientPeriods: readonly { key: DashboardListPeriod; label: string; color: string }[] = [
+  { key: 'today', label: 'Today', color: '#2563EB' },
+  { key: 'thisWeek', label: 'This Week', color: '#8B5CF6' },
+  { key: 'thisMonth', label: 'This Month', color: '#F97316' },
 ];
 
 const rowColors = [
@@ -93,6 +102,8 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
   const [loadError, setLoadError] = useState<string | null>(null);
   const isMobile = width < 600;
   const isCompactHeader = width < 980;
+  const showPeriodSelector = list.id === 'meeting-done-list' || list.id === 'client-created-list';
+  const periods = list.id === 'client-created-list' ? clientPeriods : meetingPeriods;
 
   useEffect(() => {
     if (list.id !== 'lead-collected-list' && list.id !== 'client-created-list') return;
@@ -220,7 +231,23 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
     return () => { active = false; };
   }, [employeeCode, list.id, userId]);
 
-  const visibleItems = useMemo(() => liveLeadItems.filter((item) => item.period === period), [liveLeadItems, period]);
+  const visibleItems = useMemo(() => {
+    if (!showPeriodSelector) return liveLeadItems;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekStart = new Date(today);
+    weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+    return liveLeadItems.filter((item) => {
+      const date = toCalendarDate(item.dateValue);
+      if (!date) return false;
+      if (period === 'today') return date.getTime() === today.getTime();
+      if (period === 'thisWeek') return date >= weekStart && date <= today;
+      if (period === 'thisMonth') return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
+      return date >= lastMonthStart && date <= lastMonthEnd;
+    });
+  }, [liveLeadItems, period, showPeriodSelector]);
 
   return (
     <View style={styles.screen}>
@@ -252,7 +279,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                 </View>
               </View>
 
-              <View style={[styles.periodSelector, isCompactHeader && styles.compactPeriodSelector, isMobile && styles.mobilePeriodSelector]}>
+              {showPeriodSelector ? <View style={[styles.periodSelector, isCompactHeader && styles.compactPeriodSelector, isMobile && styles.mobilePeriodSelector]}>
                 {periods.map((option) => {
                   const isActive = option.key === period;
                   return (
@@ -277,7 +304,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                     </Pressable>
                   );
                 })}
-              </View>
+              </View> : null}
             </View>
           </View>
         </View>

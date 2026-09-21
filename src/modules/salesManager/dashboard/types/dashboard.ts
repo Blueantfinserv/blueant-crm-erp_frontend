@@ -63,13 +63,14 @@ export interface QuickActionsCard {
 
 export type SalesActivityCard = SalesSummaryCard | QuickActionsCard;
 
-export type DashboardListPeriod = 'today' | 'thisWeek' | 'lastMonth';
+export type DashboardListPeriod = 'today' | 'thisWeek' | 'thisMonth' | 'lastMonth';
 
 export interface DashboardListItem {
   id: string;
   primaryText: string;
   secondaryText: string;
   dateLabel: string;
+  dateValue?: string;
   period: DashboardListPeriod;
 }
 
