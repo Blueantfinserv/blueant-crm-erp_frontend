@@ -1,5 +1,4 @@
 import { leadSearchApi, LeadSearchApiError } from '../api/leadSearch';
-import { leadApi } from '../api/lead';
 import type { LeadSearchState } from '../types/lead';
 
 type Listener = (state: LeadSearchState) => void;
@@ -71,16 +70,11 @@ export class LeadSearchService {
         ...(response.data?.content ?? []),
         ...remainingPages.flatMap((page) => page.data?.content ?? []),
       ];
-      const leads = await Promise.all(allLeads.map(async (lead) => {
-        const uniqueLeadId = lead.uniqueLeadId?.trim();
-        if (!uniqueLeadId) return { ...lead, assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt };
-        try {
-          const details = (await leadApi.getLeadDetails(uniqueLeadId)).data;
-          const mergedLead = details ? { ...lead, ...details } : lead;
-          return { ...mergedLead, assignedAt: mergedLead.assignmentDate ?? mergedLead.assignedDate ?? mergedLead.assignedAt };
-        } catch {
-          return { ...lead, assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt };
-        }
+      // The search response already contains the fields needed by task and dashboard lists.
+      // Fetching every individual lead detail here produces hundreds of simultaneous requests.
+      const leads = allLeads.map((lead) => ({
+        ...lead,
+        assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
       }));
       if (generation !== this.requestGeneration) return;
       const scopedLeads = assignedUserId === null

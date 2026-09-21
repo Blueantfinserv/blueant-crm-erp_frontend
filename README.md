@@ -227,6 +227,8 @@ The backend must fix its follow-up meeting-code sequence/generation or cloned da
 - **Meeting Conducted List** shows only meetings recorded as `CONDUCTED` or `COMPLETED`, filtered by **Today**, **This Week**, or the previous calendar month (**Last Month**).
 - **Client Created List** shows assigned leads whose status is `CONVERTED` or `ALREADY_CLIENT`, filtered by **Today**, **This Week**, or **This Month**.
 - Client Created and Meeting Conducted dashboard cards show the same live date-range counts as their respective lists.
+- Dashboard lists reuse the already scoped lead and meeting cache; they do not request a detail endpoint for every record when opened.
+- Dashboard lists render 50 records per page with Previous and Next controls.
 - Sales Coordinator lead assignment sends the backend `bestTimeForMeeting` enum: `NINE_TO_TWELVE`, `TWELVE_TO_THREE`, `THREE_TO_SIX`, or `SIX_TO_NINE`.
 
 ## Validation

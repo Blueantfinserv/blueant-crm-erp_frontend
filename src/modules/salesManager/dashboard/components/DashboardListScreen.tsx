@@ -3,11 +3,10 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDi
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../../theme/theme';
 import { DashboardListCard, DashboardListPeriod } from '../types/dashboard';
-import { leadSearchApi } from '../../../../api/leadSearch';
-import { leadApi } from '../../../../api/lead';
 import type { LeadResponse } from '../../../../types/lead';
-import { meetingApi } from '../../../../api/meeting';
 import type { MeetingResponse } from '../../../../types/meeting';
+import { leadSearchService } from '../../../../services/LeadSearchService';
+import { meetingService } from '../../../../services/MeetingService';
 
 type Props = {
   list: DashboardListCard;
@@ -92,10 +91,12 @@ const rowColors = [
   { accent: '#F97316', background: '#FFF9F4', border: '#FFEDD5', soft: '#FFF0E3' },
   { accent: '#16A34A', background: '#F5FCF7', border: '#DCFCE7', soft: '#E7F8EC' },
 ] as const;
+const PAGE_SIZE = 50;
 
 export function DashboardListScreen({ list, userName, userId, employeeCode, onBack }: Props) {
   const { width } = useWindowDimensions();
   const [period, setPeriod] = useState<DashboardListPeriod>('today');
+  const [page, setPage] = useState(0);
   const [liveLeadItems, setLiveLeadItems] = useState(list.items);
   const isLiveList = ['lead-collected-list', 'meeting-done-list', 'client-created-list'].includes(list.id);
   const [loading, setLoading] = useState(isLiveList);
@@ -106,131 +107,37 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
   const periods = list.id === 'client-created-list' ? clientPeriods : meetingPeriods;
 
   useEffect(() => {
-    if (list.id !== 'lead-collected-list' && list.id !== 'client-created-list') return;
-    let active = true;
-    const load = async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const firstPage = await leadSearchApi.search({
-          page: 0,
-          size: 100,
-        });
-        const pageData = firstPage.data;
-        const leads = [...(pageData?.content ?? [])];
-        const totalPages = pageData?.totalPages ?? 1;
-        for (let page = 1; page < totalPages; page += 1) {
-          const response = await leadSearchApi.search({
-            page,
-            size: 100,
-          });
-          leads.push(...(response.data?.content ?? []));
-        }
-        const detailedLeads = await Promise.all(leads.map(async (lead) => {
-          if (!lead.uniqueLeadId) return lead;
-          try {
-            return (await leadApi.getLeadDetails(lead.uniqueLeadId)).data ?? lead;
-          } catch {
-            return lead;
-          }
-        }));
-        const assignedToSalesPerson = detailedLeads.filter((lead) => {
-          if (employeeCode) return lead.assignedEmployeeCode?.trim().toUpperCase() === employeeCode.trim().toUpperCase();
-          return userId === undefined || String(lead.assignedUserId ?? '') === String(userId);
-        });
-        const selectedLeads = list.id === 'client-created-list'
-          ? assignedToSalesPerson.filter((lead) => ['CONVERTED', 'ALREADY_CLIENT'].includes(String(lead.leadStatus ?? '').toUpperCase()))
-          : assignedToSalesPerson;
-        if (active) setLiveLeadItems(selectedLeads.map((lead) => (
-          list.id === 'client-created-list'
-            ? toLeadListItem(lead, lead.audit?.updatedAt ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt)
-            : toLeadListItem(lead)
-        )).filter((item) => item !== null));
-      } catch (error) {
-        if (active) setLoadError(error instanceof Error ? error.message : 'Leads could not be loaded.');
-      } finally {
-        if (active) setLoading(false);
+    if (!isLiveList) return;
+    const refresh = () => {
+      const leads = leadSearchService.getState().leads;
+      const meetings = meetingService.getState().meetings;
+      if (list.id === 'lead-collected-list') {
+        setLiveLeadItems(leads.map((lead) => toLeadListItem(lead)));
+      } else if (list.id === 'client-created-list') {
+        setLiveLeadItems(leads
+          .filter((lead) => ['CONVERTED', 'ALREADY_CLIENT'].includes(String(lead.leadStatus ?? '').toUpperCase()))
+          .map((lead) => toLeadListItem(lead, lead.audit?.updatedAt ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt)));
+      } else {
+        setLiveLeadItems(meetings
+          .filter((meeting) => meeting.meetingConducted === 'CONDUCTED' || meeting.meetingStatus === 'COMPLETED')
+          .map(toMeetingListItem)
+          .filter((item) => item !== null));
       }
+      const stateError = list.id === 'meeting-done-list' ? meetingService.getState().error : leadSearchService.getState().error;
+      const stateLoading = list.id === 'meeting-done-list' ? meetingService.getState().isLoading : leadSearchService.getState().isLoading;
+      setLoadError(stateError);
+      setLoading(stateLoading);
     };
-    void load();
-    return () => { active = false; };
-  }, [employeeCode, list.id, userId]);
-
-  useEffect(() => {
-    if (list.id !== 'meeting-done-list') return;
-    let active = true;
-    const load = async () => {
-      setLoading(true);
-      setLoadError(null);
-      try {
-        const firstPage = await leadSearchApi.search({ page: 0, size: 100 });
-        const leads = [...(firstPage.data?.content ?? [])];
-        const totalPages = firstPage.data?.totalPages ?? 1;
-        for (let page = 1; page < totalPages; page += 1) {
-          const response = await leadSearchApi.search({ page, size: 100 });
-          leads.push(...(response.data?.content ?? []));
-        }
-        const detailedLeads = await Promise.all(leads.map(async (lead) => {
-          if (!lead.uniqueLeadId) return lead;
-          try {
-            return (await leadApi.getLeadDetails(lead.uniqueLeadId)).data ?? lead;
-          } catch {
-            return lead;
-          }
-        }));
-        const personalLeads = detailedLeads.filter((lead) => {
-          if (employeeCode) return lead.assignedEmployeeCode?.trim().toUpperCase() === employeeCode.trim().toUpperCase();
-          return userId === undefined || String(lead.assignedUserId ?? '') === String(userId);
-        });
-        const meetingJourneys = await Promise.all(personalLeads.map(async (lead) => {
-          const leadIdentifier = lead.uniqueLeadId ?? (lead.leadId !== undefined ? String(lead.leadId) : '');
-          if (!leadIdentifier) return [];
-          try {
-            const journey = (await meetingApi.getJourney(leadIdentifier)).data ?? [];
-            return journey.map((meeting): MeetingResponse => ({
-              ...meeting,
-              clientName: meeting.clientName ?? lead.clientName,
-            }));
-          } catch {
-            try {
-              const history = (await meetingApi.getHistory(leadIdentifier)).data ?? [];
-              return history.map((meeting): MeetingResponse => ({
-                ...meeting,
-                clientName: meeting.clientName ?? lead.clientName,
-              }));
-            } catch {
-              return [];
-            }
-          }
-        }));
-        const uniqueMeetings = Array.from(new Map<string, MeetingResponse>(
-          meetingJourneys.flat().map((meeting) => [meeting.meetingCode ?? String(meeting.id), meeting]),
-        ).values());
-        const conductedMeetings = uniqueMeetings.filter((meeting) => (
-          meeting.meetingConducted === 'CONDUCTED'
-          || meeting.meetingStatus === 'COMPLETED'
-        ));
-        if (!conductedMeetings.length) {
-          const response = await meetingApi.getMeetings();
-          conductedMeetings.push(...(response.data ?? []).filter((meeting) => (
-            (!employeeCode || !meeting.employeeCode || meeting.employeeCode.trim().toUpperCase() === employeeCode.trim().toUpperCase())
-            && (
-            meeting.meetingConducted === 'CONDUCTED'
-            || meeting.meetingStatus === 'COMPLETED'
-            )
-          )));
-        }
-        if (active) setLiveLeadItems(conductedMeetings.map(toMeetingListItem).filter((item) => item !== null));
-      } catch (error) {
-        if (active) setLoadError(error instanceof Error ? error.message : 'Meetings could not be loaded.');
-      } finally {
-        if (active) setLoading(false);
-      }
-    };
-    void load();
-    return () => { active = false; };
-  }, [employeeCode, list.id, userId]);
-
+    const unsubscribeLeads = leadSearchService.subscribe(refresh);
+    const unsubscribeMeetings = meetingService.subscribe(refresh);
+    refresh();
+    if (list.id === 'meeting-done-list') {
+      if (!meetingService.getState().timestamp) void meetingService.loadMeetings();
+    } else if (!leadSearchService.getState().timestamp) {
+      void leadSearchService.loadLeads();
+    }
+    return () => { unsubscribeLeads(); unsubscribeMeetings(); };
+  }, [isLiveList, list.id]);
   const visibleItems = useMemo(() => {
     if (!showPeriodSelector) return liveLeadItems;
     const today = new Date();
@@ -248,6 +155,14 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
       return date >= lastMonthStart && date <= lastMonthEnd;
     });
   }, [liveLeadItems, period, showPeriodSelector]);
+  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const paginatedItems = useMemo(
+    () => visibleItems.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE),
+    [currentPage, visibleItems],
+  );
+
+  useEffect(() => { setPage(0); }, [list.id, period]);
 
   return (
     <View style={styles.screen}>
@@ -287,7 +202,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                       key={option.key}
                       accessibilityRole="button"
                       accessibilityState={{ selected: isActive }}
-                      onPress={() => setPeriod(option.key)}
+                      onPress={() => { setPeriod(option.key); setPage(0); }}
                       style={[
                         styles.periodButton,
                         isMobile && styles.mobilePeriodButton,
@@ -334,7 +249,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
               <Text style={styles.emptyDescription}>{loadError}</Text>
             </View>
           ) : visibleItems.length ? (
-            visibleItems.map((item, index) => {
+            paginatedItems.map((item, index) => {
               const rowColor = rowColors[index % rowColors.length];
 
               return (
@@ -347,7 +262,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                 ]}
               >
                 <View style={[styles.recordNumber, { backgroundColor: rowColor.soft }]}>
-                  <Text style={[styles.recordNumberText, { color: rowColor.accent }]}>{index + 1}</Text>
+                  <Text style={[styles.recordNumberText, { color: rowColor.accent }]}>{currentPage * PAGE_SIZE + index + 1}</Text>
                 </View>
                 <View style={[styles.recordCopy, isMobile && styles.mobileRecordCopy]}>
                   <Text style={styles.primaryText}>{item.primaryText}</Text>
@@ -367,6 +282,14 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
               <Text style={styles.emptyDescription}>No activity was recorded for this period.</Text>
             </View>
           )}
+          {!loading && !loadError && visibleItems.length > PAGE_SIZE ? <View style={styles.pagination}>
+            <Text style={styles.paginationInfo}>Showing {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, visibleItems.length)} of {visibleItems.length}</Text>
+            <View style={styles.paginationActions}>
+              <Pressable disabled={currentPage === 0} onPress={() => setPage((value) => Math.max(0, value - 1))} style={[styles.paginationButton, currentPage === 0 && styles.paginationButtonDisabled]}><Text style={styles.paginationButtonText}>Previous</Text></Pressable>
+              <Text style={styles.pageNumber}>{currentPage + 1} / {totalPages}</Text>
+              <Pressable disabled={currentPage >= totalPages - 1} onPress={() => setPage((value) => Math.min(totalPages - 1, value + 1))} style={[styles.paginationButton, currentPage >= totalPages - 1 && styles.paginationButtonDisabled]}><Text style={styles.paginationButtonText}>Next</Text></Pressable>
+            </View>
+          </View> : null}
         </View>
         </View>
       </ScrollView>
@@ -501,6 +424,13 @@ const styles = StyleSheet.create({
     marginLeft: 46,
   },
   dateText: { flexShrink: 1, color: theme.colors.muted, fontSize: 9, lineHeight: 12, fontWeight: '700' },
+  pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingTop: theme.spacing.sm },
+  paginationInfo: { color: theme.colors.muted, fontSize: 10, fontWeight: '700' },
+  paginationActions: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
+  paginationButton: { minWidth: 72, alignItems: 'center', paddingHorizontal: theme.spacing.sm, paddingVertical: 8, borderRadius: theme.radius.sm, backgroundColor: '#E8EEFF' },
+  paginationButtonDisabled: { opacity: 0.45 },
+  paginationButtonText: { color: '#3156C8', fontSize: 10, fontWeight: '900' },
+  pageNumber: { color: theme.colors.text, fontSize: 10, fontWeight: '800' },
   emptyState: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xs },
   emptyTitle: { color: theme.colors.text, fontSize: 13, fontWeight: '800' },
   emptyDescription: { color: theme.colors.muted, fontSize: 10, fontWeight: '600' },
