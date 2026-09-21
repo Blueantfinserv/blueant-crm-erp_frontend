@@ -229,7 +229,7 @@ The backend must fix its follow-up meeting-code sequence/generation or cloned da
 - Client Created and Meeting Conducted dashboard cards show the same live date-range counts as their respective lists.
 - Dashboard lists reuse the already scoped lead and meeting cache; they do not request a detail endpoint for every record when opened.
 - Dashboard lists render 50 records per page with Previous and Next controls.
-- The Sales Person overview counts lead tasks from their **Assigned Date** and meeting tasks from their **Next Plan Date** in **Today's Task** and **Pending Task**. Leads and meetings are separate task records, so both are included in the totals.
+- The Sales Person dashboard counts lead tasks from their **Assigned Date** and meeting tasks from their **Next Plan Date**; it uses the meeting date only when the backend has not returned a next-plan date. The existing Your Tasks schedule remains unchanged.
 - **Today's Task** and **Pending Task** cards open Your Tasks with the matching filter already selected.
 - Sales Coordinator lead assignment sends the backend `bestTimeForMeeting` enum: `NINE_TO_TWELVE`, `TWELVE_TO_THREE`, `THREE_TO_SIX`, or `SIX_TO_NINE`.
 

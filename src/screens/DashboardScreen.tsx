@@ -25,7 +25,7 @@ import { meetingService } from '../services/MeetingService';
 import { leadSearchService } from '../services/LeadSearchService';
 import type { MeetingQueueState } from '../types/meeting';
 import type { LeadSearchState } from '../types/lead';
-import { getActionableTaskMeetings, getTaskSchedule, isHiddenCompletedLead } from '../modules/salesManager/tasks/taskMeetingSelectors';
+import { getActionableTaskMeetings, getTaskSchedule, isHiddenCompletedLead, isRemovedLead } from '../modules/salesManager/tasks/taskMeetingSelectors';
 import { matchesAssignmentTaskFilter } from '../modules/salesManager/tasks/SalesManagerTasksScreen';
 const salesIcon = require('../../assets/perfomancecardlogo.png');
 const meetingsIcon = require('../../assets/meetingcardlogo.png');
@@ -91,11 +91,17 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
 
   const salesOverviewCards = useMemo(() => {
     const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
+    const meetingLeadKeys = new Set(actionableMeetings.flatMap((meeting) => [
+      meeting.leadId !== undefined ? `id:${meeting.leadId}` : '',
+      meeting.leadCode ? `code:${meeting.leadCode}` : '',
+    ]).filter(Boolean));
     const actionableLeads = leadState.leads
-      .filter((lead) => !isHiddenCompletedLead(lead.leadStatus));
-    const todayTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.nextMeetingDate) === 'Today').length
+      .filter((lead) => !isHiddenCompletedLead(lead.leadStatus) && !isRemovedLead(lead.leadStatus))
+      .filter((lead) => [lead.leadId !== undefined ? `id:${lead.leadId}` : '', lead.leadCode ? `code:${lead.leadCode}` : ''].filter(Boolean).every((key) => !meetingLeadKeys.has(key)));
+    const meetingTaskDate = (meeting: (typeof actionableMeetings)[number]) => meeting.nextMeetingDate ?? meeting.meetingDate;
+    const todayTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meetingTaskDate(meeting)) === 'Today').length
       + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt, 'Today')).length;
-    const pendingTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.nextMeetingDate) === 'Pending').length
+    const pendingTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meetingTaskDate(meeting)) === 'Pending').length
       + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt, 'Pending')).length;
     return todayOverviewData.map((card) => {
       if (card.id === 'todays-meetings') return { ...card, value: todayTasks };
