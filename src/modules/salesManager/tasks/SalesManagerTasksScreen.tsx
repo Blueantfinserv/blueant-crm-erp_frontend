@@ -60,7 +60,7 @@ const assignedInFutureThreeDays = (assignedAt?: string) => {
   return Boolean(date) && date > today && date <= endDate;
 };
 
-const matchesAssignmentTaskFilter = (assignedAt: string | undefined, filter: TaskTypeFilter) => {
+export const matchesAssignmentTaskFilter = (assignedAt: string | undefined, filter: TaskTypeFilter) => {
   if (filter === 'All Tasks') return true;
   if (filter === 'Today') return assignedOnToday(assignedAt);
   if (filter === 'Future 3 Days') return assignedInFutureThreeDays(assignedAt);

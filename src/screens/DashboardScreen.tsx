@@ -26,6 +26,7 @@ import { leadSearchService } from '../services/LeadSearchService';
 import type { MeetingQueueState } from '../types/meeting';
 import type { LeadSearchState } from '../types/lead';
 import { getActionableTaskMeetings, getTaskSchedule, isHiddenCompletedLead } from '../modules/salesManager/tasks/taskMeetingSelectors';
+import { matchesAssignmentTaskFilter } from '../modules/salesManager/tasks/SalesManagerTasksScreen';
 const salesIcon = require('../../assets/perfomancecardlogo.png');
 const meetingsIcon = require('../../assets/meetingcardlogo.png');
 const convertedClientIcon = require('../../assets/convertedclientcardlogo.png');
@@ -96,10 +97,10 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
     const actionableLeads = leadState.leads
       .filter((lead) => !isHiddenCompletedLead(lead.leadStatus))
       .filter((lead) => [lead.leadId !== undefined ? `id:${lead.leadId}` : '', lead.leadCode ? `code:${lead.leadCode}` : ''].filter(Boolean).every((key) => !meetingLeadKeys.has(key)));
-    const todayTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.meetingDate) === 'Today').length
-      + actionableLeads.filter((lead) => getTaskSchedule(lead.nextPlanDate) === 'Today').length;
-    const pendingTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.meetingDate) === 'Pending').length
-      + actionableLeads.filter((lead) => getTaskSchedule(lead.nextPlanDate) === 'Pending').length;
+    const todayTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.nextMeetingDate) === 'Today').length
+      + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt, 'Today')).length;
+    const pendingTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.nextMeetingDate) === 'Pending').length
+      + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt, 'Pending')).length;
     return todayOverviewData.map((card) => {
       if (card.id === 'todays-meetings') return { ...card, value: todayTasks };
       if (card.id === 'pending-meetings') return { ...card, value: pendingTasks };
