@@ -35,6 +35,7 @@ export function TopNavigation({
 }: Props) {
   const { width } = useWindowDimensions();
   const isCompact = width < 768;
+  const usesSalesPersonMenu = salesPersonMenu !== undefined;
   const [openMenu, setOpenMenu] = useState<'navigation' | 'profile' | null>(null);
   const [profileVisible, setProfileVisible] = useState(false);
 
@@ -94,16 +95,16 @@ export function TopNavigation({
         {!isCompact ? <Text style={styles.date}>{currentDate}</Text> : null}
       </View>
 
-      {isCompact ? (
+      {isCompact || usesSalesPersonMenu ? (
         <View style={styles.actions}>
-          <Pressable onPress={onNotificationsPress} style={[styles.iconButton, styles.iconButtonCompact]}>
+          <Pressable onPress={onNotificationsPress} style={[styles.iconButton, isCompact && styles.iconButtonCompact]}>
             <Text style={styles.icon}>🔔</Text>
           </Pressable>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Open menu"
             onPress={() => setOpenMenu((current) => current === 'navigation' ? null : 'navigation')}
-            style={[styles.iconButton, styles.iconButtonCompact, styles.hamburgerButton]}
+            style={[styles.iconButton, isCompact && styles.iconButtonCompact, styles.hamburgerButton]}
           >
             <View style={styles.hamburgerLines}>
               <View style={styles.hamburgerLine} />
@@ -125,7 +126,7 @@ export function TopNavigation({
         </ScrollView>
       )}
 
-      {!isCompact ? (
+      {!isCompact && !usesSalesPersonMenu ? (
         <View style={styles.actions}>
           <Pressable onPress={onNotificationsPress} style={styles.iconButton}>
             <Text style={styles.icon}>🔔</Text>

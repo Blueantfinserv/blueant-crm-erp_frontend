@@ -245,3 +245,7 @@ git diff --check
 ## Documentation maintenance
 
 When functionality for Sales Person or Sales Coordinator changes, update this README in the same commit. This keeps the implementation and handover documentation aligned.
+
+## Release update — 23 September 2026
+
+- Sales Person laptop headers now use the same bell-and-hamburger menu as mobile. The menu contains the existing Sales Person destinations; the old desktop profile icon and task tabs are hidden for this workspace.
