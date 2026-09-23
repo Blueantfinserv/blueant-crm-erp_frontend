@@ -24,6 +24,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
   const tone = cardTones[index % cardTones.length];
   const isRemovedLead = task.taskKind === 'LEAD'
     && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED');
+  const isVerificationPending = task.verificationPending === true;
   const whatsappNumber = task.phone.replace(/\D/g, '');
   const dialerNumber = task.phone.replace(/[^\d+]/g, '');
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${task.coordinates.latitude},${task.coordinates.longitude}`;
@@ -104,6 +105,13 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
         </View>
       </View>
 
+      {isVerificationPending ? (
+        <View style={styles.verificationPendingBadge}>
+          <Icon source="clock-alert-outline" size={12} color="#B45309" />
+          <Text style={styles.verificationPendingText}>Verification Pending</Text>
+        </View>
+      ) : null}
+
       <View style={[styles.remarks, { backgroundColor: tone.soft }]}>
         <View style={styles.remarksHeader}>
           <Text style={styles.remarksLabel}>Remarks</Text>
@@ -128,13 +136,17 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Update meeting for ${task.name}`}
+            accessibilityState={{ disabled: isVerificationPending }}
+            disabled={isVerificationPending}
             onPress={(event) => {
               event.stopPropagation();
+              if (isVerificationPending) return;
               onUpdateMeeting?.(task);
             }}
             style={({ pressed }) => [
               styles.updateMeetingButton,
               { borderColor: tone.accent, backgroundColor: tone.accent },
+              isVerificationPending && styles.updateMeetingButtonDisabled,
               pressed && styles.contactButtonPressed,
             ]}
           >
@@ -203,6 +215,19 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   locationCopy: { minWidth: 0, flex: 1 },
   location: { minWidth: 0, flex: 1, color: theme.colors.muted, fontSize: 10, fontWeight: '700' },
+  verificationPendingBadge: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: '#FFF7E8',
+    borderWidth: 1,
+    borderColor: '#FCD9A3',
+  },
+  verificationPendingText: { color: '#B45309', fontSize: 8, lineHeight: 10, fontWeight: '900' },
   remarks: {
     minHeight: 30,
     justifyContent: 'center',
@@ -252,6 +277,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
+  updateMeetingButtonDisabled: { opacity: 0.5 },
   updateMeetingText: {
     color: '#FFFFFF',
     fontSize: 8,

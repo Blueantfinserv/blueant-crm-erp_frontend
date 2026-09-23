@@ -11,6 +11,7 @@ export class MeetingService {
   private submissions = new Set<string>();
   private hiddenTaskLeadKeys = new Set<string>();
   private workflowTimestamps = new Map<string, string>();
+  private pendingVerificationMeetings: MeetingResponse[] = [];
   private employeeCode: string | null = null;
   private requestGeneration = 0;
 
@@ -27,6 +28,7 @@ export class MeetingService {
 
   subscribe(listener: Listener) { this.listeners.add(listener); listener(this.state); return () => { this.listeners.delete(listener); }; }
   getState() { return this.state; }
+  getPendingVerificationMeetings() { return this.pendingVerificationMeetings; }
   private setState(next: Partial<MeetingQueueState>) { this.state = { ...this.state, ...next }; this.listeners.forEach((listener) => listener(this.state)); }
 
   async loadMeetings() {
@@ -34,7 +36,15 @@ export class MeetingService {
     const employeeCode = this.employeeCode;
     this.setState({ isLoading: true, error: null });
     try {
-      const response = await meetingApi.getMeetings();
+      const [response, pendingVerificationResponse] = await Promise.all([
+        meetingApi.getMeetings(),
+        meetingApi.getByVerificationStatus('PENDING').catch(() => null),
+      ]);
+      const pendingVerificationCodes = new Set(
+        (pendingVerificationResponse?.data ?? [])
+          .map((meeting) => meeting.meetingCode?.trim())
+          .filter((meetingCode): meetingCode is string => Boolean(meetingCode)),
+      );
       const scopedMeetings = employeeCode === null
         ? response.data ?? []
         : (response.data ?? []).filter((meeting) => meeting.employeeCode === employeeCode);
@@ -52,15 +62,22 @@ export class MeetingService {
         try {
           const details = (await meetingApi.getMeeting(meetingCode)).data;
           const merged = details ? { ...meeting, ...details } : meeting;
+          const withVerificationStatus = pendingVerificationCodes.has(meetingCode)
+            ? { ...merged, verificationStatus: 'PENDING' as const }
+            : merged;
           const workflowUpdatedAt = this.workflowTimestamps.get(meetingCode);
-          return workflowUpdatedAt ? { ...merged, workflowUpdatedAt } : merged;
+          return workflowUpdatedAt ? { ...withVerificationStatus, workflowUpdatedAt } : withVerificationStatus;
         }
         catch {
           const workflowUpdatedAt = this.workflowTimestamps.get(meetingCode);
-          return workflowUpdatedAt ? { ...meeting, workflowUpdatedAt } : meeting;
+          const withVerificationStatus = pendingVerificationCodes.has(meetingCode)
+            ? { ...meeting, verificationStatus: 'PENDING' as const }
+            : meeting;
+          return workflowUpdatedAt ? { ...withVerificationStatus, workflowUpdatedAt } : withVerificationStatus;
         }
       }));
       if (generation !== this.requestGeneration) return;
+      this.pendingVerificationMeetings = pendingVerificationResponse?.data ?? [];
       this.setState({ meetings: meetings.filter((meeting) => !this.isHiddenTaskLead(meeting)), timestamp: response.timestamp ?? null, error: null });
     } catch (error) {
       if (generation === this.requestGeneration) this.setState({ meetings: [], timestamp: null, error: toMessage(error) });
@@ -122,6 +139,7 @@ export class MeetingService {
     this.submissions.clear();
     this.hiddenTaskLeadKeys.clear();
     this.workflowTimestamps.clear();
+    this.pendingVerificationMeetings = [];
     this.setState(initialState);
   }
 }

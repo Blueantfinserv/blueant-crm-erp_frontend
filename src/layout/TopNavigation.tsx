@@ -172,6 +172,14 @@ export function TopNavigation({
                     </Pressable>
                   );
                 })}
+                {salesPersonMenu !== undefined ? (
+                  <>
+                    <View style={styles.dropdownDivider} />
+                    <Pressable onPress={handleLogout} style={styles.dropdownItem}>
+                      <Text style={[styles.dropdownLabel, styles.logoutLabel]}>Logout</Text>
+                    </Pressable>
+                  </>
+                ) : null}
               </>
             ) : (
               <>

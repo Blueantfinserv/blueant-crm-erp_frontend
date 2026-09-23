@@ -11,6 +11,8 @@ export interface SalesTask {
   meetingTitle?: string;
   meetingType?: string;
   meetingStatus?: string;
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  verificationPending?: boolean;
   leadCode?: string;
   leadId?: number;
   leadStatus?: LeadStatus;

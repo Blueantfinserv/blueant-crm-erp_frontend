@@ -116,6 +116,7 @@ const mapMeetingToSalesTask = (
   index: number,
   lead?: LeadResponse,
   locationMeeting?: MeetingResponse,
+  lastMeetingDate?: string,
 ): SalesTask => ({
   id: meeting.meetingCode ?? String(meeting.id ?? `meeting-${index}`),
   taskKind: 'MEETING',
@@ -125,6 +126,7 @@ const mapMeetingToSalesTask = (
   meetingTitle: meeting.meetingTitle,
   meetingType: meeting.meetingType,
   meetingStatus: meeting.meetingStatus,
+  verificationStatus: meeting.verificationStatus,
   scheduledAt: meeting.meetingDate,
   uniqueLeadId: lead?.uniqueLeadId,
   leadId: meeting.leadId ?? lead?.leadId,
@@ -143,16 +145,7 @@ const mapMeetingToSalesTask = (
   ),
   taskLabel: meeting.meetingTitle ?? '',
   remarks: meeting.remarks ?? 'No remarks available.',
-  lastUpdated: formatTimestamp(
-    meeting.meetingDate
-      ?? meeting.workflowUpdatedAt
-      ?? meeting.updatedAt
-      ?? meeting.lastModifiedDate
-      ?? lead?.audit?.updatedAt
-      ?? meeting.createdAt
-      ?? meeting.createdDate
-      ?? lead?.audit?.createdAt,
-  ),
+  lastUpdated: formatTimestamp(lastMeetingDate ?? lead?.assignmentDate ?? lead?.assignedDate ?? lead?.assignedAt),
   nextFollowUpDate: formatDate(meeting.meetingDate),
   schedule: getTaskSchedule(meeting.meetingDate),
 });
@@ -255,6 +248,42 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const tasks = useMemo(
     () => {
       const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
+      const meetingHistory = Array.from(
+        new Map(
+          [...meetingState.meetings, ...meetingService.getPendingVerificationMeetings()]
+            .map((meeting) => [meeting.meetingCode ?? String(meeting.id ?? ''), meeting] as const)
+            .filter(([meetingCode]) => Boolean(meetingCode)),
+        ).values(),
+      );
+      const pendingVerificationLeadKeys = new Set(
+        meetingHistory
+          .filter((meeting) => meeting.verificationStatus === 'PENDING')
+          .flatMap((meeting) => [
+            meeting.leadId !== undefined ? `id:${meeting.leadId}` : '',
+            meeting.leadCode ? `code:${meeting.leadCode}` : '',
+          ])
+          .filter(Boolean),
+      );
+      const pendingVerificationPhones = new Set(
+        meetingHistory
+          .filter((meeting) => meeting.verificationStatus === 'PENDING')
+          .map((meeting) => meeting.mobileNumber?.replace(/\D/g, ''))
+          .filter((phone): phone is string => Boolean(phone)),
+      );
+      const isSameMeetingLead = (left: MeetingResponse, right: MeetingResponse) => (
+        (right.leadId !== undefined && left.leadId === right.leadId)
+        || (Boolean(right.leadCode) && left.leadCode === right.leadCode)
+        || Boolean(
+          right.mobileNumber
+          && left.mobileNumber
+          && right.mobileNumber.replace(/\D/g, '') === left.mobileNumber.replace(/\D/g, ''),
+        )
+      );
+      const hasPendingVerification = (leadId?: number, leadCode?: string, phone?: string) => (
+        (leadId !== undefined && pendingVerificationLeadKeys.has(`id:${leadId}`))
+        || Boolean(leadCode && pendingVerificationLeadKeys.has(`code:${leadCode}`))
+        || Boolean(phone && pendingVerificationPhones.has(phone.replace(/\D/g, '')))
+      );
       const meetingTasks = actionableMeetings.flatMap((meeting, index) => {
         const lead = leadState.leads.find((candidate) => (
           (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
@@ -274,7 +303,24 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           ).localeCompare(
             a.workflowUpdatedAt ?? a.updatedAt ?? a.lastModifiedDate ?? a.meetingDate ?? ''
           ))[0];
-        return [mapMeetingToSalesTask(meeting, index, lead, locationMeeting)];
+        const lastMeetingDate = meetingHistory
+          .filter((candidate) => (
+            candidate.meetingCode !== meeting.meetingCode
+            && calendarDateFromValue(candidate.meetingDate) <= todayCalendarDate()
+            && isSameMeetingLead(candidate, meeting)
+          ))
+          .filter((candidate) => (
+            meeting.meetingNumber === undefined
+            || candidate.meetingNumber === undefined
+            || candidate.meetingNumber < meeting.meetingNumber
+          ))
+          .sort((a, b) => String(b.meetingDate ?? '').localeCompare(String(a.meetingDate ?? '')))[0]
+          ?.meetingDate;
+        const task = mapMeetingToSalesTask(meeting, index, lead, locationMeeting, lastMeetingDate);
+        return [{
+          ...task,
+          verificationPending: hasPendingVerification(task.leadId, task.leadCode, task.phone),
+        }];
       });
       const meetingLeadKeys = new Set(meetingTasks.flatMap((task) => [
         task.leadCode ? `code:${task.leadCode}` : '',
@@ -287,7 +333,10 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           const keys = [lead.leadCode ? `code:${lead.leadCode}` : '', lead.leadId !== undefined ? `id:${lead.leadId}` : ''].filter(Boolean);
           return keys.every((key) => !meetingLeadKeys.has(key));
         })
-        .map(mapLeadToSalesTask);
+        .map((lead, index) => ({
+          ...mapLeadToSalesTask(lead, index),
+          verificationPending: hasPendingVerification(lead.leadId, lead.leadCode, lead.mobileNumber),
+        }));
       return [...leadTasks, ...meetingTasks];
     },
     [leadState.leads, meetingState.meetings],

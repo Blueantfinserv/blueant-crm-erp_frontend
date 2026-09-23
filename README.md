@@ -251,3 +251,9 @@ When functionality for Sales Person or Sales Coordinator changes, update this RE
 - Sales Person laptop headers now use the same bell-and-hamburger menu as mobile. The menu contains the existing Sales Person destinations; the old desktop profile icon and task tabs are hidden for this workspace.
 
 - Sales Person task cards now show the SC assignment date in **Last Updated** for Lead cards, and the meeting date for Meeting cards.
+
+- Sales Person hamburger navigation now includes **Log out**, using the existing session-reset and sign-in flow.
+
+- Sales Person task cards now keep the next workflow update locked while any earlier meeting for the same lead is awaiting SC verification. The card shows **Verification Pending** and disables **Update Meeting** until the pending verification is cleared by the existing backend verification flow.
+
+- For an active Meeting card, **Last Updated** now shows the latest earlier/past meeting date for that lead. A future date for the currently scheduled meeting remains under **Next Follow-up**. If no earlier meeting exists, the SC assignment date is displayed.
