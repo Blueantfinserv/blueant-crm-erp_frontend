@@ -103,7 +103,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     hasLocationPin: false,
     taskLabel: 'LEADS',
     remarks: lead.remarks ?? 'No remarks available.',
-    lastUpdated: formatTimestamp(lead.audit?.updatedAt ?? lead.audit?.createdAt),
+    lastUpdated: formatTimestamp(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt),
     nextFollowUpDate: formatDate(lead.nextPlanDate),
     schedule: getTaskSchedule(lead.nextPlanDate),
     email: lead.email,
@@ -144,7 +144,8 @@ const mapMeetingToSalesTask = (
   taskLabel: meeting.meetingTitle ?? '',
   remarks: meeting.remarks ?? 'No remarks available.',
   lastUpdated: formatTimestamp(
-    meeting.workflowUpdatedAt
+    meeting.meetingDate
+      ?? meeting.workflowUpdatedAt
       ?? meeting.updatedAt
       ?? meeting.lastModifiedDate
       ?? lead?.audit?.updatedAt
