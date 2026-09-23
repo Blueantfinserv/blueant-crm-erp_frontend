@@ -78,6 +78,12 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
     subtitle: 'Sales Coordinator workspace.',
     menuItems: [...commonItems],
   },
+  PC_COORDINATOR: {
+    role: 'PC_COORDINATOR',
+    title: 'PC Coordinator Dashboard',
+    subtitle: 'PC Coordinator workspace.',
+    menuItems: [...commonItems],
+  },
   EMPLOYEE: {
     role: 'EMPLOYEE',
     title: 'Employee Dashboard',

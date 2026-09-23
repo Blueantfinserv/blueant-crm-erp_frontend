@@ -157,7 +157,14 @@ function AppShell() {
     lead?: SalesTask;
   } | null>(null);
   const [selectedSalesTask, setSelectedSalesTask] = useState<SalesTask | null>(null);
-  const [salesTaskFilter, setSalesTaskFilter] = useState<'Today' | 'Pending'>('Today');
+  const [salesTaskFilter, setSalesTaskFilter] = useState<'Today' | 'Pending' | 'Future 3 Days'>('Today');
+  const [isAllTaskMode, setIsAllTaskMode] = useState(false);
+  const [isTaskToDoMode, setIsTaskToDoMode] = useState(true);
+  const [isTodaysTaskMode, setIsTodaysTaskMode] = useState(false);
+  const [isPendingTaskMode, setIsPendingTaskMode] = useState(false);
+  const [isFuture3DaysTaskMode, setIsFuture3DaysTaskMode] = useState(false);
+  const [isAllLeadsMode, setIsAllLeadsMode] = useState(false);
+  const [salesTaskScreenKey, setSalesTaskScreenKey] = useState(0);
   const screenHistory = useRef<ScreenState[]>([]);
   const fade = useRef(new Animated.Value(0)).current;
   const authenticatedUserKey = auth.isAuthenticated && auth.user
@@ -207,6 +214,15 @@ function AppShell() {
     setSelectedDashboardListId(null);
     setSelectedSalesTask(null);
     setLeadForm(null);
+    if (isSalesWorkspaceExperience(getRoleExperience(backendRole))) {
+      setIsAllTaskMode(false);
+      setIsTaskToDoMode(true);
+      setIsTodaysTaskMode(false);
+      setIsPendingTaskMode(false);
+      setIsFuture3DaysTaskMode(false);
+      setIsAllLeadsMode(false);
+      setSalesTaskScreenKey(0);
+    }
   }, [authenticatedUserKey, backendRole]);
 
   useEffect(() => {
@@ -291,6 +307,42 @@ function AppShell() {
     const roleNavigation = getRoleNavigationConfig(backendRole);
     const topTabs = getTopTabsForExperience(experience);
     const moduleItems = getModuleItemsForExperience(experience);
+    const salesPersonMenu = [
+      { key: 'dashboard', label: 'Dashboard' },
+      { key: 'all-task', label: 'All Task' },
+      { key: 'task-to-do', label: 'Task To Do' },
+      { key: 'today-task', label: "Today's Task" },
+      { key: 'pending-task', label: 'Pending Task' },
+      { key: 'future-3-days', label: 'Future 3 Days' },
+      { key: 'all-leads', label: 'All Leads' },
+      { key: 'all-clients', label: 'All Clients', disabled: true },
+      { key: 'profile', label: 'My Profile' },
+    ] as const;
+    const onSalesPersonMenuSelect = (key: string) => {
+      if (key === 'dashboard') {
+        setIsAllTaskMode(false);
+        setIsTaskToDoMode(false);
+        setIsTodaysTaskMode(false);
+        setIsPendingTaskMode(false);
+        setIsFuture3DaysTaskMode(false);
+        setIsAllLeadsMode(false);
+        setActiveTab('dashboard');
+        navigate('dashboard');
+        return;
+      }
+      if (key === 'today-task') setSalesTaskFilter('Today');
+      if (key === 'pending-task') setSalesTaskFilter('Pending');
+      if (key === 'future-3-days') setSalesTaskFilter('Future 3 Days');
+      setIsAllTaskMode(key === 'all-task');
+      setIsTaskToDoMode(key === 'task-to-do');
+      setIsTodaysTaskMode(key === 'today-task');
+      setIsPendingTaskMode(key === 'pending-task');
+      setIsFuture3DaysTaskMode(key === 'future-3-days');
+      setIsAllLeadsMode(key === 'all-leads');
+      setSalesTaskScreenKey((current) => current + 1);
+      setActiveTab('all-tasks');
+      navigate('leads');
+    };
     const currentDate = new Intl.DateTimeFormat('en-US', {
       weekday: 'long',
       month: 'short',
@@ -337,6 +389,8 @@ function AppShell() {
         return (
           <ErpShell
             currentDate={currentDate}
+            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
+            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
             contentScrollable={experience !== 'SALES_COORDINATOR'}
             tabs={topTabs}
             activeTab={activeTab}
@@ -374,7 +428,14 @@ function AppShell() {
                   navigate('dashboard-list');
                 }}
                 onOpenTaskFilter={(filter) => {
+                  setIsAllTaskMode(false);
+                  setIsTaskToDoMode(false);
+                  setIsTodaysTaskMode(filter === 'Today');
+                  setIsPendingTaskMode(filter === 'Pending');
+                  setIsFuture3DaysTaskMode(false);
+                  setIsAllLeadsMode(false);
                   setSalesTaskFilter(filter);
+                  setSalesTaskScreenKey((current) => current + 1);
                   navigate('leads');
                 }}
               />
@@ -392,6 +453,8 @@ function AppShell() {
         return (
           <ErpShell
             currentDate={currentDate}
+            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
+            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
             contentScrollable={false}
             tabs={topTabs}
             activeTab={activeTab}
@@ -499,6 +562,8 @@ function AppShell() {
         return (
           <ErpShell
             currentDate={currentDate}
+            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
+            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
             contentScrollable={!isSalesWorkspaceExperience(experience)}
             tabs={topTabs}
             activeTab={activeTab}
@@ -521,7 +586,14 @@ function AppShell() {
           >
             {isSalesWorkspaceExperience(experience) ? (
               <SalesManagerTasksScreen
+                key={salesTaskScreenKey}
                 initialTaskType={salesTaskFilter}
+                allTaskMode={isAllTaskMode}
+                taskToDoMode={isTaskToDoMode}
+                todaysTaskMode={isTodaysTaskMode}
+                pendingTaskMode={isPendingTaskMode}
+                future3DaysTaskMode={isFuture3DaysTaskMode}
+                allLeadsMode={isAllLeadsMode}
                 onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
                 onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
                 onOpenLeadDetails={(lead) => {
@@ -538,6 +610,8 @@ function AppShell() {
         return (
           <ErpShell
             currentDate={currentDate}
+            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
+            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
             contentScrollable={false}
             tabs={topTabs}
             activeTab={activeTab}
@@ -555,6 +629,8 @@ function AppShell() {
         return (
           <ErpShell
             currentDate={currentDate}
+            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
+            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
             contentScrollable={false}
             tabs={topTabs}
             activeTab={activeTab}
@@ -657,7 +733,7 @@ function AppShell() {
       default:
         return null;
     }
-  }, [activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, message, screen, selectedDashboardListId, selectedSalesTask]);
+  }, [activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, isAllLeadsMode, isAllTaskMode, isFuture3DaysTaskMode, isPendingTaskMode, isTaskToDoMode, isTodaysTaskMode, message, salesTaskFilter, salesTaskScreenKey, screen, selectedDashboardListId, selectedSalesTask]);
 
   return (
     <SafeAreaView style={styles.root}>

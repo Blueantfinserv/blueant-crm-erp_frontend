@@ -52,6 +52,13 @@ export class LeadSearchService {
     this.emit();
   }
 
+  private getDeduplicationKey(lead: { uniqueLeadId?: string; leadId?: number; leadCode?: string }) {
+    if (lead.uniqueLeadId) return `unique:${lead.uniqueLeadId}`;
+    if (lead.leadId !== undefined) return `id:${lead.leadId}`;
+    if (lead.leadCode) return `code:${lead.leadCode}`;
+    return null;
+  }
+
   async loadLeads() {
     const generation = this.requestGeneration;
     const assignedUserId = this.assignedUserId;
@@ -72,10 +79,17 @@ export class LeadSearchService {
       ];
       // The search response already contains the fields needed by task and dashboard lists.
       // Fetching every individual lead detail here produces hundreds of simultaneous requests.
+      const seenLeadKeys = new Set<string>();
       const leads = allLeads.map((lead) => ({
         ...lead,
         assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
-      }));
+      })).filter((lead) => {
+        const key = this.getDeduplicationKey(lead);
+        if (!key) return true;
+        if (seenLeadKeys.has(key)) return false;
+        seenLeadKeys.add(key);
+        return true;
+      });
       if (generation !== this.requestGeneration) return;
       const scopedLeads = assignedUserId === null
         ? leads

@@ -17,6 +17,8 @@ type Props = {
   onProfilePress?: () => void;
   onLogout?: () => void;
   user?: AuthUser | null;
+  salesPersonMenu?: readonly { key: string; label: string; disabled?: boolean }[];
+  onSalesPersonMenuSelect?: (key: string) => void;
 };
 
 export function TopNavigation({
@@ -28,6 +30,8 @@ export function TopNavigation({
   onProfilePress,
   onLogout,
   user,
+  salesPersonMenu,
+  onSalesPersonMenuSelect,
 }: Props) {
   const { width } = useWindowDimensions();
   const isCompact = width < 768;
@@ -92,24 +96,20 @@ export function TopNavigation({
 
       {isCompact ? (
         <View style={styles.actions}>
+          <Pressable onPress={onNotificationsPress} style={[styles.iconButton, styles.iconButtonCompact]}>
+            <Text style={styles.icon}>🔔</Text>
+          </Pressable>
           <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
             onPress={() => setOpenMenu((current) => current === 'navigation' ? null : 'navigation')}
-            style={[styles.iconButton, styles.hamburgerButton]}
+            style={[styles.iconButton, styles.iconButtonCompact, styles.hamburgerButton]}
           >
             <View style={styles.hamburgerLines}>
               <View style={styles.hamburgerLine} />
               <View style={styles.hamburgerLine} />
               <View style={styles.hamburgerLine} />
             </View>
-          </Pressable>
-          <Pressable onPress={onNotificationsPress} style={[styles.iconButton, styles.iconButtonCompact]}>
-            <Text style={styles.icon}>🔔</Text>
-          </Pressable>
-          <Pressable
-            onPress={() => setOpenMenu((current) => current === 'profile' ? null : 'profile')}
-            style={[styles.iconButton, styles.iconButtonCompact]}
-          >
-            <Text style={styles.icon}>👤</Text>
           </Pressable>
         </View>
       ) : (
@@ -140,22 +140,34 @@ export function TopNavigation({
       ) : null}
 
       <Modal visible={openMenu !== null} transparent animationType="fade" onRequestClose={closeMenu}>
-        <Pressable style={styles.modalBackdrop} onPress={closeMenu}>
+        <View style={styles.modalBackdrop}>
+          <Pressable accessibilityLabel="Close menu" onPress={closeMenu} style={StyleSheet.absoluteFill} />
           <View style={[styles.dropdown, isCompact && styles.dropdownCompact]}>
             {openMenu === 'navigation' ? (
               <>
-                {tabs.map((tab) => {
-                  const active = tab.key === activeTab;
+                {(salesPersonMenu ?? tabs).map((item) => {
+                  const isSalesPersonMenu = salesPersonMenu !== undefined;
+                  const tab = item as TopTabItem;
+                  const key = isSalesPersonMenu ? item.key : tab.key;
+                  const label = isSalesPersonMenu ? item.label : tab.label;
+                  const disabled = isSalesPersonMenu && Boolean((item as { disabled?: boolean }).disabled);
+                  const active = !isSalesPersonMenu && tab.key === activeTab;
                   return (
                     <Pressable
-                      key={tab.key}
+                      key={key}
+                      disabled={disabled}
                       onPress={() => {
-                        onTabPress(tab);
+                        if (isSalesPersonMenu) {
+                          if (key === 'profile') handleProfilePress();
+                          else onSalesPersonMenuSelect?.(key);
+                        } else {
+                          onTabPress(tab);
+                        }
                         closeMenu();
                       }}
                       style={styles.dropdownItem}
                     >
-                      <Text style={[styles.dropdownLabel, active && styles.dropdownLabelActive]}>{tab.label}</Text>
+                      <Text style={[styles.dropdownLabel, active && styles.dropdownLabelActive, disabled && styles.dropdownLabelDisabled]}>{label}</Text>
                     </Pressable>
                   );
                 })}
@@ -172,7 +184,7 @@ export function TopNavigation({
               </>
             )}
           </View>
-        </Pressable>
+        </View>
       </Modal>
 
       <Modal visible={profileVisible} transparent animationType="fade" onRequestClose={() => setProfileVisible(false)}>
@@ -316,6 +328,7 @@ const styles = StyleSheet.create({
   },
   dropdown: {
     position: 'absolute',
+    zIndex: 2,
     top: 62,
     right: 18,
     minWidth: 170,
@@ -341,6 +354,9 @@ const styles = StyleSheet.create({
   },
   dropdownLabelActive: {
     color: theme.colors.primary,
+  },
+  dropdownLabelDisabled: {
+    color: theme.colors.subtle,
   },
   profileHeader: {
     flexDirection: 'row',

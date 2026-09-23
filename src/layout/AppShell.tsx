@@ -21,6 +21,8 @@ type Props = PropsWithChildren<{
   onModulePress: (module: ModuleItem) => void;
   showTabs?: boolean;
   contentScrollable?: boolean;
+  salesPersonMenu?: readonly { key: string; label: string; disabled?: boolean }[];
+  onSalesPersonMenuSelect?: (key: string) => void;
 }>;
 
 export function AppShell({
@@ -36,6 +38,8 @@ export function AppShell({
   onModulePress,
   showTabs = true,
   contentScrollable = true,
+  salesPersonMenu,
+  onSalesPersonMenuSelect,
   children,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
@@ -53,6 +57,8 @@ export function AppShell({
           onProfilePress={onProfilePress}
           onLogout={onLogout}
           user={user}
+          salesPersonMenu={salesPersonMenu}
+          onSalesPersonMenuSelect={onSalesPersonMenuSelect}
         />
       ) : null}
       <View style={styles.body}>

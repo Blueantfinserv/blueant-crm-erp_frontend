@@ -7,6 +7,7 @@ import type { LeadResponse } from '../../../../types/lead';
 import type { MeetingResponse } from '../../../../types/meeting';
 import { leadSearchService } from '../../../../services/LeadSearchService';
 import { meetingService } from '../../../../services/MeetingService';
+import { isRemovedLead } from '../../tasks/taskMeetingSelectors';
 
 type Props = {
   list: DashboardListCard;
@@ -91,13 +92,11 @@ const rowColors = [
   { accent: '#F97316', background: '#FFF9F4', border: '#FFEDD5', soft: '#FFF0E3' },
   { accent: '#16A34A', background: '#F5FCF7', border: '#DCFCE7', soft: '#E7F8EC' },
 ] as const;
-const PAGE_SIZE = 50;
-
 export function DashboardListScreen({ list, userName, userId, employeeCode, onBack }: Props) {
   const { width } = useWindowDimensions();
   const [period, setPeriod] = useState<DashboardListPeriod>('today');
-  const [page, setPage] = useState(0);
   const [liveLeadItems, setLiveLeadItems] = useState(list.items);
+  const [showRemovedLeads, setShowRemovedLeads] = useState(false);
   const isLiveList = ['lead-collected-list', 'meeting-done-list', 'client-created-list'].includes(list.id);
   const [loading, setLoading] = useState(isLiveList);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -112,7 +111,9 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
       const leads = leadSearchService.getState().leads;
       const meetings = meetingService.getState().meetings;
       if (list.id === 'lead-collected-list') {
-        setLiveLeadItems(leads.map((lead) => toLeadListItem(lead)));
+        setLiveLeadItems(leads
+          .filter((lead) => showRemovedLeads ? isRemovedLead(lead.leadStatus) : !isRemovedLead(lead.leadStatus))
+          .map((lead) => toLeadListItem(lead)));
       } else if (list.id === 'client-created-list') {
         setLiveLeadItems(leads
           .filter((lead) => ['CONVERTED', 'ALREADY_CLIENT'].includes(String(lead.leadStatus ?? '').toUpperCase()))
@@ -137,7 +138,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
       void leadSearchService.loadLeads();
     }
     return () => { unsubscribeLeads(); unsubscribeMeetings(); };
-  }, [isLiveList, list.id]);
+  }, [isLiveList, list.id, showRemovedLeads]);
   const visibleItems = useMemo(() => {
     if (!showPeriodSelector) return liveLeadItems;
     const today = new Date();
@@ -155,15 +156,6 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
       return date >= lastMonthStart && date <= lastMonthEnd;
     });
   }, [liveLeadItems, period, showPeriodSelector]);
-  const totalPages = Math.max(1, Math.ceil(visibleItems.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages - 1);
-  const paginatedItems = useMemo(
-    () => visibleItems.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE),
-    [currentPage, visibleItems],
-  );
-
-  useEffect(() => { setPage(0); }, [list.id, period]);
-
   return (
     <View style={styles.screen}>
       <ScrollView
@@ -202,7 +194,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                       key={option.key}
                       accessibilityRole="button"
                       accessibilityState={{ selected: isActive }}
-                      onPress={() => { setPeriod(option.key); setPage(0); }}
+                      onPress={() => setPeriod(option.key)}
                       style={[
                         styles.periodButton,
                         isMobile && styles.mobilePeriodButton,
@@ -219,7 +211,19 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                     </Pressable>
                   );
                 })}
-              </View> : null}
+              </View> : list.id === 'lead-collected-list' ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={showRemovedLeads ? 'Show active assigned leads' : 'Show removed leads'}
+                  onPress={() => setShowRemovedLeads((current) => !current)}
+                  style={[styles.removedLeadsButton, isCompactHeader && styles.compactPeriodSelector]}
+                >
+                  <Icon source={showRemovedLeads ? 'account-check-outline' : 'account-remove-outline'} size={15} color={showRemovedLeads ? '#2563EB' : '#DC2626'} />
+                  <Text style={[styles.removedLeadsButtonText, { color: showRemovedLeads ? '#2563EB' : '#DC2626' }]}>
+                    {showRemovedLeads ? 'Assigned Leads' : 'Removed Leads'}
+                  </Text>
+                </Pressable>
+              ) : null}
             </View>
           </View>
         </View>
@@ -249,7 +253,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
               <Text style={styles.emptyDescription}>{loadError}</Text>
             </View>
           ) : visibleItems.length ? (
-            paginatedItems.map((item, index) => {
+            visibleItems.map((item, index) => {
               const rowColor = rowColors[index % rowColors.length];
 
               return (
@@ -262,7 +266,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                 ]}
               >
                 <View style={[styles.recordNumber, { backgroundColor: rowColor.soft }]}>
-                  <Text style={[styles.recordNumberText, { color: rowColor.accent }]}>{currentPage * PAGE_SIZE + index + 1}</Text>
+                  <Text style={[styles.recordNumberText, { color: rowColor.accent }]}>{index + 1}</Text>
                 </View>
                 <View style={[styles.recordCopy, isMobile && styles.mobileRecordCopy]}>
                   <Text style={styles.primaryText}>{item.primaryText}</Text>
@@ -282,14 +286,6 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
               <Text style={styles.emptyDescription}>No activity was recorded for this period.</Text>
             </View>
           )}
-          {!loading && !loadError && visibleItems.length > PAGE_SIZE ? <View style={styles.pagination}>
-            <Text style={styles.paginationInfo}>Showing {currentPage * PAGE_SIZE + 1}–{Math.min((currentPage + 1) * PAGE_SIZE, visibleItems.length)} of {visibleItems.length}</Text>
-            <View style={styles.paginationActions}>
-              <Pressable disabled={currentPage === 0} onPress={() => setPage((value) => Math.max(0, value - 1))} style={[styles.paginationButton, currentPage === 0 && styles.paginationButtonDisabled]}><Text style={styles.paginationButtonText}>Previous</Text></Pressable>
-              <Text style={styles.pageNumber}>{currentPage + 1} / {totalPages}</Text>
-              <Pressable disabled={currentPage >= totalPages - 1} onPress={() => setPage((value) => Math.min(totalPages - 1, value + 1))} style={[styles.paginationButton, currentPage >= totalPages - 1 && styles.paginationButtonDisabled]}><Text style={styles.paginationButtonText}>Next</Text></Pressable>
-            </View>
-          </View> : null}
         </View>
         </View>
       </ScrollView>
@@ -382,6 +378,13 @@ const styles = StyleSheet.create({
   mobilePeriodButton: { minWidth: 0, flex: 1, paddingHorizontal: theme.spacing.xs },
   periodDot: { width: 6, height: 6, borderRadius: 3 },
   periodText: { color: theme.colors.muted, fontSize: 11, lineHeight: 15, fontWeight: '800' },
+  removedLeadsButton: {
+    flexShrink: 0, flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: theme.spacing.md, paddingVertical: theme.spacing.sm,
+    borderWidth: 1, borderColor: theme.colors.border, borderRadius: theme.radius.sm,
+    backgroundColor: theme.colors.surface,
+  },
+  removedLeadsButtonText: { fontSize: 10, lineHeight: 14, fontWeight: '900' },
   listPanel: {
     position: 'relative',
     overflow: 'hidden', borderWidth: 1, borderRadius: theme.radius.lg,
@@ -424,13 +427,6 @@ const styles = StyleSheet.create({
     marginLeft: 46,
   },
   dateText: { flexShrink: 1, color: theme.colors.muted, fontSize: 9, lineHeight: 12, fontWeight: '700' },
-  pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: theme.spacing.md, paddingTop: theme.spacing.sm },
-  paginationInfo: { color: theme.colors.muted, fontSize: 10, fontWeight: '700' },
-  paginationActions: { flexDirection: 'row', alignItems: 'center', gap: theme.spacing.sm },
-  paginationButton: { minWidth: 72, alignItems: 'center', paddingHorizontal: theme.spacing.sm, paddingVertical: 8, borderRadius: theme.radius.sm, backgroundColor: '#E8EEFF' },
-  paginationButtonDisabled: { opacity: 0.45 },
-  paginationButtonText: { color: '#3156C8', fontSize: 10, fontWeight: '900' },
-  pageNumber: { color: theme.colors.text, fontSize: 10, fontWeight: '800' },
   emptyState: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: theme.spacing.xs },
   emptyTitle: { color: theme.colors.text, fontSize: 13, fontWeight: '800' },
   emptyDescription: { color: theme.colors.muted, fontSize: 10, fontWeight: '600' },

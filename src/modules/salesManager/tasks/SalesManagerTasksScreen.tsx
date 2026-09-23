@@ -27,6 +27,8 @@ const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'S
 const LEAD_FILTER_OPTIONS = ['All Leads', 'Removed Leads'] as const;
 const SERVICE_REQUEST_FORM_URL = 'https://docs.google.com/forms/d/14H3qkLVigG18GVMhcIqGb0PrR2hk3C5L9EHHDKxbqD0/viewform?edit_requested=true';
 const SHOW_NEW_LEAD_ACTION = false;
+const FUTURE_DAY_OPTIONS = ['Tomorrow', 'Day After Tomorrow', 'In 3 Days'] as const;
+type FutureDayFilter = typeof FUTURE_DAY_OPTIONS[number];
 
 const formatDate = (dateValue?: string) => {
   if (!dateValue) return 'Not scheduled';
@@ -46,6 +48,15 @@ const todayCalendarDate = () => {
   const now = new Date();
   return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')].join('-');
 };
+
+const calendarDateOffset = (days: number) => {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+};
+
+const calendarDateFromValue = (value?: string) => String(value ?? '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? '';
 
 const assignedOnToday = (assignedAt?: string) => (
   String(assignedAt ?? '').match(/^\d{4}-\d{2}-\d{2}/)?.[0] === todayCalendarDate()
@@ -83,6 +94,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     leadId: lead.leadId,
     leadStatus: lead.leadStatus,
     assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
+    scheduledAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
     name: lead.clientName ?? 'Unnamed lead',
     phone: lead.mobileNumber ?? '',
     locationText: lead.location ?? 'Location unavailable',
@@ -113,6 +125,7 @@ const mapMeetingToSalesTask = (
   meetingTitle: meeting.meetingTitle,
   meetingType: meeting.meetingType,
   meetingStatus: meeting.meetingStatus,
+  scheduledAt: meeting.meetingDate,
   uniqueLeadId: lead?.uniqueLeadId,
   leadId: meeting.leadId ?? lead?.leadId,
   name: meeting.clientName ?? 'Unnamed client',
@@ -214,9 +227,15 @@ type Props = {
   onUpdateMeeting?: (lead: SalesTask) => void;
   onOpenLeadDetails?: (lead: SalesTask) => void;
   initialTaskType?: TaskTypeFilter;
+  allTaskMode?: boolean;
+  taskToDoMode?: boolean;
+  todaysTaskMode?: boolean;
+  pendingTaskMode?: boolean;
+  future3DaysTaskMode?: boolean;
+  allLeadsMode?: boolean;
 };
 
-export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, initialTaskType = 'Today' }: Props) {
+export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const [search, setSearch] = useState('');
@@ -224,6 +243,8 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
   const [leadFilter, setLeadFilter] = useState<typeof LEAD_FILTER_OPTIONS[number]>('All Leads');
   const [meetingFilter, setMeetingFilter] = useState('All Meetings');
+  const [allTaskFilter, setAllTaskFilter] = useState('All Task');
+  const [futureDayFilter, setFutureDayFilter] = useState<FutureDayFilter>('Tomorrow');
   const [openDropdown, setOpenDropdown] = useState<'task' | 'lead' | 'meeting' | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -260,6 +281,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       ]).filter(Boolean));
       const leadTasks = leadState.leads
         .filter((lead) => !isHiddenCompletedLead(lead.leadStatus))
+        .filter((lead) => !isRemovedLead(lead.leadStatus))
         .filter((lead) => {
           const keys = [lead.leadCode ? `code:${lead.leadCode}` : '', lead.leadId !== undefined ? `id:${lead.leadId}` : ''].filter(Boolean);
           return keys.every((key) => !meetingLeadKeys.has(key));
@@ -268,6 +290,13 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       return [...leadTasks, ...meetingTasks];
     },
     [leadState.leads, meetingState.meetings],
+  );
+  const allLeadTasks = useMemo(
+    () => leadState.leads
+      .filter((lead) => !isHiddenCompletedLead(lead.leadStatus))
+      .filter((lead) => !isRemovedLead(lead.leadStatus))
+      .map(mapLeadToSalesTask),
+    [leadState.leads],
   );
   const meetingFilterOptions = useMemo(() => [
     'All Meetings',
@@ -282,6 +311,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         : numberDifference;
     }),
   ], [tasks]);
+  const allTaskFilterOptions = useMemo(() => [
+    'All Task',
+    'Leads',
+    ...meetingFilterOptions.filter((option) => option !== 'All Meetings'),
+  ], [meetingFilterOptions]);
   useEffect(() => {
     const unsubscribe = leadSearchService.subscribe(setLeadState);
     void leadSearchService.loadLeads();
@@ -319,6 +353,12 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       setMeetingFilter('All Meetings');
     }
   }, [meetingFilter, meetingFilterOptions]);
+
+  useEffect(() => {
+    if (!allTaskFilterOptions.includes(allTaskFilter)) {
+      setAllTaskFilter('All Task');
+    }
+  }, [allTaskFilter, allTaskFilterOptions]);
 
   const filterCounts = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -362,11 +402,47 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
     const normalizedSearch = search.trim().toLowerCase();
     const normalizedPhoneSearch = search.replace(/\D/g, '');
 
-    return tasks.filter((task) => {
+    const sourceTasks = allLeadsMode ? allLeadTasks : tasks;
+    return sourceTasks.filter((task) => {
       const matchesSearch =
         !normalizedSearch ||
         task.name.toLowerCase().includes(normalizedSearch) ||
-        (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
+        (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch)) ||
+        ((allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode) && [task.leadCode, task.meetingCode, task.uniqueLeadId]
+          .filter(Boolean)
+          .some((identifier) => identifier?.toLowerCase().includes(normalizedSearch)));
+      if (allTaskMode) {
+        const matchesAllTaskFilter = allTaskFilter === 'All Task'
+          || (allTaskFilter === 'Leads'
+            ? task.taskKind === 'LEAD'
+            : task.taskKind === 'MEETING' && task.meetingTitle === allTaskFilter);
+        return matchesSearch && matchesAllTaskFilter;
+      }
+      if (allLeadsMode) return matchesSearch;
+      if (taskToDoMode) {
+        const matchesTaskToDo = task.taskKind === 'LEAD'
+          ? !isRemovedLead(task.leadStatus) && (
+            matchesAssignmentTaskFilter(task.assignedAt, 'Today') || matchesAssignmentTaskFilter(task.assignedAt, 'Pending')
+          )
+          : task.schedule === 'Today' || task.schedule === 'Pending';
+        return matchesSearch && matchesTaskToDo;
+      }
+      if (todaysTaskMode) {
+        const matchesTodaysTask = task.taskKind === 'LEAD'
+          ? matchesAssignmentTaskFilter(task.assignedAt, 'Today')
+          : task.schedule === 'Today';
+        return matchesSearch && matchesTodaysTask;
+      }
+      if (pendingTaskMode) {
+        const matchesPendingTask = task.taskKind === 'LEAD'
+          ? matchesAssignmentTaskFilter(task.assignedAt, 'Pending')
+          : task.schedule === 'Pending';
+        return matchesSearch && matchesPendingTask;
+      }
+      if (future3DaysTaskMode) {
+        const offset = futureDayFilter === 'Tomorrow' ? 1 : futureDayFilter === 'Day After Tomorrow' ? 2 : 3;
+        return matchesSearch && calendarDateFromValue(task.scheduledAt) === calendarDateOffset(offset);
+      }
       const matchesTaskType = task.taskKind === 'LEAD'
         ? matchesAssignmentTaskFilter(task.assignedAt, taskType)
         : taskType === 'All Tasks' || task.schedule === taskType;
@@ -382,7 +458,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         || task.meetingTitle === meetingFilter;
       return matchesSearch && matchesTaskType && matchesStage && matchesLead && matchesMeeting;
     });
-  }, [leadFilter, meetingFilter, search, taskStage, taskType, tasks]);
+  }, [allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, leadFilter, meetingFilter, pendingTaskMode, search, taskStage, taskToDoMode, taskType, tasks, todaysTaskMode]);
 
   return (
     <View style={styles.page}>
@@ -395,7 +471,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           <View style={styles.headerCard}>
             <View style={[styles.heading, isMobile && styles.mobileHeading]}>
               <View style={[styles.headingCopy, isMobile && styles.mobileHeadingCopy]}>
-                <Text style={styles.title}>Your Tasks</Text>
+                <Text style={styles.title}>{allTaskMode ? 'All Task' : allLeadsMode ? 'All Leads' : taskToDoMode ? 'Task To Do' : todaysTaskMode ? "Today's Task" : pendingTaskMode ? 'Pending Task' : future3DaysTaskMode ? 'Future 3 Days' : 'Your Tasks'}</Text>
               </View>
               <View style={[styles.headingActions, isMobile && styles.mobileHeadingActions]}>
                 <Pressable
@@ -430,8 +506,8 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
               </View>
             </View>
 
-            <View style={[styles.filters, isMobile && styles.mobileFilters]}>
-              <View style={[styles.searchContainer, searchFocused && styles.searchContainerFocused, isMobile && styles.mobileSearch]}>
+            <View style={[styles.filters, isMobile && !allTaskMode && !future3DaysTaskMode && !allLeadsMode && styles.mobileFilters]}>
+              <View style={[styles.searchContainer, searchFocused && styles.searchContainerFocused, isMobile && !allTaskMode && !future3DaysTaskMode && !allLeadsMode && styles.mobileSearch, (allTaskMode || future3DaysTaskMode || allLeadsMode) && styles.allTaskSearch]}>
                 <View style={styles.searchIcon}>
                   <Icon source="magnify" size={18} color={theme.colors.primary} />
                 </View>
@@ -440,7 +516,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                   onChangeText={setSearch}
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setSearchFocused(false)}
-                  placeholder="Search by name or mobile number"
+                  placeholder={allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode ? 'Search by name, mobile or code' : 'Search by name or mobile number'}
                   placeholderTextColor={theme.colors.subtle}
                   returnKeyType="search"
                   style={styles.searchInput}
@@ -452,6 +528,37 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                 ) : null}
               </View>
 
+              {allTaskMode ? (
+                <View style={[styles.dropdowns, isMobile && styles.allTaskMobileDropdowns]}>
+                  <FilterDropdown
+                    value={allTaskFilter}
+                    options={allTaskFilterOptions}
+                    compactWidth
+                    open={openDropdown === 'task'}
+                    onToggle={() => setOpenDropdown((current) => (current === 'task' ? null : 'task'))}
+                    onSelect={(value) => {
+                      setAllTaskFilter(value);
+                      setOpenDropdown(null);
+                    }}
+                    accessibilityLabel="Filter all tasks by lead or meeting label"
+                  />
+                </View>
+              ) : allLeadsMode ? null : future3DaysTaskMode ? (
+                <View style={[styles.dropdowns, isMobile && styles.allTaskMobileDropdowns]}>
+                  <FilterDropdown
+                    value={futureDayFilter}
+                    options={FUTURE_DAY_OPTIONS}
+                    compactWidth
+                    open={openDropdown === 'task'}
+                    onToggle={() => setOpenDropdown((current) => (current === 'task' ? null : 'task'))}
+                    onSelect={(value) => {
+                      setFutureDayFilter(value);
+                      setOpenDropdown(null);
+                    }}
+                    accessibilityLabel="Filter future tasks by scheduled day"
+                  />
+                </View>
+              ) : taskToDoMode || todaysTaskMode || pendingTaskMode ? null : (
               <View style={[styles.dropdowns, isMobile && styles.mobileDropdowns]}>
                 <FilterDropdown
                   value={taskType}
@@ -600,6 +707,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                   </View>
                 </View>
               </View>
+              )}
             </View>
           </View>
         </View>
@@ -607,7 +715,9 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         <View style={styles.body}>
           <View style={styles.bodyHeader}>
             <Text style={styles.bodyTitle}>Task Pipeline</Text>
-            <Text style={styles.bodyCount}>{filteredTasks.length} tasks</Text>
+            <Text style={styles.bodyCount}>
+              {filteredTasks.length ? `${filteredTasks.length} tasks` : '0 tasks'}
+            </Text>
           </View>
           {leadState.isLoading || meetingState.isLoading ? (
             <View style={styles.emptyState}>
@@ -621,23 +731,26 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
               <Text style={styles.emptyText}>{leadState.error ?? meetingState.error}</Text>
             </View>
           ) : filteredTasks.length ? (
-            <View style={styles.taskGrid}>
-              {filteredTasks.map((task, index) => (
-                <SalesTaskCard
-                  key={task.id}
-                  task={task}
-                  width={cardWidth}
-                  index={index}
-                  onUpdateMeeting={onUpdateMeeting}
-                  onOpenDetails={onOpenLeadDetails}
-                />
-              ))}
-            </View>
+            <>
+              <View style={styles.taskGrid}>
+                {filteredTasks.map((task, index) => (
+                  <SalesTaskCard
+                    key={task.id}
+                    task={task}
+                    width={cardWidth}
+                    index={index}
+                  highlightTaskLabel={allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode}
+                    onUpdateMeeting={onUpdateMeeting}
+                    onOpenDetails={onOpenLeadDetails}
+                  />
+                ))}
+              </View>
+            </>
           ) : (
             <View style={styles.emptyState}>
               <Icon source="clipboard-search-outline" size={30} color={theme.colors.subtle} />
-              <Text style={styles.emptyTitle}>No matching tasks</Text>
-              <Text style={styles.emptyText}>Try changing the search or filter selection.</Text>
+              <Text style={styles.emptyTitle}>{allLeadsMode && !search ? 'No leads assigned' : allLeadsMode ? 'No matching leads found' : pendingTaskMode && !search ? 'No pending tasks' : future3DaysTaskMode && !search ? 'No tasks scheduled' : 'No matching tasks found'}</Text>
+              <Text style={styles.emptyText}>{pendingTaskMode && !search ? 'There are no pending tasks.' : future3DaysTaskMode && !search ? `There are no tasks scheduled for ${futureDayFilter.toLowerCase()}.` : 'Try changing the search.'}</Text>
             </View>
           )}
         </View>
@@ -834,6 +947,10 @@ const styles = StyleSheet.create({
   mobileSearch: {
     width: '100%',
   },
+  allTaskSearch: {
+    minWidth: 0,
+    maxWidth: 460,
+  },
   searchInput: {
     minWidth: 0,
     flex: 1,
@@ -852,6 +969,10 @@ const styles = StyleSheet.create({
     width: '100%',
     flexDirection: 'row',
     gap: 6,
+  },
+  allTaskMobileDropdowns: {
+    width: 'auto',
+    flexShrink: 0,
   },
   stageTabs: {
     minHeight: 36,
@@ -938,7 +1059,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   dropdownRootCompact: {
-    width: 112,
+    width: 104,
     flexShrink: 0,
   },
   dropdownButton: {

@@ -15,6 +15,7 @@ export interface SalesTask {
   leadId?: number;
   leadStatus?: LeadStatus;
   assignedAt?: string;
+  scheduledAt?: string;
   name: string;
   phone: string;
   locationText: string;

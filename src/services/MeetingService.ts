@@ -38,7 +38,15 @@ export class MeetingService {
       const scopedMeetings = employeeCode === null
         ? response.data ?? []
         : (response.data ?? []).filter((meeting) => meeting.employeeCode === employeeCode);
-      const meetings = await Promise.all(scopedMeetings.map(async (meeting) => {
+      const seenMeetingCodes = new Set<string>();
+      const uniqueMeetings = scopedMeetings.filter((meeting) => {
+        const meetingCode = meeting.meetingCode?.trim();
+        if (!meetingCode) return true;
+        if (seenMeetingCodes.has(meetingCode)) return false;
+        seenMeetingCodes.add(meetingCode);
+        return true;
+      });
+      const meetings = await Promise.all(uniqueMeetings.map(async (meeting) => {
         const meetingCode = meeting.meetingCode?.trim();
         if (!meetingCode) return meeting;
         try {

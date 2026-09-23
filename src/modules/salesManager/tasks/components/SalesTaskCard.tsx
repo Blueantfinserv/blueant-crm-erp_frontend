@@ -10,6 +10,7 @@ type Props = {
   index: number;
   onUpdateMeeting?: (task: SalesTask) => void;
   onOpenDetails?: (task: SalesTask) => void;
+  highlightTaskLabel?: boolean;
 };
 
 const cardTones = [
@@ -19,7 +20,7 @@ const cardTones = [
   { accent: '#16A34A', soft: '#F0FDF4', border: '#DCFCE7' },
 ] as const;
 
-export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, onUpdateMeeting, onOpenDetails }: Props) {
+export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, onUpdateMeeting, onOpenDetails, highlightTaskLabel = false }: Props) {
   const tone = cardTones[index % cardTones.length];
   const isRemovedLead = task.taskKind === 'LEAD'
     && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED');
@@ -89,8 +90,10 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
             </Pressable>
           </View>
         </View>
-        <View style={[styles.stageBadge, { backgroundColor: tone.soft }]}>
-          <Text style={[styles.stageText, { color: tone.accent }]}>{task.taskLabel}</Text>
+        <View style={[styles.stageBadge, highlightTaskLabel && styles.highlightedStageBadge, { backgroundColor: tone.soft, borderColor: tone.accent }]}>
+          <Text style={[styles.stageText, highlightTaskLabel && styles.highlightedStageText, { color: tone.accent }]}>
+            {task.taskKind === 'LEAD' ? 'Lead' : task.taskLabel}
+          </Text>
         </View>
       </View>
 
@@ -194,7 +197,9 @@ const styles = StyleSheet.create({
     transform: [{ scale: 0.94 }],
   },
   stageBadge: { paddingHorizontal: theme.spacing.sm, paddingVertical: 5, borderRadius: 999 },
+  highlightedStageBadge: { borderWidth: 1, paddingHorizontal: theme.spacing.md, paddingVertical: 6 },
   stageText: { fontSize: 8, lineHeight: 10, fontWeight: '900' },
+  highlightedStageText: { fontSize: 9, lineHeight: 12, letterSpacing: 0.25, textTransform: 'uppercase' },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   locationCopy: { minWidth: 0, flex: 1 },
   location: { minWidth: 0, flex: 1, color: theme.colors.muted, fontSize: 10, fontWeight: '700' },
