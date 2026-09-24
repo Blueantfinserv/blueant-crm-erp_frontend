@@ -60,10 +60,12 @@ flowchart TD
 
 ### Meeting Update form
 
-The form records meeting mode, result/status, remarks, live location, and a future next-plan date.
+The form records meeting mode, outcome, remarks, live location, and an actual future follow-up date.
 
 - **Meeting Date** is read-only and is set to the current local date when the update form opens.
-- **Next Plan Date** is a separate future follow-up date.
+- Salespeople select a follow-up interval; the app calculates and sends its actual local `YYYY-MM-DD` date as `nextPlanDate`.
+- **Meeting Conducted** preserves the normal meeting-status workflow.
+- **Visited but Not Met** sends `meetingConducted: NOT_CONDUCTED`, `meetingRemarks`, `nextPlanDate`, latitude, longitude, and accuracy without conducted-only fields.
 - Live location can include address, latitude, longitude, accuracy, and a maps link.
 - The client prevents duplicate submits: the button is disabled during submission and the service prevents another request for the same meeting code while the first request is active.
 

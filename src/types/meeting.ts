@@ -43,9 +43,9 @@ export type CreateMeetingRequest = Omit<ScheduleMeetingRequest, 'meetingTime'> &
   meetingStatus?: MeetingStatus;
 };
 export type MeetingWorkflowRequest = {
-  leadStatus: MeetingLeadStatus; aloneWith: AloneWith; meetingDate?: string; meetingMode?: MeetingMode;
+  leadStatus?: MeetingLeadStatus; aloneWith?: AloneWith; meetingDate?: string; meetingMode?: MeetingMode;
   meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED';
-  remarks?: string; nextPlanDate?: string; latitude?: number; longitude?: number; address?: string; accuracy?: number;
+  remarks?: string; meetingRemarks?: string; nextPlanDate?: string; latitude?: number; longitude?: number; address?: string; accuracy?: number;
   visitingCard?: string;
 };
 export type MeetingVerificationRequest = {
@@ -66,6 +66,7 @@ export type CancelMeetingRequest = { meetingId: number; cancellationReason: stri
 
 export type MeetingFormSubmission = {
   leadId?: string; meetingCode?: string; meetingMode: 'Physical' | 'Virtual'; meetingDate: string;
+  meetingConducted: 'CONDUCTED' | 'NOT_CONDUCTED';
   leadStatus: 'Work In Progress' | 'Converted as Client' | 'Client Not Interested' | 'Remove This Client' | 'Already Blueant Client';
   aloneWith: AloneWith; nextPlanDate: string; remarks: string;
   latitude?: number; longitude?: number; address?: string; accuracy?: number | null;

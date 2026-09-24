@@ -3,9 +3,7 @@ import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, Te
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import {
-  TaskStageFilter,
   TaskTypeFilter,
-  taskTypeOptions,
 } from './mock/taskFilterOptions';
 import { SalesTaskCard } from './components/SalesTaskCard';
 import type { SalesTask } from './types/tasks';
@@ -24,7 +22,6 @@ const parseBackendCalendarDate = (value?: string | null) => {
 };
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
-const LEAD_FILTER_OPTIONS = ['All Leads', 'Removed Leads'] as const;
 const SERVICE_REQUEST_FORM_URL = 'https://docs.google.com/forms/d/14H3qkLVigG18GVMhcIqGb0PrR2hk3C5L9EHHDKxbqD0/viewform?edit_requested=true';
 const SHOW_NEW_LEAD_ACTION = false;
 const FUTURE_DAY_OPTIONS = ['Tomorrow', 'Day After Tomorrow', 'In 3 Days'] as const;
@@ -101,7 +98,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     clinicAddress: lead.clinicAddress,
     coordinates: { latitude: 0, longitude: 0 },
     hasLocationPin: false,
-    taskLabel: 'LEADS',
+    taskLabel: 'PROSPECT',
     remarks: lead.remarks ?? 'No remarks available.',
     lastUpdated: formatTimestamp(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt),
     nextFollowUpDate: formatDate(lead.nextPlanDate),
@@ -220,7 +217,6 @@ type Props = {
   onCreateNewLead?: () => void;
   onUpdateMeeting?: (lead: SalesTask) => void;
   onOpenLeadDetails?: (lead: SalesTask) => void;
-  initialTaskType?: TaskTypeFilter;
   allTaskMode?: boolean;
   taskToDoMode?: boolean;
   todaysTaskMode?: boolean;
@@ -229,14 +225,10 @@ type Props = {
   allLeadsMode?: boolean;
 };
 
-export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: Props) {
+export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const [search, setSearch] = useState('');
-  const [taskType, setTaskType] = useState<TaskTypeFilter>(initialTaskType);
-  const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
-  const [leadFilter, setLeadFilter] = useState<typeof LEAD_FILTER_OPTIONS[number]>('All Leads');
-  const [meetingFilter, setMeetingFilter] = useState('All Meetings');
   const [allTaskFilter, setAllTaskFilter] = useState('All Task');
   const [futureDayFilter, setFutureDayFilter] = useState<FutureDayFilter>('Tomorrow');
   const [openDropdown, setOpenDropdown] = useState<'task' | 'lead' | 'meeting' | null>(null);
@@ -363,7 +355,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   ], [tasks]);
   const allTaskFilterOptions = useMemo(() => [
     'All Task',
-    'Leads',
+    'Prospects',
     ...meetingFilterOptions.filter((option) => option !== 'All Meetings'),
   ], [meetingFilterOptions]);
   useEffect(() => {
@@ -399,54 +391,10 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   }, []);
 
   useEffect(() => {
-    if (!meetingFilterOptions.includes(meetingFilter)) {
-      setMeetingFilter('All Meetings');
-    }
-  }, [meetingFilter, meetingFilterOptions]);
-
-  useEffect(() => {
     if (!allTaskFilterOptions.includes(allTaskFilter)) {
       setAllTaskFilter('All Task');
     }
   }, [allTaskFilter, allTaskFilterOptions]);
-
-  const filterCounts = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    const normalizedPhoneSearch = search.replace(/\D/g, '');
-    const searchedTasks = tasks.filter((task) => {
-      const matchesSearch =
-        !normalizedSearch
-        || task.name.toLowerCase().includes(normalizedSearch)
-        || (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
-      return matchesSearch;
-    });
-    const countableTasks = searchedTasks.filter((task) => {
-      const matchesTaskType = task.taskKind === 'LEAD'
-        ? matchesAssignmentTaskFilter(task.assignedAt, taskType)
-        : taskType === 'All Tasks' || task.schedule === taskType;
-      return matchesTaskType;
-    });
-    const activeLeads = countableTasks.filter((task) => (
-      task.taskKind === 'LEAD' && !isRemovedLead(task.leadStatus)
-    ));
-    const todayLeads = activeLeads.filter((task) => assignedOnToday(task.assignedAt)).length;
-    const removedLeads = countableTasks.filter((task) => (
-      task.taskKind === 'LEAD' && isRemovedLead(task.leadStatus)
-    )).length;
-    const meetings = countableTasks.filter((task) => task.taskKind === 'MEETING');
-    const meetingsByTitle = meetings.reduce<Record<string, number>>((counts, task) => {
-      if (task.meetingTitle) counts[task.meetingTitle] = (counts[task.meetingTitle] ?? 0) + 1;
-      return counts;
-    }, {});
-    return { todayLeads, activeLeads: activeLeads.length, removedLeads, meetings: meetings.length, meetingsByTitle };
-  }, [search, taskType, tasks]);
-
-  const getLeadFilterCount = (option: typeof LEAD_FILTER_OPTIONS[number]) => (
-    option === 'All Leads' ? filterCounts.activeLeads : filterCounts.removedLeads
-  );
-  const getMeetingFilterCount = (option: string) => (
-    option === 'All Meetings' ? filterCounts.meetings : (filterCounts.meetingsByTitle[option] ?? 0)
-  );
 
   const filteredTasks = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
@@ -463,7 +411,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           .some((identifier) => identifier?.toLowerCase().includes(normalizedSearch)));
       if (allTaskMode) {
         const matchesAllTaskFilter = allTaskFilter === 'All Task'
-          || (allTaskFilter === 'Leads'
+          || (allTaskFilter === 'Prospects'
             ? task.taskKind === 'LEAD'
             : task.taskKind === 'MEETING' && task.meetingTitle === allTaskFilter);
         return matchesSearch && matchesAllTaskFilter;
@@ -493,22 +441,9 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         const offset = futureDayFilter === 'Tomorrow' ? 1 : futureDayFilter === 'Day After Tomorrow' ? 2 : 3;
         return matchesSearch && calendarDateFromValue(task.scheduledAt) === calendarDateOffset(offset);
       }
-      const matchesTaskType = task.taskKind === 'LEAD'
-        ? matchesAssignmentTaskFilter(task.assignedAt, taskType)
-        : taskType === 'All Tasks' || task.schedule === taskType;
-      const matchesStage = (taskStage === 'Leads' && task.taskKind === 'LEAD')
-        || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
-      const removedLead = isRemovedLead(task.leadStatus);
-      const matchesLead = taskStage !== 'Leads'
-        || (leadFilter === 'Removed Leads'
-          ? removedLead
-          : !removedLead);
-      const matchesMeeting = taskStage !== 'Meetings'
-        || meetingFilter === 'All Meetings'
-        || task.meetingTitle === meetingFilter;
-      return matchesSearch && matchesTaskType && matchesStage && matchesLead && matchesMeeting;
+      return matchesSearch;
     });
-  }, [allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, leadFilter, meetingFilter, pendingTaskMode, search, taskStage, taskToDoMode, taskType, tasks, todaysTaskMode]);
+  }, [allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, pendingTaskMode, search, taskToDoMode, tasks, todaysTaskMode]);
 
   return (
     <View style={styles.page}>
@@ -608,156 +543,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                     accessibilityLabel="Filter future tasks by scheduled day"
                   />
                 </View>
-              ) : taskToDoMode || todaysTaskMode || pendingTaskMode ? null : (
-              <View style={[styles.dropdowns, isMobile && styles.mobileDropdowns]}>
-                <FilterDropdown
-                  value={taskType}
-                  options={taskTypeOptions}
-                  compactWidth={isMobile}
-                  open={openDropdown === 'task'}
-                  onToggle={() => setOpenDropdown((current) => (current === 'task' ? null : 'task'))}
-                  onSelect={(value) => {
-                    setTaskType(value);
-                    setOpenDropdown(null);
-                  }}
-                  accessibilityLabel="Filter by task type"
-                />
-                <View style={[styles.stageTabs, isMobile && styles.mobileStageTabs]}>
-                  <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Filter leads by status"
-                      accessibilityState={{
-                        expanded: openDropdown === 'lead',
-                        selected: taskStage === 'Leads',
-                      }}
-                      onPress={() => {
-                        setTaskStage('Leads');
-                        setOpenDropdown((current) => (current === 'lead' ? null : 'lead'));
-                      }}
-                      style={({ pressed }) => [
-                        styles.stageTab,
-                        styles.leadStageButton,
-                        isMobile && styles.mobileStageButton,
-                        taskStage === 'Leads' && styles.stageTabSelected,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.stageTabText, taskStage === 'Leads' && styles.stageTabTextSelected]}
-                      >
-                        {leadFilter} ({getLeadFilterCount(leadFilter)})
-                      </Text>
-                      <Icon
-                        source={openDropdown === 'lead' ? 'chevron-up' : 'chevron-down'}
-                        size={16}
-                        color={taskStage === 'Leads' ? '#FFFFFF' : theme.colors.muted}
-                      />
-                    </Pressable>
-
-                    {openDropdown === 'lead' ? (
-                      <View style={styles.leadStageMenu}>
-                        {LEAD_FILTER_OPTIONS.map((option) => {
-                          const selected = leadFilter === option;
-                          return (
-                            <Pressable
-                              key={option}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected }}
-                              onPress={() => {
-                                setLeadFilter(option);
-                                setTaskStage('Leads');
-                                setOpenDropdown(null);
-                              }}
-                              style={({ pressed }) => [
-                                styles.dropdownOption,
-                                selected && styles.selectedOption,
-                                pressed && styles.pressed,
-                              ]}
-                            >
-                              <Text style={[styles.optionText, selected && styles.selectedOptionText]}>
-                                {option} ({getLeadFilterCount(option)})
-                              </Text>
-                              {selected ? <Icon source="check" size={17} color={theme.colors.primary} /> : null}
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    ) : null}
-                  </View>
-
-                  <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Filter meetings by backend title"
-                      accessibilityState={{
-                        expanded: openDropdown === 'meeting',
-                        selected: taskStage === 'Meetings',
-                      }}
-                      onPress={() => {
-                        setTaskStage('Meetings');
-                        setOpenDropdown((current) => (current === 'meeting' ? null : 'meeting'));
-                      }}
-                      style={({ pressed }) => [
-                        styles.stageTab,
-                        styles.meetingStageButton,
-                        isMobile && styles.mobileStageButton,
-                        taskStage === 'Meetings' && styles.stageTabSelected,
-                        pressed && styles.pressed,
-                      ]}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.stageTabText, taskStage === 'Meetings' && styles.stageTabTextSelected]}
-                      >
-                        {meetingFilter === 'All Meetings' ? 'Meetings' : meetingFilter} ({getMeetingFilterCount(meetingFilter)})
-                      </Text>
-                      <Icon
-                        source={openDropdown === 'meeting' ? 'chevron-up' : 'chevron-down'}
-                        size={16}
-                        color={taskStage === 'Meetings' ? '#FFFFFF' : theme.colors.muted}
-                      />
-                    </Pressable>
-
-                    {openDropdown === 'meeting' ? (
-                      <ScrollView
-                        style={styles.meetingStageMenu}
-                        contentContainerStyle={styles.dropdownMenuContent}
-                        showsVerticalScrollIndicator
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        {meetingFilterOptions.map((option) => {
-                          const selected = meetingFilter === option;
-                          return (
-                            <Pressable
-                              key={option}
-                              accessibilityRole="button"
-                              accessibilityState={{ selected }}
-                              onPress={() => {
-                                setMeetingFilter(option);
-                                setTaskStage('Meetings');
-                                setOpenDropdown(null);
-                              }}
-                              style={({ pressed }) => [
-                                styles.dropdownOption,
-                                selected && styles.selectedOption,
-                                pressed && styles.pressed,
-                              ]}
-                            >
-                              <Text style={[styles.optionText, selected && styles.selectedOptionText]}>
-                                {option} ({getMeetingFilterCount(option)})
-                              </Text>
-                              {selected ? <Icon source="check" size={17} color={theme.colors.primary} /> : null}
-                            </Pressable>
-                          );
-                        })}
-                      </ScrollView>
-                    ) : null}
-                  </View>
-                </View>
-              </View>
-              )}
+              ) : null}
             </View>
           </View>
         </View>

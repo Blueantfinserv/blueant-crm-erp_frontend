@@ -93,7 +93,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, o
         </View>
         <View style={[styles.stageBadge, highlightTaskLabel && styles.highlightedStageBadge, { backgroundColor: tone.soft, borderColor: tone.accent }]}>
           <Text style={[styles.stageText, highlightTaskLabel && styles.highlightedStageText, { color: tone.accent }]}>
-            {task.taskKind === 'LEAD' ? 'Lead' : task.taskLabel}
+            {task.taskKind === 'LEAD' ? 'Prospect' : task.taskLabel}
           </Text>
         </View>
       </View>

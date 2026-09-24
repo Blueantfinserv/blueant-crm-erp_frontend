@@ -12,7 +12,7 @@ import { DashboardScreen } from './src/screens/DashboardScreen';
 import { SalesCoordinatorScreen } from './src/screens/SalesCoordinatorScreen';
 import { AssignedLeadsScreen } from './src/screens/AssignedLeadsScreen';
 import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
-import { AuthRole, RegisterCredentials } from './src/types/auth';
+import { RegisterCredentials } from './src/types/auth';
 import { LoginFormValues } from './src/utils/authValidation';
 import { getRoleNavigationConfig } from './src/navigation/navigationConfig';
 import { getRoleExperience, isSalesWorkspaceExperience, type FrontendExperience } from './src/navigation/roleExperience';
@@ -58,6 +58,19 @@ const MEETING_LEAD_STATUS: Record<MeetingFormSubmission['leadStatus'], MeetingLe
 
 const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; workflow: MeetingWorkflowRequest } => {
   if (!form.meetingCode) throw new Error('No active meeting is available for this lead.');
+  if (form.meetingConducted === 'NOT_CONDUCTED') {
+    return {
+      meetingCode: form.meetingCode,
+      workflow: {
+        meetingConducted: 'NOT_CONDUCTED',
+        meetingRemarks: form.remarks.trim(),
+        nextPlanDate: form.nextPlanDate,
+        latitude: form.latitude,
+        longitude: form.longitude,
+        ...(form.accuracy !== null && form.accuracy !== undefined ? { accuracy: form.accuracy } : {}),
+      },
+    };
+  }
   const meetingMode = form.meetingMode === 'Physical' ? 'PHYSICAL' : 'VIRTUAL/ONLINE';
   return {
     meetingCode: form.meetingCode,
@@ -72,7 +85,7 @@ const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; 
       address: form.address,
       ...(form.accuracy !== null && form.accuracy !== undefined ? { accuracy: form.accuracy } : {}),
       ...(form.visitingCard ? { visitingCard: form.visitingCard } : {}),
-      ...(form.leadStatus === 'Work In Progress' ? { nextPlanDate: form.nextPlanDate } : {}),
+      ...(form.nextPlanDate ? { nextPlanDate: form.nextPlanDate } : {}),
     },
   };
 };
@@ -157,7 +170,6 @@ function AppShell() {
     lead?: SalesTask;
   } | null>(null);
   const [selectedSalesTask, setSelectedSalesTask] = useState<SalesTask | null>(null);
-  const [salesTaskFilter, setSalesTaskFilter] = useState<'Today' | 'Pending' | 'Future 3 Days'>('Today');
   const [isAllTaskMode, setIsAllTaskMode] = useState(false);
   const [isTaskToDoMode, setIsTaskToDoMode] = useState(true);
   const [isTodaysTaskMode, setIsTodaysTaskMode] = useState(false);
@@ -330,9 +342,6 @@ function AppShell() {
         navigate('dashboard');
         return;
       }
-      if (key === 'today-task') setSalesTaskFilter('Today');
-      if (key === 'pending-task') setSalesTaskFilter('Pending');
-      if (key === 'future-3-days') setSalesTaskFilter('Future 3 Days');
       setIsAllTaskMode(key === 'all-task');
       setIsTaskToDoMode(key === 'task-to-do');
       setIsTodaysTaskMode(key === 'today-task');
@@ -434,7 +443,6 @@ function AppShell() {
                   setIsPendingTaskMode(filter === 'Pending');
                   setIsFuture3DaysTaskMode(false);
                   setIsAllLeadsMode(false);
-                  setSalesTaskFilter(filter);
                   setSalesTaskScreenKey((current) => current + 1);
                   navigate('leads');
                 }}
@@ -587,7 +595,6 @@ function AppShell() {
             {isSalesWorkspaceExperience(experience) ? (
               <SalesManagerTasksScreen
                 key={salesTaskScreenKey}
-                initialTaskType={salesTaskFilter}
                 allTaskMode={isAllTaskMode}
                 taskToDoMode={isTaskToDoMode}
                 todaysTaskMode={isTodaysTaskMode}
@@ -733,7 +740,7 @@ function AppShell() {
       default:
         return null;
     }
-  }, [activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, isAllLeadsMode, isAllTaskMode, isFuture3DaysTaskMode, isPendingTaskMode, isTaskToDoMode, isTodaysTaskMode, message, salesTaskFilter, salesTaskScreenKey, screen, selectedDashboardListId, selectedSalesTask]);
+  }, [activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, isAllLeadsMode, isAllTaskMode, isFuture3DaysTaskMode, isPendingTaskMode, isTaskToDoMode, isTodaysTaskMode, message, salesTaskScreenKey, screen, selectedDashboardListId, selectedSalesTask]);
 
   return (
     <SafeAreaView style={styles.root}>

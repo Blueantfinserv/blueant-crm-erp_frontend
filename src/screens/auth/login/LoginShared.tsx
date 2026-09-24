@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { theme } from '../../../theme/theme';
 import {
@@ -38,7 +38,6 @@ type LoginCardProps = Pick<LoginScreenProps, 'onLogin' | 'onCreateAccount' | 'on
 
 export function LoginCard({
   onLogin,
-  onCreateAccount,
   onForgotPassword,
   onResetPassword,
   loading,

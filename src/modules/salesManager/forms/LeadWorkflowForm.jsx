@@ -20,6 +20,22 @@ import * as Location from "expo-location";
 
 const LEAD_SOURCES = ["Referral", "Website", "Walk-in", "Other"];
 const MEETING_MODES = ["Physical", "Virtual"];
+const MEETING_OUTCOMES = ["Meeting Conducted", "Visited but Not Met"];
+const FOLLOW_UP_OPTIONS = [
+  { label: "Tomorrow", days: 1 },
+  { label: "Day after tomorrow", days: 2 },
+  { label: "In 3 days", days: 3 },
+  { label: "This week (4 days)", days: 4 },
+  { label: "In 7 days", days: 7 },
+  { label: "Next week (8 days)", days: 8 },
+  { label: "After 20 days", days: 20 },
+];
+const FOLLOW_UP_TONES = [
+  { background: "#F8FBFF", border: "#E7F0FF", accent: "#4F78C9", iconBackground: "#EEF5FF" },
+  { background: "#FCFAFF", border: "#F0EAFE", accent: "#8065BC", iconBackground: "#F5F0FF" },
+  { background: "#F8FFFC", border: "#E4F6ED", accent: "#358B6A", iconBackground: "#EAF9F0" },
+  { background: "#FFFCF8", border: "#FCEFE1", accent: "#B9783E", iconBackground: "#FFF3E8" },
+];
 const JOINED_WITH_OPTIONS = ["Alone", "With Someone"];
 const LEAD_STATUSES = [
   "Work In Progress",
@@ -34,12 +50,24 @@ const getLocalDate = () => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
-const getFollowupDateBounds = () => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const latestDate = new Date(today);
-  latestDate.setDate(latestDate.getDate() + 24);
-  return { today, latestDate };
+const getFollowupDate = (days) => {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatFollowupDate = (date) => {
+  const localDate = new Date(`${date}T12:00:00`);
+  const dayAndMonth = new Intl.DateTimeFormat("en-IN", {
+    day: "numeric",
+    month: "short",
+  }).format(localDate);
+  const weekday = new Intl.DateTimeFormat("en-IN", { weekday: "long" }).format(localDate);
+  return `${dayAndMonth} (${weekday})`;
 };
 
 const getClientSideAddress = async (latitude, longitude) => {
@@ -77,11 +105,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [submissionSuccess, setSubmissionSuccess] = useState("");
-  const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [viewedMonth, setViewedMonth] = useState(() => {
-    const date = new Date();
-    return new Date(date.getFullYear(), date.getMonth(), 1);
-  });
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState({
     name: lead?.name ?? "",
@@ -90,6 +113,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     remarks: "",
     locationText: lead?.locationText ?? "",
     meetingMode: "",
+    meetingOutcome: "",
     meetingDate: getLocalDate(),
     leadStatus: "",
     joinedWith: "Alone",
@@ -133,22 +157,20 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
         nextErrors.meetingCode = "No active meeting is available for this lead.";
       }
       if (!form.meetingMode) nextErrors.meetingMode = "Meeting mode is required.";
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.meetingDate)) {
+      if (!form.meetingOutcome) nextErrors.meetingOutcome = "Meeting outcome is required.";
+      const meetingConducted = form.meetingOutcome === "Meeting Conducted";
+      if (meetingConducted && !/^\d{4}-\d{2}-\d{2}$/.test(form.meetingDate)) {
         nextErrors.meetingDate = "Use date format YYYY-MM-DD.";
       }
-      if (!form.leadStatus) nextErrors.leadStatus = "Lead status is required.";
-      if (!form.joinedWith) nextErrors.joinedWith = "Joined With is required.";
+      if (meetingConducted && !form.leadStatus) nextErrors.leadStatus = "Lead status is required.";
+      if (meetingConducted && !form.joinedWith) nextErrors.joinedWith = "Joined With is required.";
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
       if (!form.liveLocation) nextErrors.liveLocation = "Live location is required.";
       // Temporarily disabled while the backend visiting-card flow is being fixed.
       // if (!form.cardImage) nextErrors.cardImage = "Card image is required.";
-      if (form.leadStatus === "Work In Progress") {
-        const { today, latestDate } = getFollowupDateBounds();
-        const nextPlanDate = new Date(`${form.nextPlanDate}T00:00:00`);
+      if (form.meetingOutcome === "Visited but Not Met" || (meetingConducted && form.leadStatus === "Work In Progress")) {
         if (!form.nextPlanDate) {
-          nextErrors.nextPlanDate = "Next plan date is required.";
-        } else if (Number.isNaN(nextPlanDate.getTime()) || nextPlanDate < today || nextPlanDate > latestDate) {
-          nextErrors.nextPlanDate = "Choose a follow-up date from today through 24 days from today.";
+          nextErrors.nextPlanDate = "Next follow-up date is required.";
         }
       }
     }
@@ -237,10 +259,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       meetingCode: lead?.meetingCode,
       meetingMode: form.meetingMode,
       meetingDate: form.meetingDate,
-      leadStatus: form.leadStatus,
-      aloneWith: form.joinedWith === "Alone" ? "SELF" : "SOMEONE",
+      meetingConducted: form.meetingOutcome === "Meeting Conducted" ? "CONDUCTED" : "NOT_CONDUCTED",
+      leadStatus: form.meetingOutcome === "Meeting Conducted" ? form.leadStatus : "Work In Progress",
+      aloneWith: form.meetingOutcome === "Meeting Conducted" && form.joinedWith === "With Someone" ? "SOMEONE" : "SELF",
       remarks: form.remarks.trim(),
-      nextPlanDate: form.leadStatus === "Work In Progress" ? form.nextPlanDate : "",
+      nextPlanDate: form.meetingOutcome === "Visited but Not Met" || form.leadStatus === "Work In Progress" ? form.nextPlanDate : "",
       latitude: form.liveLocation?.latitude,
       longitude: form.liveLocation?.longitude,
       address: form.liveLocation?.address,
@@ -274,7 +297,8 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     }
   };
 
-  const showNextPlanDate = form.leadStatus === "Work In Progress";
+  const isMeetingConducted = form.meetingOutcome === "Meeting Conducted";
+  const showNextPlanDate = form.meetingOutcome === "Visited but Not Met" || (isMeetingConducted && form.leadStatus === "Work In Progress");
 
   return (
     <View style={styles.screen}>
@@ -367,15 +391,22 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
               <Field label="Meeting Mode" required error={errors.meetingMode}>
                 <Select value={form.meetingMode} options={MEETING_MODES} onChange={(value) => update("meetingMode", value)} />
               </Field>
-              <Field label="Meeting Date" required error={errors.meetingDate}>
-                <Input value={form.meetingDate} editable={false} selectTextOnFocus={false} style={styles.readOnlyInput} />
+              <Field label="Meeting Outcome" required error={errors.meetingOutcome}>
+                <Select value={form.meetingOutcome} options={MEETING_OUTCOMES} onChange={(value) => update("meetingOutcome", value)} />
               </Field>
-              <Field label="Lead Status" required error={errors.leadStatus}>
-                <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
-              </Field>
-              <Field label="Joined With" required error={errors.joinedWith}>
-                <ChoiceGroup value={form.joinedWith} options={JOINED_WITH_OPTIONS} onChange={(value) => update("joinedWith", value)} />
-              </Field>
+              {isMeetingConducted ? (
+                <>
+                  <Field label="Meeting Date" required error={errors.meetingDate}>
+                    <Input value={form.meetingDate} editable={false} selectTextOnFocus={false} style={styles.readOnlyInput} />
+                  </Field>
+                  <Field label="Lead Status" required error={errors.leadStatus}>
+                    <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
+                  </Field>
+                  <Field label="Joined With" required error={errors.joinedWith}>
+                    <ChoiceGroup value={form.joinedWith} options={JOINED_WITH_OPTIONS} onChange={(value) => update("joinedWith", value)} />
+                  </Field>
+                </>
+              ) : null}
               <Field label="Remarks" required error={errors.remarks}>
                 <Input
                   value={form.remarks}
@@ -386,7 +417,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                 />
               </Field>
 
-              <Field label="Live Location" required error={errors.liveLocation}>
+              <Field label={isMeetingConducted ? "Live Location" : "Location"} required error={errors.liveLocation}>
                 <Pressable
                   disabled={fetchingLocation}
                   onPress={() => void captureLiveLocation()}
@@ -453,36 +484,8 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
               */}
 
               {showNextPlanDate ? (
-                <Field label="Next Plan Date" required error={errors.nextPlanDate}>
-                  <Pressable style={styles.dateInput} onPress={() => setDatePickerOpen(true)}>
-                    <View style={styles.dateIcon}>
-                      <Icon source="calendar-month-outline" size={18} color="#6D28D9" />
-                    </View>
-                    <View style={styles.dateCopy}>
-                      <Text style={styles.dateCaption}>Choose follow-up date (up to 24 days from today)</Text>
-                      <Text style={form.nextPlanDate ? styles.inputText : styles.placeholder}>
-                        {form.nextPlanDate
-                          ? new Intl.DateTimeFormat("en-IN", {
-                              day: "2-digit",
-                              month: "long",
-                              year: "numeric",
-                            }).format(new Date(`${form.nextPlanDate}T00:00:00`))
-                          : "Tap to open calendar"}
-                      </Text>
-                    </View>
-                    <Icon source="chevron-right" size={19} color="#A78BFA" />
-                  </Pressable>
-                  {datePickerOpen ? (
-                    <CompactCalendar
-                      viewedMonth={viewedMonth}
-                      selectedDate={form.nextPlanDate}
-                      onChangeMonth={setViewedMonth}
-                      onSelect={(value) => {
-                        update("nextPlanDate", value);
-                        setDatePickerOpen(false);
-                      }}
-                    />
-                  ) : null}
+                <Field label="Next Follow-up Date" required error={errors.nextPlanDate}>
+                  <FollowUpSelect value={form.nextPlanDate} onChange={(value) => update("nextPlanDate", value)} />
                 </Field>
               ) : null}
 
@@ -529,77 +532,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   );
 }
 
-function CompactCalendar({ viewedMonth, selectedDate, onChangeMonth, onSelect }) {
-  const year = viewedMonth.getFullYear();
-  const month = viewedMonth.getMonth();
-  const leadingDays = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = Array.from({ length: leadingDays + daysInMonth }, (_, index) =>
-    index < leadingDays ? null : index - leadingDays + 1
-  );
-  while (cells.length % 7) cells.push(null);
-
-  const { today, latestDate } = getFollowupDateBounds();
-  const firstAllowedMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastAllowedMonth = new Date(latestDate.getFullYear(), latestDate.getMonth(), 1);
-  const canGoBack = viewedMonth > firstAllowedMonth;
-  const canGoForward = viewedMonth < lastAllowedMonth;
-  const monthLabel = new Intl.DateTimeFormat("en-IN", {
-    month: "long",
-    year: "numeric",
-  }).format(viewedMonth);
-
-  return (
-    <View style={styles.compactCalendar}>
-      <View style={styles.calendarHeader}>
-        <Pressable
-          disabled={!canGoBack}
-          onPress={() => onChangeMonth(new Date(year, month - 1, 1))}
-          style={[styles.calendarArrow, !canGoBack && styles.calendarArrowDisabled]}
-        >
-          <Icon source="chevron-left" size={17} color={canGoBack ? "#6D28D9" : "#CBD5E1"} />
-        </Pressable>
-        <Text style={styles.calendarMonth}>{monthLabel}</Text>
-        <Pressable
-          disabled={!canGoForward}
-          onPress={() => onChangeMonth(new Date(year, month + 1, 1))}
-          style={[styles.calendarArrow, !canGoForward && styles.calendarArrowDisabled]}
-        >
-          <Icon source="chevron-right" size={17} color={canGoForward ? "#6D28D9" : "#CBD5E1"} />
-        </Pressable>
-      </View>
-      <View style={styles.calendarGrid}>
-        {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
-          <Text key={`${day}-${index}`} style={styles.weekDay}>{day}</Text>
-        ))}
-        {cells.map((day, index) => {
-          if (!day) return <View key={`empty-${index}`} style={styles.calendarCell} />;
-          const date = new Date(year, month, day);
-          const disabled = date < today || date > latestDate;
-          const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-          const selected = value === selectedDate;
-          return (
-            <Pressable
-              key={value}
-              disabled={disabled}
-              onPress={() => onSelect(value)}
-              style={[styles.calendarCell, selected && styles.calendarCellSelected]}
-            >
-              <Text style={[
-                styles.calendarDay,
-                disabled && styles.calendarDayDisabled,
-                selected && styles.calendarDaySelected,
-              ]}>
-                {day}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-    </View>
-  );
-}
-
 function Field({ label, required, error, last, children }) {
   return (
     <View style={[styles.field, last && styles.fieldLast]}>
@@ -621,6 +553,70 @@ function Select({ value, options, onChange }) {
         <Picker.Item label="Select an option" value="" />
         {options.map((option) => <Picker.Item key={option} label={option} value={option} />)}
       </Picker>
+    </View>
+  );
+}
+
+function FollowUpSelect({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const selectedOption = FOLLOW_UP_OPTIONS.find((option) => getFollowupDate(option.days) === value);
+  return (
+    <View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Select next follow-up date"
+        accessibilityState={{ expanded: open }}
+        onPress={() => setOpen((current) => !current)}
+        style={({ pressed }) => [styles.followUpTrigger, open && styles.followUpTriggerOpen, pressed && styles.pressed]}
+      >
+        <View style={styles.followUpIcon}>
+          <Icon source="calendar-clock-outline" size={19} color="#6D28D9" />
+        </View>
+        <View style={styles.followUpCopy}>
+          <Text style={styles.followUpCaption}>FOLLOW-UP DATE</Text>
+          <Text style={selectedOption ? styles.followUpValue : styles.followUpPlaceholder}>
+            {selectedOption ? `${selectedOption.label} · ${formatFollowupDate(value)}` : "Choose a follow-up date"}
+          </Text>
+        </View>
+        <Icon source={open ? "chevron-up" : "chevron-down"} size={20} color="#6D28D9" />
+      </Pressable>
+
+      {open ? (
+        <View style={styles.followUpOptions}>
+          {FOLLOW_UP_OPTIONS.map((option, index) => {
+            const date = getFollowupDate(option.days);
+            const selected = date === value;
+            const tone = FOLLOW_UP_TONES[index % FOLLOW_UP_TONES.length];
+            return (
+              <Pressable
+                key={option.days}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => {
+                  onChange(date);
+                  setOpen(false);
+                }}
+                style={({ pressed }) => [
+                  styles.followUpOption,
+                  { backgroundColor: tone.background, borderBottomColor: tone.border },
+                  selected && styles.followUpOptionSelected,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <View style={[
+                  styles.followUpOptionMarker,
+                  { borderColor: tone.border, backgroundColor: tone.iconBackground },
+                  selected && styles.followUpOptionMarkerSelected,
+                ]}>
+                  <Icon source={selected ? "check" : "calendar-blank-outline"} size={14} color={selected ? "#FFFFFF" : tone.accent} />
+                </View>
+                <Text style={[styles.followUpOptionLabel, { color: tone.accent }, selected && styles.followUpOptionLabelSelected]}>{option.label}</Text>
+                <Text style={[styles.followUpOptionDate, { color: tone.accent }, selected && styles.followUpOptionDateSelected]}>{formatFollowupDate(date)}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -696,34 +692,39 @@ const styles = StyleSheet.create({
   readOnlyInput: { color: "#64748B", backgroundColor: "#F1F5F9", borderColor: "#D8E0EB" },
   inputText: { color: "#0F172A", fontSize: 14 },
   placeholder: { color: "#94A3B8", fontSize: 14 },
-  dateInput: {
-    minHeight: 58, flexDirection: "row", alignItems: "center", gap: 10,
-    paddingHorizontal: 11, paddingVertical: 8, borderWidth: 1,
-    borderColor: "#DDD6FE", borderRadius: 13, backgroundColor: "#FAF8FF",
+  followUpTrigger: {
+    minHeight: 60, flexDirection: "row", alignItems: "center", gap: 10,
+    paddingHorizontal: 11, paddingVertical: 9, borderWidth: 1, borderColor: "#DDD6FE",
+    borderRadius: 14, backgroundColor: "#FCFBFF",
   },
-  dateIcon: {
-    width: 36, height: 36, alignItems: "center", justifyContent: "center",
-    borderRadius: 11, backgroundColor: "#EDE9FE",
+  followUpTriggerOpen: { borderColor: "#8B5CF6", backgroundColor: "#F8F6FF" },
+  followUpIcon: {
+    width: 37, height: 37, alignItems: "center", justifyContent: "center",
+    borderRadius: 12, backgroundColor: "#EDE9FE",
   },
-  dateCopy: { minWidth: 0, flex: 1 },
-  dateCaption: { marginBottom: 2, color: "#7C3AED", fontSize: 9, fontWeight: "900", textTransform: "uppercase" },
-  compactCalendar: {
-    alignSelf: "center", width: "82%", marginTop: 8, padding: 10,
-    borderWidth: 1, borderColor: "#E9D5FF", borderRadius: 13,
-    backgroundColor: "#FFFFFF", shadowColor: "#4C1D95", shadowOpacity: 0.1,
-    shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 3,
+  followUpCopy: { minWidth: 0, flex: 1 },
+  followUpCaption: { color: "#7C3AED", fontSize: 8, fontWeight: "900", letterSpacing: 0.7 },
+  followUpValue: { marginTop: 3, color: "#312E81", fontSize: 13, fontWeight: "900" },
+  followUpPlaceholder: { marginTop: 3, color: "#94A3B8", fontSize: 13, fontWeight: "700" },
+  followUpOptions: {
+    marginTop: 8, overflow: "hidden", borderWidth: 1, borderColor: "#E9D5FF",
+    borderRadius: 14, backgroundColor: "#FFFFFF", shadowColor: "#312E81",
+    shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 4,
   },
-  calendarHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 7 },
-  calendarArrow: { width: 27, height: 27, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: "#F5F3FF" },
-  calendarArrowDisabled: { backgroundColor: "#F8FAFC" },
-  calendarMonth: { color: "#312E81", fontSize: 11, fontWeight: "900" },
-  calendarGrid: { flexDirection: "row", flexWrap: "wrap" },
-  weekDay: { width: "14.285%", paddingVertical: 3, color: "#A78BFA", fontSize: 8, fontWeight: "900", textAlign: "center" },
-  calendarCell: { width: "14.285%", height: 27, alignItems: "center", justifyContent: "center", borderRadius: 8 },
-  calendarCellSelected: { backgroundColor: "#7C3AED" },
-  calendarDay: { color: "#334155", fontSize: 9, fontWeight: "700" },
-  calendarDayDisabled: { color: "#D6D3E3" },
-  calendarDaySelected: { color: "#FFFFFF", fontWeight: "900" },
+  followUpOption: {
+    minHeight: 47, flexDirection: "row", alignItems: "center", gap: 9,
+    paddingHorizontal: 11, borderBottomWidth: 1, borderBottomColor: "#F1F0F8",
+  },
+  followUpOptionSelected: { backgroundColor: "#F1EDFF" },
+  followUpOptionMarker: {
+    width: 25, height: 25, alignItems: "center", justifyContent: "center",
+    borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 9, backgroundColor: "#FAF8FF",
+  },
+  followUpOptionMarkerSelected: { borderColor: "#7C3AED", backgroundColor: "#7C3AED" },
+  followUpOptionLabel: { minWidth: 0, flex: 1, color: "#334155", fontSize: 12, fontWeight: "800" },
+  followUpOptionLabelSelected: { color: "#5B21B6" },
+  followUpOptionDate: { color: "#64748B", fontSize: 11, fontWeight: "800" },
+  followUpOptionDateSelected: { color: "#6D28D9" },
   textarea: { minHeight: 86, textAlignVertical: "top" },
   followupInput: { marginTop: 9 },
   select: { minHeight: 45, justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: "#E3E2EE", borderRadius: 13, backgroundColor: "#FBFAFF" },

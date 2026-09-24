@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../../theme/theme';
-import { UsersRoleRow, UsersRoleStatus } from './usersRolesData';
+import { UsersRoleStatus } from './usersRolesData';
 
 export function LeadStatsCard({ title, value, tone = 'default' }: { title: string; value: string; tone?: 'default' | 'success' | 'warning' }) {
   return (

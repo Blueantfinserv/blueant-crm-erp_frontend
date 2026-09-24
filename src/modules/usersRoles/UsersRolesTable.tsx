@@ -2,7 +2,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../../theme/theme';
 import { UsersRoleRow } from './usersRolesData';
 
-export function UsersRolesTable({ rows, selectedIds }: { rows: UsersRoleRow[]; selectedIds?: string[] }) {
+export function UsersRolesTable({ rows }: { rows: UsersRoleRow[]; selectedIds?: string[] }) {
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View style={styles.table}>

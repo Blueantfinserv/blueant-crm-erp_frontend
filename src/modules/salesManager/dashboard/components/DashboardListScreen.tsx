@@ -92,7 +92,7 @@ const rowColors = [
   { accent: '#F97316', background: '#FFF9F4', border: '#FFEDD5', soft: '#FFF0E3' },
   { accent: '#16A34A', background: '#F5FCF7', border: '#DCFCE7', soft: '#E7F8EC' },
 ] as const;
-export function DashboardListScreen({ list, userName, userId, employeeCode, onBack }: Props) {
+export function DashboardListScreen({ list, userName, onBack }: Props) {
   const { width } = useWindowDimensions();
   const [period, setPeriod] = useState<DashboardListPeriod>('today');
   const [liveLeadItems, setLiveLeadItems] = useState(list.items);

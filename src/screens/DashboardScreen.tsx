@@ -9,7 +9,7 @@ import { FilterBar } from '../components/superAdminDashboard/FilterBar';
 import { InsightCard } from '../components/superAdminDashboard/InsightCard';
 import { CurrentWeekPerformanceSection } from '../components/superAdminDashboard/CurrentWeekPerformanceSection';
 import { AdditionalPerformanceSection } from '../components/superAdminDashboard/AdditionalPerformanceSection';
-import { dashboardLeaderboardCards, dashboardPerformanceRows, dashboardSecondaryPerformanceGroups, dashboardTeamPerformanceGroups } from './dashboard/dashboardData';
+import { dashboardLeaderboardCards, dashboardSecondaryPerformanceGroups, dashboardTeamPerformanceGroups } from './dashboard/dashboardData';
 import { useDashboardDatePicker } from './dashboard/useDashboardDatePicker';
 import { TodayOverviewSection } from '../modules/salesManager/dashboard/components/TodayOverviewSection';
 import { todayOverviewData } from '../modules/salesManager/dashboard/mock/todayOverviewData';
@@ -54,7 +54,7 @@ const insightCards = [
   'Reserved for future portfolio health widgets and exception monitoring panels.',
 ];
 
-export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuItems, experience, dashboardState = 'success', onRetryDashboard = () => {}, onOpenDashboardList = () => {}, onOpenTaskFilter = () => {} }: Props) {
+export function DashboardScreen({ user, experience, dashboardState = 'success', onRetryDashboard = () => {}, onOpenDashboardList = () => {}, onOpenTaskFilter = () => {} }: Props) {
   const { width } = useWindowDimensions();
   const isCompactAnalyticsLayout = width < 768;
   const period = 'Current Week';
@@ -70,7 +70,6 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
   const displayName = user?.fullName ?? 'Executive';
   const isSuperAdmin = experience === 'SUPER_ADMIN';
   const isSalesWorkspace = isSalesWorkspaceExperience(experience);
-  const rows = dashboardPerformanceRows[period];
   const isLoading = dashboardState === 'loading';
   const isEmpty = dashboardState === 'empty';
   const isError = dashboardState === 'error';

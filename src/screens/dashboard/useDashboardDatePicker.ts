@@ -19,13 +19,6 @@ function shiftMonth(base: Date, delta: number) {
   return new Date(base.getFullYear(), base.getMonth() + delta, 1);
 }
 
-function formatCalendarLabel(date: Date) {
-  return new Intl.DateTimeFormat('en-US', {
-    month: 'long',
-    year: 'numeric',
-  }).format(date);
-}
-
 function formatDateLabel(date: Date) {
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',

@@ -2,7 +2,6 @@ import { PropsWithChildren, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { theme } from '../theme/theme';
 import { ContentContainer } from './ContentContainer';
-import { NavigationTabs } from './NavigationTabs';
 import { Sidebar } from './Sidebar';
 import { TopNavigation } from './TopNavigation';
 import type { ModuleItem, ModuleKey, TopTabItem } from './navigationTypes';

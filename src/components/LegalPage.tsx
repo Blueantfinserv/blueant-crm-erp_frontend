@@ -34,15 +34,6 @@ const navItems: Array<{
   { key: 'terms', label: 'Terms & Conditions', hint: 'Terms of use and policies', icon: '▤' },
 ];
 
-const sectionIcons: Record<LegalPageKind, string[]> = {
-  help: ['💡', '❓', '📞', '⚡'],
-  contact: ['🏢', '✉️', '📱', '⏰'],
-  privacyPolicy: ['🔒', '🛡️', '👁️', '📘'],
-  terms: ['📄', '⚖️', '📝', '🔍'],
-};
-
-const fallbackSectionIcon = '✦';
-const fallbackContactIcon = '◌';
 
 export function FooterLink({ label, onPress }: { label: string; onPress: () => void }) {
   return (
@@ -126,7 +117,7 @@ export function LegalDocsLayout({
     const sections = kind === 'help' ? helpSections : kind === 'privacyPolicy' ? privacyPolicySections : termsSections;
     return (
       <View style={styles.sectionList}>
-        {sections.map((section, index) => (
+        {sections.map((section) => (
             <View key={section.title} style={styles.sectionRow}>
               <View style={styles.rowIcon}>
                 <Text style={styles.rowIconText}>{'★'}</Text>

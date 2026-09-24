@@ -1,6 +1,5 @@
 import { PropsWithChildren } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { theme } from '../../theme/theme';
 import { SectionTitle } from './SectionTitle';
 
 export function DashboardSection({ title, children }: PropsWithChildren<{ title: string }>) {

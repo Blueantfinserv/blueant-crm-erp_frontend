@@ -23,10 +23,10 @@ type Props = {
 };
 
 const infoFields = (lead: SalesTask) => [
-  { label: 'Lead ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
+  { label: 'Prospect ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
   { label: 'Email', value: lead.email ?? '------', icon: 'email-outline' },
   { label: 'Clinic Address', value: lead.clinicAddress ?? '------', icon: 'hospital-building' },
-  { label: 'Lead Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
+  { label: 'Prospect Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
 ] as const;
 
 const verificationFields = (meeting: MeetingResponse) => [
@@ -139,7 +139,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
 
   return (
     <View style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <View style={styles.heroShell}>
         <View style={[styles.hero, isMobile && styles.mobileHero]}>
           <View style={styles.heroGlowLarge} />
           <View style={styles.heroGlowSmall} />
@@ -152,7 +152,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 <Icon source="account-outline" size={22} color="#FFFFFF" />
               </View>
               <View style={styles.heroCopy}>
-                <Text style={styles.eyebrow}>LEAD DETAILS</Text>
+                <Text style={styles.eyebrow}>PROSPECT DETAILS</Text>
                 <Text numberOfLines={1} style={styles.title}>{lead.name}</Text>
               </View>
             </View>
@@ -187,10 +187,12 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
 
           </View>
         </View>
+      </View>
 
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.grid}>
           <View style={[styles.panel, styles.infoPanel, isMobile && styles.mobilePanel]}>
-            <SectionHeading icon="account-details-outline" title="Lead Information" subtitle="Key contact and meeting details" />
+            <SectionHeading icon="account-details-outline" title="Prospect Information" subtitle="Key contact and meeting details" />
             <View style={[styles.infoGrid, isMobile && styles.mobileInfoGrid]}>
               {infoFields(lead).map((field) => (
                 <View
@@ -331,6 +333,7 @@ function SectionHeading({ icon, title, subtitle }: { icon: string; title: string
 
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 0, backgroundColor: '#F5F7FB' },
+  heroShell: { width: '100%', maxWidth: 1120, alignSelf: 'center', paddingBottom: 14 },
   content: { width: '100%', maxWidth: 1120, alignSelf: 'center', gap: 14, paddingBottom: 28 },
   hero: { position: 'relative', overflow: 'hidden', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, backgroundColor: '#312E81' },
   mobileHero: { paddingHorizontal: 11, paddingVertical: 10, borderRadius: 16 },
