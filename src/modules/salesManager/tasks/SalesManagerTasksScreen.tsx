@@ -114,11 +114,7 @@ const mapMeetingToSalesTask = (
   lead?: LeadResponse,
   locationMeeting?: MeetingResponse,
   lastMeetingDate?: string,
-): SalesTask => {
-  const taskDate = meeting.meetingStatus === 'NOT_CONDUCTED'
-    ? meeting.nextMeetingDate ?? meeting.meetingDate
-    : meeting.meetingDate;
-  return {
+): SalesTask => ({
   id: meeting.meetingCode ?? String(meeting.id ?? `meeting-${index}`),
   taskKind: 'MEETING',
   leadCode: meeting.leadCode,
@@ -128,7 +124,7 @@ const mapMeetingToSalesTask = (
   meetingType: meeting.meetingType,
   meetingStatus: meeting.meetingStatus,
   verificationStatus: meeting.verificationStatus,
-  scheduledAt: taskDate,
+  scheduledAt: meeting.meetingDate,
   uniqueLeadId: lead?.uniqueLeadId,
   leadId: meeting.leadId ?? lead?.leadId,
   name: meeting.clientName ?? 'Unnamed client',
@@ -147,10 +143,9 @@ const mapMeetingToSalesTask = (
   taskLabel: meeting.meetingTitle ?? '',
   remarks: meeting.remarks ?? 'No remarks available.',
   lastUpdated: formatTimestamp(lastMeetingDate ?? lead?.assignmentDate ?? lead?.assignedDate ?? lead?.assignedAt),
-  nextFollowUpDate: formatDate(taskDate),
-  schedule: getTaskSchedule(taskDate),
-  };
-};
+  nextFollowUpDate: formatDate(meeting.meetingDate),
+  schedule: getTaskSchedule(meeting.meetingDate),
+});
 
 type DropdownProps<T extends string> = {
   value: T;

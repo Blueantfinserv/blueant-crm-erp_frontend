@@ -138,7 +138,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const loadInFlight = useRef(false);
   const dataGeneration = useRef(0);
-  const hasLoaded = useRef(false);
+  const loadedTabs = useRef(new Set<Tab>());
+  const activeTabRef = useRef<Tab>('today');
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MeetingResponse | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -172,47 +173,68 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     });
     return values;
   }, [assignedLeads, meetings]);
-  const load = useCallback(async () => {
+  const load = useCallback(async (targetTab: Tab) => {
     if (loadInFlight.current || submittingRef.current) return;
     loadInFlight.current = true;
     const generation = dataGeneration.current;
-    if (!hasLoaded.current) setLoading(true);
+    const isInitialTabLoad = !loadedTabs.current.has(targetTab);
+    if (isInitialTabLoad) setLoading(true);
     setRefreshing(true);
     try {
-      const [p, v, all, coordinatorAssignedLeads] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), meetingService.getVerificationMeetings('VERIFIED'), meetingService.getAllMeetingRecords(), loadCoordinatorAssignedLeads()]);
+      const data = targetTab === 'today'
+        ? await meetingService.getVerificationMeetings('PENDING')
+        : targetTab === 'responses'
+          ? await meetingService.getVerificationMeetings('VERIFIED')
+          : targetTab === 'tasks'
+            ? await meetingService.getAllMeetingRecords()
+            : targetTab === 'assignedLeads'
+              ? await loadCoordinatorAssignedLeads()
+              : null;
       if (generation !== dataGeneration.current) return;
-      setPending(p); setVerified(v); setMeetings(all); setAssignedLeads(coordinatorAssignedLeads);
-      hasLoaded.current = true;
+      if (targetTab === 'today') setPending(data as MeetingResponse[]);
+      if (targetTab === 'responses') setVerified(data as MeetingResponse[]);
+      if (targetTab === 'tasks') setMeetings(data as MeetingResponse[]);
+      if (targetTab === 'assignedLeads') setAssignedLeads(data as LeadResponse[]);
+      loadedTabs.current.add(targetTab);
       setError(null); setRefreshError(null);
     } catch (e) {
       if (generation !== dataGeneration.current) return;
       const message = e instanceof Error ? e.message : 'Coordinator data could not be loaded.';
-      if (hasLoaded.current) setRefreshError(message);
+      if (loadedTabs.current.has(targetTab)) setRefreshError(message);
       else setError(message);
     }
     finally {
       loadInFlight.current = false; setLoading(false); setRefreshing(false);
       nextRefreshAt.current = Date.now() + 10_000;
       setRefreshSeconds(10);
+      if (generation === dataGeneration.current && activeTabRef.current !== targetTab) void load(activeTabRef.current);
     }
   }, []);
   useEffect(() => {
-    void load();
+    activeTabRef.current = tab;
+    void load(tab);
+  }, [load, tab]);
+  useEffect(() => {
     const timer = setInterval(() => {
       if (loadInFlight.current || submittingRef.current) return;
       const seconds = Math.max(0, Math.ceil((nextRefreshAt.current - Date.now()) / 1000));
       setRefreshSeconds(seconds);
-      if (seconds === 0) void load();
+      if (seconds === 0) void load(activeTabRef.current);
     }, 1000);
     return () => { clearInterval(timer); dataGeneration.current += 1; };
   }, [load]);
 
-  const taskStatus = (m: MeetingResponse): 'TODAY' | 'PENDING' | 'OVERDUE' => {
+  const taskStatus = (m: MeetingResponse): 'TODAY' | 'PENDING' | 'OVERDUE' | 'FUTURE' => {
     const meetingDate = String(m.meetingDate ?? '').slice(0, 10);
     if (meetingDate === localToday()) return 'TODAY';
+    if (meetingDate > localToday()) return 'FUTURE';
     const weekAgo = new Date(`${localToday()}T00:00:00`);
     weekAgo.setDate(weekAgo.getDate() - 7);
     return meetingDate && meetingDate < calendarDate(weekAgo) ? 'OVERDUE' : 'PENDING';
+  };
+  const isPendingTask = (m: MeetingResponse) => {
+    const meetingDate = String(m.meetingDate ?? '').slice(0, 10);
+    return Boolean(meetingDate) && meetingDate < localToday();
   };
   const taskMeetings = useMemo(() => meetings.filter((m) => String(m.meetingStatus ?? '').toUpperCase() !== 'COMPLETED'), [meetings]);
   const taskLeads = useMemo<MeetingResponse[]>(() => {
@@ -245,7 +267,9 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     const query = taskSearch.trim().toLowerCase();
     const matchingTasks = taskRecords.filter((m) => {
       const searchMatch = !query || String(m.clientName ?? '').toLowerCase().includes(query) || String(m.mobileNumber ?? '').toLowerCase().includes(query);
-      return searchMatch && (statusFilter === 'ALL' || taskStatus(m) === statusFilter);
+      const statusMatch = statusFilter === 'ALL'
+        || (statusFilter === 'PENDING' ? isPendingTask(m) : taskStatus(m) === statusFilter);
+      return searchMatch && statusMatch;
     });
     return filterMeetingRecords(matchingTasks, taskColumnFilters);
   }, [statusFilter, taskColumnFilters, taskRecords, taskSearch]);
@@ -257,9 +281,9 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     && (!assignedSalesPersonFilter || lead.assignedEmployeeName === assignedSalesPersonFilter)
     && matchesAssignedDate(lead.assignedAt, assignedDateRange)
   )), [assignedDateRange, assignedLeads, assignedSalesPersonFilter, assignedSearch, coordinatorFilter]);
-  const summaries = useMemo(() => taskRecords.reduce<Record<string, { name: string; TODAY: number; PENDING: number; OVERDUE: number }>>((result, m) => {
+  const summaries = useMemo(() => taskRecords.reduce<Record<string, { name: string; TODAY: number; PENDING: number; OVERDUE: number; FUTURE: number }>>((result, m) => {
     const key = m.employeeCode ?? m.employeeName; if (!key) return result;
-    const row = result[key] ?? { name: m.employeeName ?? key, TODAY: 0, PENDING: 0, OVERDUE: 0 };
+    const row = result[key] ?? { name: m.employeeName ?? key, TODAY: 0, PENDING: 0, OVERDUE: 0, FUTURE: 0 };
     row[taskStatus(m)] += 1; result[key] = row; return result;
   }, {}), [taskRecords]);
   const assignLead = async () => {
@@ -308,9 +332,24 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);
     dataGeneration.current += 1;
     try {
-      await meetingService.verifyMeeting(selected.meetingCode, payload);
-      setPending((items) => items.filter((m) => m.meetingCode !== selected.meetingCode));
-      setVerified(await meetingService.getVerificationMeetings('VERIFIED'));
+      const verificationResult = await meetingService.verifyMeeting(selected.meetingCode, payload);
+      const [refreshedPending, refreshedVerified, refreshedMeetings] = await Promise.all([
+        meetingService.getVerificationMeetings('PENDING'),
+        meetingService.getVerificationMeetings('VERIFIED'),
+        meetingService.getAllMeetingRecords(),
+      ]);
+      const newMeetingCode = verificationResult.meetingCode?.trim();
+      const newMeeting = newMeetingCode
+        ? await meetingApi.getMeeting(newMeetingCode).then((result) => result.data ?? null).catch(() => null)
+        : null;
+      const meetingsByCode = new Map(refreshedMeetings.map((meeting) => [meeting.meetingCode ?? String(meeting.id ?? ''), meeting]));
+      if (newMeeting && newMeetingCode) meetingsByCode.set(newMeeting.meetingCode ?? newMeetingCode, newMeeting);
+      setPending(refreshedPending);
+      setVerified(refreshedVerified);
+      setMeetings([...meetingsByCode.values()]);
+      loadedTabs.current.add('today');
+      loadedTabs.current.add('responses');
+      loadedTabs.current.add('tasks');
       setSelected(null);
     } catch (e) { setSubmitError(e instanceof Error ? e.message : 'Meeting verification failed.'); }
     finally { submittingRef.current = false; setSubmitting(false); }
@@ -342,7 +381,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     finally { setHistoryLoading(false); }
   };
   const metricsBlock = <View style={styles.metrics}><Metric icon="clock-outline" value={pending.length} label="To review" tone="blue" /><Metric icon="account-outline" value={Object.keys(summaries).length} label="Sales people" tone="orange" /></View>;
-  const syncBlock = <View style={[styles.syncControls, compact && styles.syncControlsCompact]}><Pressable disabled={refreshing || submitting} onPress={() => void load()} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable><View style={styles.autoRefreshBadge}><View style={styles.autoRefreshDot} /><Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : 'Auto-refresh'}</Text><View style={styles.countdownBadge}>{refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{refreshSeconds}s</Text>}</View></View></View>;
+  const syncBlock = <View style={[styles.syncControls, compact && styles.syncControlsCompact]}><Pressable disabled={refreshing || submitting} onPress={() => void load(tab)} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable><View style={styles.autoRefreshBadge}><View style={styles.autoRefreshDot} /><Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : 'Auto-refresh'}</Text><View style={styles.countdownBadge}>{refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{refreshSeconds}s</Text>}</View></View></View>;
   return <View style={[styles.page, compact && styles.pageCompact]}>
     <View style={styles.topSection}>
       <View style={[styles.workspaceHeader, compact && styles.workspaceHeaderCompact]}>{compact ? <><View style={styles.mobileHeaderTopRow}>{metricsBlock}{syncBlock}</View><View style={styles.mobileTabRow}>{TABS.slice(0, 3).map(renderTab)}</View><View style={styles.mobileTabRow}>{TABS.slice(3).map(renderTab)}</View></> : <>{metricsBlock}<View style={[styles.tabs, styles.workspaceTabs]}>{TABS.map(renderTab)}</View>{syncBlock}</>}</View>
@@ -374,7 +413,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     </View>
     <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
-      <ScrollView contentContainerStyle={styles.modalBody}>{selected ? <Details meeting={selected} /> : null}{tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected ? <View style={styles.formSection}><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting} onPress={() => void verify()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : 'Verify Meeting'}</Text></Pressable></View> : null}</ScrollView>
+      <ScrollView contentContainerStyle={styles.modalBody}>{selected ? <Details meeting={selected} showMeetingDate={tab === 'responses'} /> : null}{tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected ? <View style={styles.formSection}><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting} onPress={() => void verify()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : 'Verify Meeting'}</Text></Pressable></View> : null}</ScrollView>
     </View></View></Modal>
     <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
@@ -541,13 +580,18 @@ function Cards({ items, filters = {}, empty, action, onOpen, verified = false, t
   ]) as readonly [string, (m: MeetingResponse) => unknown][];
   return <View style={styles.desktopTable}>{visibleItems.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.listRow, styles.desktopRow, i % 2 === 1 && styles.listRowAlternate]}><View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>{columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn, label === 'LEAD STATUS' && styles.leadStatusColumn]}><Text numberOfLines={1} style={[styles.cellMain, label === 'LEAD STATUS' && styles.status, label === 'LEAD STATUS' && styles.leadStatusValue, label === 'LEAD STATUS' && m.leadStatus === 'CONVERTED_CLIENT' && styles.statusVerified, label === 'JOINED' && styles.joinedBadge]}>{label === 'LEAD STATUS' ? show(value(m)).replace(/_/g, ' ') : show(value(m))}</Text></View>)}{onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : taskOnly ? null : <View style={styles.desktopActionColumn} />}</View>)}</View>;
 }
-function Details({ meeting: m }: { meeting: MeetingResponse }) {
+function Details({ meeting: m, showMeetingDate }: { meeting: MeetingResponse; showMeetingDate: boolean }) {
   const meetingPlace = m.meetingLocation ?? m.location ?? m.address;
   const mapUrl = mapUrlFor(m);
-  const overviewFields = [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate], ['Lead Status', m.leadStatus?.replace(/_/g, ' ')]] as const;
+  const overviewFields: readonly [string, string | undefined][] = [
+    ['Meeting Type', m.meetingTitle ?? m.meetingType],
+    ...(showMeetingDate ? [['Meeting Date', m.meetingDate] as [string, string | undefined]] : []),
+    ['Next Plan Date', m.nextMeetingDate],
+    ['Lead Status', m.leadStatus?.replace(/_/g, ' ')],
+  ];
   const contactFields = [['Mobile Number', maskedMobile(m.mobileNumber)], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
   return <View style={styles.detailsWrap}>
-    <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
+    <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, label === 'Lead Status' ? styles.overviewStatusCard : [styles.toneBlue, styles.toneViolet, styles.toneTeal][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, label === 'Lead Status' && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
     <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
     <View style={styles.contextGrid}>{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{meetingPlace ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>MEETING LOCATION</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={[styles.mapButton, styles.mapButtonCompact]}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
   </View>;
