@@ -7,15 +7,6 @@ import { meetingApi } from '../../../api/meeting';
 import type { MeetingResponse, MeetingSummary } from '../../../types/meeting';
 import type { SalesTask } from './types/tasks';
 
-const formatLeadSource = (leadSource?: string) => {
-  if (!leadSource) return '------';
-  return leadSource
-    .toLowerCase()
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-};
-
 type Props = {
   lead: SalesTask;
   onBack: () => void;
@@ -24,9 +15,7 @@ type Props = {
 
 const infoFields = (lead: SalesTask) => [
   { label: 'Prospect ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
-  { label: 'Email', value: lead.email ?? '------', icon: 'email-outline' },
   { label: 'Clinic Address', value: lead.clinicAddress ?? '------', icon: 'hospital-building' },
-  { label: 'Prospect Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
 ] as const;
 
 const verificationFields = (meeting: MeetingResponse) => [
@@ -68,10 +57,6 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const hasCoordinates = Boolean(lead.hasLocationPin)
     && Number.isFinite(lead.coordinates.latitude)
     && Number.isFinite(lead.coordinates.longitude);
-  const mapQuery = hasCoordinates
-    ? `${lead.coordinates.latitude},${lead.coordinates.longitude}`
-    : lead.locationText;
-  const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
 
   useEffect(() => {
     let active = true;
@@ -200,7 +185,6 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                   style={[
                     styles.infoItem,
                     isMobile && styles.mobileInfoItem,
-                    isMobile && field.label === 'Email' && styles.mobileEmailItem,
                   ]}
                 >
                   <View style={[styles.infoIcon, isMobile && styles.mobileInfoIcon]}>
@@ -268,12 +252,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
               isMobile && styles.mobileLocationPanel,
             ]}>
               <SectionHeading icon="map-marker-radius-outline" title="Location" subtitle="Saved meeting location" />
-              <Pressable
-                accessibilityRole="link"
-                accessibilityLabel={`Open location for ${lead.name} in Google Maps`}
-                onPress={() => void Linking.openURL(mapUrl)}
-                style={({ pressed }) => [styles.locationCard, pressed && styles.locationCardPressed]}
-              >
+              <View style={styles.locationCard}>
                 <View style={styles.locationPin}>
                   <Icon source="map-marker" size={22} color="#EA580C" />
                 </View>
@@ -291,12 +270,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                     </View>
                   </View>
                 </View>
-                <Icon source="open-in-new" size={15} color="#F97316" />
-              </Pressable>
-              <Pressable onPress={() => void Linking.openURL(mapUrl)} style={styles.mapButton}>
-                <Icon source="map-outline" size={16} color="#EA580C" />
-                <Text style={styles.mapButtonText}>Open in Maps</Text>
-              </Pressable>
+              </View>
             </View>
             <View style={[styles.panel, styles.remarksPanel, isMobile && styles.mobilePanel]}>
               <SectionHeading icon="text-box-outline" title="Latest Remarks" subtitle={`Updated ${lead.lastUpdated}`} />
@@ -384,7 +358,6 @@ const styles = StyleSheet.create({
   mobileInfoGrid: { gap: 7 },
   infoItem: { minWidth: 180, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 11, borderRadius: 12, backgroundColor: '#F8F9FD' },
   mobileInfoItem: { minWidth: 0, flexBasis: '47%', flexGrow: 1, gap: 6, paddingHorizontal: 7, paddingVertical: 8, borderRadius: 10 },
-  mobileEmailItem: { flexBasis: '100%' },
   infoIcon: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#EEEAFD' },
   mobileInfoIcon: { width: 25, height: 25, borderRadius: 8 },
   infoCopy: { minWidth: 0, flex: 1 },
@@ -422,7 +395,6 @@ const styles = StyleSheet.create({
   historyRemarks: { marginTop: 5, color: '#475569', fontSize: 10, lineHeight: 15, fontWeight: '600' },
   historyNext: { marginTop: 3, color: '#2563EB', fontSize: 9, fontWeight: '800' },
   locationCard: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderWidth: 1, borderColor: '#FFEDD5', borderRadius: 13, backgroundColor: '#FFF7ED' },
-  locationCardPressed: { opacity: 0.72, transform: [{ scale: 0.995 }] },
   locationPin: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#FFEDD5' },
   locationCopy: { minWidth: 0, flex: 1 },
   locationText: { color: '#7C2D12', fontSize: 11, lineHeight: 15, fontWeight: '900' },
@@ -431,8 +403,6 @@ const styles = StyleSheet.create({
   coordinateLabel: { color: '#FDBA74', fontSize: 7, fontWeight: '900', letterSpacing: 0.45 },
   coordinateDivider: { width: 1, height: 11, backgroundColor: '#FED7AA' },
   coordinates: { color: '#C2410C', fontSize: 8, fontWeight: '800' },
-  mapButton: { minHeight: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderWidth: 1, borderColor: '#FED7AA', borderRadius: 10, backgroundColor: '#FFFBF5' },
-  mapButtonText: { color: '#EA580C', fontSize: 10, fontWeight: '900' },
   remarksCard: { flexDirection: 'row', gap: 10, padding: 15, borderLeftWidth: 3, borderLeftColor: '#8B5CF6', borderRadius: 12, backgroundColor: '#FAF8FF' },
   quoteMark: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#EDE9FE' },
   remarksText: { minWidth: 0, flex: 1, color: '#475569', fontSize: 11, lineHeight: 18, fontWeight: '600' },

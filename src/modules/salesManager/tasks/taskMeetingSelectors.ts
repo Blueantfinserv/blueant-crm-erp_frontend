@@ -35,7 +35,9 @@ export const getActionableTaskMeetings = (
   meetings: readonly MeetingResponse[],
   leads: readonly LeadResponse[],
 ) => meetings.filter((meeting) => {
-  if (meeting.meetingStatus !== 'SCHEDULED' || meeting.meetingType === 'INTRO') return false;
+  const isScheduled = meeting.meetingStatus === 'SCHEDULED';
+  const isNotConductedFollowUp = meeting.meetingStatus === 'NOT_CONDUCTED';
+  if ((!isScheduled && !isNotConductedFollowUp) || (meeting.meetingType === 'INTRO' && !isNotConductedFollowUp)) return false;
   const lead = leads.find((candidate) => (
     (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
     || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
