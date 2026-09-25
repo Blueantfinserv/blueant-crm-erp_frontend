@@ -22,21 +22,6 @@ const isVerificationFieldVisible = (field: VerificationField, meetingWith: strin
     meetingWith.trim().toUpperCase().replace(/\s+/g, '_'),
   );
 };
-const meetingKey = (meeting: MeetingResponse) => meeting.meetingCode?.trim() || String(meeting.id ?? '');
-const isUnverifiedNotConductedMeeting = (meeting: MeetingResponse) => (
-  meeting.meetingConducted === 'NOT_CONDUCTED'
-  && meeting.verificationStatus !== 'VERIFIED'
-  && !meeting.verifiedBy
-  && !meeting.meetingVerificationDate
-);
-const mergeMeetingsByCode = (meetings: readonly MeetingResponse[]) => {
-  const unique = new Map<string, MeetingResponse>();
-  meetings.forEach((meeting) => {
-    const key = meetingKey(meeting);
-    if (key && !unique.has(key)) unique.set(key, meeting);
-  });
-  return [...unique.values()];
-};
 const TABS: readonly { key: Tab; label: string; icon: string }[] = [
   { key: 'today', label: 'Today Meetings', icon: 'calendar-check-outline' },
   { key: 'responses', label: 'Verified Meetings', icon: 'clipboard-check-outline' },
@@ -195,16 +180,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     setRefreshing(true);
     try {
       const [p, v, all, coordinatorAssignedLeads] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), meetingService.getVerificationMeetings('VERIFIED'), meetingService.getAllMeetingRecords(), loadCoordinatorAssignedLeads()]);
-      const pendingCodes = new Set(p.map(meetingKey).filter(Boolean));
-      const notConducted = all.filter((meeting) => isUnverifiedNotConductedMeeting(meeting) && !pendingCodes.has(meetingKey(meeting)));
-      const notConductedWithDetails = await Promise.all(notConducted.map(async (meeting) => {
-        const code = meeting.meetingCode?.trim();
-        if (!code) return meeting;
-        try { return (await meetingApi.getMeeting(code)).data ?? meeting; }
-        catch { return meeting; }
-      }));
       if (generation !== dataGeneration.current) return;
-      setPending(mergeMeetingsByCode([...p, ...notConductedWithDetails])); setVerified(v); setMeetings(all); setAssignedLeads(coordinatorAssignedLeads);
+      setPending(p); setVerified(v); setMeetings(all); setAssignedLeads(coordinatorAssignedLeads);
       hasLoaded.current = true;
       setError(null); setRefreshError(null);
     } catch (e) {
