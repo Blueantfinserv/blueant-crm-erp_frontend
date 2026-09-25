@@ -16,12 +16,19 @@ type VerificationField = NonNullable<keyof MeetingVerificationRequest>;
 type VerificationForm = Record<VerificationField, string>;
 type MeetingColumnFilter = Partial<Record<'clientName' | 'mobileNumber' | 'meetingTitle' | 'employeeName' | 'leadStatus' | 'meetingDate' | 'nextMeetingDate' | 'aloneWith' | 'verifiedBy', string>>;
 type AssignedDateRange = { from: string; to: string };
+const PAGE_SIZE = 20;
+const pageCountFor = (total: number) => Math.max(1, Math.ceil(total / PAGE_SIZE));
+const pageItems = <T,>(items: readonly T[], page: number) => items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 const isVerificationFieldVisible = (field: VerificationField, meetingWith: string) => {
   if (field !== 'personName' && field !== 'position') return true;
   return ['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(
     meetingWith.trim().toUpperCase().replace(/\s+/g, '_'),
   );
 };
+const isNotConductedMeeting = (meeting: MeetingResponse | null | undefined) => (
+  String(meeting?.meetingStatus ?? '').toUpperCase() === 'NOT_CONDUCTED'
+  || String(meeting?.meetingConducted ?? '').toUpperCase() === 'NOT_CONDUCTED'
+);
 const TABS: readonly { key: Tab; label: string; icon: string }[] = [
   { key: 'today', label: 'Today Meetings', icon: 'calendar-check-outline' },
   { key: 'responses', label: 'Verified Meetings', icon: 'clipboard-check-outline' },
@@ -142,6 +149,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const activeTabRef = useRef<Tab>('today');
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MeetingResponse | null>(null);
+  const [selectedDetailLoading, setSelectedDetailLoading] = useState(false);
+  const [selectedDetailError, setSelectedDetailError] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -159,6 +168,9 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [coordinatorFilter, setCoordinatorFilter] = useState('');
   const [assignedSalesPersonFilter, setAssignedSalesPersonFilter] = useState('');
   const [assignedDateRange, setAssignedDateRange] = useState<AssignedDateRange>({ from: '', to: '' });
+  const [verifiedPage, setVerifiedPage] = useState(1);
+  const [tasksPage, setTasksPage] = useState(1);
+  const [assignedLeadsPage, setAssignedLeadsPage] = useState(1);
   const [historyLead, setHistoryLead] = useState<LeadResponse | null>(null);
   const [historyMeetings, setHistoryMeetings] = useState<MeetingResponse[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -281,6 +293,15 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     && (!assignedSalesPersonFilter || lead.assignedEmployeeName === assignedSalesPersonFilter)
     && matchesAssignedDate(lead.assignedAt, assignedDateRange)
   )), [assignedDateRange, assignedLeads, assignedSalesPersonFilter, assignedSearch, coordinatorFilter]);
+  useEffect(() => { setVerifiedPage(1); }, [responseColumnFilters, responseSearch]);
+  useEffect(() => { setTasksPage(1); }, [statusFilter, taskColumnFilters, taskSearch]);
+  useEffect(() => { setAssignedLeadsPage(1); }, [assignedDateRange, assignedSalesPersonFilter, assignedSearch, coordinatorFilter]);
+  useEffect(() => { setVerifiedPage((page) => Math.min(page, pageCountFor(visibleVerifiedMeetings.length))); }, [visibleVerifiedMeetings.length]);
+  useEffect(() => { setTasksPage((page) => Math.min(page, pageCountFor(filteredTasks.length))); }, [filteredTasks.length]);
+  useEffect(() => { setAssignedLeadsPage((page) => Math.min(page, pageCountFor(visibleAssignedLeads.length))); }, [visibleAssignedLeads.length]);
+  const pagedVerifiedMeetings = useMemo(() => pageItems(visibleVerifiedMeetings, verifiedPage), [verifiedPage, visibleVerifiedMeetings]);
+  const pagedTasks = useMemo(() => pageItems(filteredTasks, tasksPage), [filteredTasks, tasksPage]);
+  const pagedAssignedLeads = useMemo(() => pageItems(visibleAssignedLeads, assignedLeadsPage), [assignedLeadsPage, visibleAssignedLeads]);
   const summaries = useMemo(() => taskRecords.reduce<Record<string, { name: string; TODAY: number; PENDING: number; OVERDUE: number; FUTURE: number }>>((result, m) => {
     const key = m.employeeCode ?? m.employeeName; if (!key) return result;
     const row = result[key] ?? { name: m.employeeName ?? key, TODAY: 0, PENDING: 0, OVERDUE: 0, FUTURE: 0 };
@@ -313,20 +334,37 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     finally { setAssigning(false); }
   };
 
-  const openVerify = (meeting: MeetingResponse) => {
+  const openVerify = async (meeting: MeetingResponse) => {
     setForm(createMeetingVerificationForm(meeting, [...verified, ...meetings]));
-    setSubmitError(null); setSelected(meeting);
+    setSubmitError(null); setSelectedDetailError(null); setSelected(meeting);
+    const meetingCode = meeting.meetingCode?.trim();
+    if (!meetingCode) {
+      setSelectedDetailError('Meeting code is unavailable.');
+      return;
+    }
+    setSelectedDetailLoading(true);
+    try {
+      const response = await meetingApi.getVerificationDetails(meetingCode);
+      const details = response.data ? { ...meeting, ...response.data } : meeting;
+      setSelected(details);
+      setForm(createMeetingVerificationForm(details, [...verified, ...meetings]));
+    } catch (error) {
+      setSelectedDetailError(error instanceof Error ? error.message : 'Verification details could not be loaded.');
+    } finally {
+      setSelectedDetailLoading(false);
+    }
   };
   const verify = async () => {
     if (!selected?.meetingCode || submittingRef.current) return;
-    if (!form.meetingDate) {
+    const notConducted = isNotConductedMeeting(selected);
+    if (!notConducted && !form.meetingDate) {
       setSubmitError('Please choose the meeting date.'); return;
     }
     if (form.meetingTiming && !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(form.meetingTiming)) {
       setSubmitError('Meeting Time must use HH:mm:ss format.'); return;
     }
     const payload = Object.fromEntries(
-      FIELDS.filter((field) => isVerificationFieldVisible(field.key, form.meetingWith))
+      (notConducted ? [] : FIELDS).filter((field) => isVerificationFieldVisible(field.key, form.meetingWith))
         .map((field) => [field.key, form[field.key].trim()]).filter(([, fieldValue]) => Boolean(fieldValue)),
     ) as MeetingVerificationRequest;
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);
@@ -392,7 +430,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         <View style={[styles.contentHeadingRow, compact && styles.contentHeadingRowCompact]}>
           <View>
             <Text style={styles.contentTitle}>{TABS.find((item) => item.key === tab)?.label}</Text>
-            <Text style={styles.contentSubtitle}>{tab === 'today' ? `Showing ${visibleTodayMeetings.length} of ${pending.length} meetings` : tab === 'responses' ? `Showing ${visibleVerifiedMeetings.length} of ${verified.length} verified meetings` : tab === 'tasks' ? `Showing ${filteredTasks.length} of ${taskRecords.length} active tasks` : tab === 'assignedLeads' ? `Showing ${visibleAssignedLeads.length} of ${assignedLeads.length} assigned leads` : 'Create a physical lead and assign it to a sales person'}</Text>
+            <Text style={styles.contentSubtitle}>{tab === 'today' ? `Showing ${visibleTodayMeetings.length} of ${pending.length} meetings` : tab === 'responses' ? pageSummary(verifiedPage, visibleVerifiedMeetings.length, 'verified meetings') : tab === 'tasks' ? pageSummary(tasksPage, filteredTasks.length, 'active tasks') : tab === 'assignedLeads' ? pageSummary(assignedLeadsPage, visibleAssignedLeads.length, 'assigned leads') : 'Create a physical lead and assign it to a sales person'}</Text>
           </View>
           {tab === 'responses' ? <TextInput value={responseSearch} onChangeText={setResponseSearch} placeholder="Search lead name or number" placeholderTextColor="#CBD9FF" style={[styles.headerSearch, compact && styles.headerSearchCompact]} /> : null}
           {tab === 'tasks' && !loading && !error ? <TaskToolbar header search={taskSearch} onSearch={setTaskSearch} status={statusFilter} onStatus={setStatusFilter} /> : null}
@@ -400,25 +438,45 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         </View>
       </View>
     {!compact && !loading && !error && tab === 'today' ? <MeetingTableHeader records={pending} filters={todayColumnFilters} onFiltersChange={setTodayColumnFilters} /> : null}
-    {tab === 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator stickyHeaderIndices={[0]}><View style={styles.taskStickyHeader}>{!compact && !loading && !error ? <MeetingTableHeader taskOnly records={taskRecords} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}</View><View style={styles.taskFullPanel}>{permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}{loading ? <State loading message="Loading coordinator workspace..." /> : error ? <State message={error} /> : null}{!loading && !error ? <Cards taskOnly items={filteredTasks} empty="No meeting tasks match these filters." /> : null}</View></ScrollView> : null}
+    {tab === 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator stickyHeaderIndices={[0]}><View style={styles.taskStickyHeader}>{!compact && !loading && !error ? <MeetingTableHeader taskOnly records={taskRecords} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}</View><View style={styles.taskFullPanel}>{permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}{loading ? <State loading message="Loading coordinator workspace..." /> : error ? <State message={error} /> : null}{!loading && !error ? <><Cards taskOnly items={pagedTasks} empty="No meeting tasks match these filters." /><PaginationControls page={tasksPage} total={filteredTasks.length} onPageChange={setTasksPage} /></> : null}</View></ScrollView> : null}
     {tab !== 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator={tab === 'responses'} stickyHeaderIndices={tab === 'responses' ? [0] : undefined}>
     <View style={tab === 'responses' ? styles.verifiedStickyHeader : undefined}>{!compact && !loading && !error && tab === 'responses' ? <MeetingTableHeader verified records={verified} filters={responseColumnFilters} onFiltersChange={setResponseColumnFilters} /> : null}</View>
     {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
     {loading ? <State loading message="Loading coordinator workspace..." /> : error ? <State message={error} /> : null}
     {!loading && !error && tab === 'today' ? <Cards items={visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
-    {!loading && !error && tab === 'responses' ? <Cards items={visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="View Response" onOpen={setSelected} verified /> : null}
+    {!loading && !error && tab === 'responses' ? <><Cards items={pagedVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="View Response" onOpen={setSelected} verified /><PaginationControls page={verifiedPage} total={visibleVerifiedMeetings.length} onPageChange={setVerifiedPage} /></> : null}
     {!loading && !error && tab === 'assign' ? <AssignLeadForm compact={compact} form={assignForm} setForm={setAssignForm} assigning={assigning} message={assignMessage} salesPersonNamesByCode={salesPersonNamesByCode} onSubmit={() => void assignLead()} /> : null}
-    {!loading && !error && tab === 'assignedLeads' ? <AssignedLeadCards leads={visibleAssignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} onOpen={openLeadHistory} /> : null}
+    {!loading && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} onOpen={openLeadHistory} /><PaginationControls page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /></> : null}
     </ScrollView> : null}
     </View>
     <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
-      <ScrollView contentContainerStyle={styles.modalBody}>{selected ? <Details meeting={selected} showMeetingDate={tab === 'responses'} /> : null}{tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected ? <View style={styles.formSection}><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting} onPress={() => void verify()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : 'Verify Meeting'}</Text></Pressable></View> : null}</ScrollView>
+      <ScrollView contentContainerStyle={styles.modalBody}>{selectedDetailLoading ? <State loading message="Loading verification details..." /> : selected ? <><Details meeting={selected} showMeetingDate={tab === 'responses' || isNotConductedMeeting(selected)} />{selectedDetailError ? <Text style={styles.error}>{selectedDetailError}</Text> : null}{tab === 'responses' ? <VerificationDetails meeting={selected} /> : <View style={styles.formSection}>{isNotConductedMeeting(selected) ? <><Text style={styles.sectionTitle}>Visit Not Conducted</Text><Text style={styles.help}>Review the visit, follow-up and captured location details before verification.</Text></> : <><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View></>}{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting || Boolean(selectedDetailError)} onPress={() => void verify()} style={[styles.submit, (submitting || Boolean(selectedDetailError)) && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'}</Text></Pressable></View>}</> : null}</ScrollView>
     </View></View></Modal>
     <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
       <ScrollView contentContainerStyle={styles.modalBody}>{historyLead ? <LeadHistoryContentStyled lead={historyLead} meetings={historyMeetings} loading={historyLoading} error={historyError} /> : null}</ScrollView>
     </View></View></Modal>
+  </View>;
+}
+
+function pageSummary(page: number, total: number, label: string) {
+  if (!total) return `Showing 0 ${label}`;
+  const start = (page - 1) * PAGE_SIZE + 1;
+  const end = Math.min(page * PAGE_SIZE, total);
+  return `Showing ${start}-${end} of ${total} ${label}`;
+}
+
+function PaginationControls({ page, total, onPageChange }: { page: number; total: number; onPageChange: (page: number) => void }) {
+  if (!total) return null;
+  const totalPages = pageCountFor(total);
+  return <View style={styles.pagination}>
+    <Text style={styles.paginationInfo}>{pageSummary(page, total, 'records')}</Text>
+    <View style={styles.paginationActions}>
+      <Pressable disabled={page <= 1} onPress={() => onPageChange(page - 1)} style={[styles.paginationButton, page <= 1 && styles.paginationButtonDisabled]}><Icon source="chevron-left" size={15} color={page <= 1 ? '#94A3B8' : '#3156C8'} /><Text style={[styles.paginationButtonText, page <= 1 && styles.paginationButtonTextDisabled]}>Previous</Text></Pressable>
+      <Text style={styles.paginationPage}>{`Page ${page} of ${totalPages}`}</Text>
+      <Pressable disabled={page >= totalPages} onPress={() => onPageChange(page + 1)} style={[styles.paginationButton, page >= totalPages && styles.paginationButtonDisabled]}><Text style={[styles.paginationButtonText, page >= totalPages && styles.paginationButtonTextDisabled]}>Next</Text><Icon source="chevron-right" size={15} color={page >= totalPages ? '#94A3B8' : '#3156C8'} /></Pressable>
+    </View>
   </View>;
 }
 
@@ -583,17 +641,23 @@ function Cards({ items, filters = {}, empty, action, onOpen, verified = false, t
 function Details({ meeting: m, showMeetingDate }: { meeting: MeetingResponse; showMeetingDate: boolean }) {
   const meetingPlace = m.meetingLocation ?? m.location ?? m.address;
   const mapUrl = mapUrlFor(m);
+  const notConducted = isNotConductedMeeting(m);
   const overviewFields: readonly [string, string | undefined][] = [
     ['Meeting Type', m.meetingTitle ?? m.meetingType],
     ...(showMeetingDate ? [['Meeting Date', m.meetingDate] as [string, string | undefined]] : []),
     ['Next Plan Date', m.nextMeetingDate],
+    ...(notConducted ? [
+      ['Meeting Status', m.meetingStatus],
+      ['Meeting Conducted', m.meetingConducted],
+      ['Verification Status', m.verificationStatus],
+    ] as [string, string | undefined][] : []),
     ['Lead Status', m.leadStatus?.replace(/_/g, ' ')],
   ];
-  const contactFields = [['Mobile Number', maskedMobile(m.mobileNumber)], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
+  const contactFields = [...(notConducted ? [['Lead Code', m.leadCode] as const] : []), ['Mobile Number', maskedMobile(m.mobileNumber)] as const, ['Sales Person', m.employeeName] as const, ['Sales Person ID', m.employeeCode] as const, ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ...(notConducted ? [['Meeting Mode', m.meetingMode] as const] : []), ['Joined With', m.aloneWith] as const];
   return <View style={styles.detailsWrap}>
     <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, label === 'Lead Status' ? styles.overviewStatusCard : [styles.toneBlue, styles.toneViolet, styles.toneTeal][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, label === 'Lead Status' && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
     <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
-    <View style={styles.contextGrid}>{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{meetingPlace ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>MEETING LOCATION</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={[styles.mapButton, styles.mapButtonCompact]}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
+    <View style={styles.contextGrid}>{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{meetingPlace || (notConducted && (m.latitude != null || m.longitude != null)) ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>MEETING LOCATION</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text>{notConducted && m.latitude != null && m.longitude != null ? <Text numberOfLines={1} style={styles.contextValue}>{`${m.latitude}, ${m.longitude}${m.locationAccuracy != null ? ` · ±${m.locationAccuracy}m` : ''}`}</Text> : null}</View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={[styles.mapButton, styles.mapButtonCompact]}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
   </View>;
 }
 function VerificationDetails({ meeting: m }: { meeting: MeetingResponse }) { const fields = [['Verified By', m.verifiedBy], ['Verification Date', m.meetingVerificationDate], ...FIELDS.map((field) => [field.label, m[field.key]] as const)]; return <View style={styles.formSection}><Text style={styles.sectionTitle}>Process Coordinator Response</Text><View style={styles.detailGrid}>{fields.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View></View>; }
@@ -848,5 +912,6 @@ const styles = StyleSheet.create({
   state: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12, backgroundColor: '#FFFFFF' }, stateText: { color: '#64748B', textAlign: 'center', fontSize: 9, fontWeight: '700' }, list: { width: '100%' }, listHeader: { position: 'relative', height: 29, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, borderBottomWidth: 1, borderBottomColor: '#DCE5FA', backgroundColor: '#EAF0FD' }, listHeaderCompact: { display: 'none' }, columnLabel: { width: 120, color: '#4B6093', fontSize: 8, fontWeight: '800', letterSpacing: 0.5 }, personColumn: { width: 200 }, personColumnCompact: { width: '100%' }, actionColumn: { width: 150 }, listRow: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13, paddingVertical: 4, borderTopWidth: 1, borderTopColor: '#DAE1F3', backgroundColor: '#EEF0FF' }, listRowAlternate: { backgroundColor: '#E9F7F3' }, listRowCompact: { height: 'auto', minHeight: 74, flexWrap: 'wrap', paddingVertical: 8 }, personCell: { flexDirection: 'row', alignItems: 'center', gap: 0 }, avatar: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 10, backgroundColor: '#E0E7FF' }, avatarText: { color: '#4338CA', fontSize: 11, fontWeight: '800' }, cellCopy: { minWidth: 0, flex: 1 }, cell: { width: 120 }, cellCompact: { width: '30%', flexGrow: 1 }, cellMain: { color: '#334155', fontSize: 10, fontWeight: '600' }, cellSub: { marginTop: 1, color: '#8A95A7', fontSize: 7, fontWeight: '600' }, client: { color: '#142039', fontSize: 10, fontWeight: '900' }, code: { marginTop: 1, color: '#8A95A7', fontSize: 7, fontWeight: '600' }, status: { alignSelf: 'flex-start', paddingHorizontal: 7, paddingVertical: 3, overflow: 'hidden', borderWidth: 1, borderColor: '#F3DFC1', borderRadius: 99, color: '#A95A08', fontSize: 8, fontWeight: '900', letterSpacing: 0.25, backgroundColor: '#FFF7EA' }, statusVerified: { color: '#117A54', borderColor: '#CDEBDE', backgroundColor: '#EAF8F1' }, rowAction: { width: 150, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingVertical: 7, paddingHorizontal: 6, borderRadius: 7, backgroundColor: '#E9EEFF', borderWidth: 1, borderColor: '#CFDAFF' }, rowActionCompact: { flexGrow: 1 }, rowActionPressed: { backgroundColor: '#EDF2FF' }, rowActionText: { color: '#2D52C7', fontSize: 9, fontWeight: '900' }, label: { color: '#8390A6', fontSize: 7, fontWeight: '900', letterSpacing: 0.3, textTransform: 'uppercase' },
   taskDashboard: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 10 }, taskDashboardCompact: { flexDirection: 'column' }, taskSummaryPanel: { width: 310, flexShrink: 0 }, taskListPanel: { minWidth: 0, flex: 1, gap: 8 }, summaries: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, summary: { width: '48.8%', minWidth: 0, flexGrow: 0, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#DDE7FF', borderRadius: 9, backgroundColor: '#F7F9FF' }, summaryCompact: { width: '48%', minWidth: 0, flexGrow: 0 }, summaryName: { color: '#1E3A8A', fontSize: 12, fontWeight: '900' }, summaryCounts: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 3 }, summaryLine: { color: '#64748B', fontSize: 8, fontWeight: '700' }, summaryCount: { color: '#1E3A8A', fontWeight: '900' }, overdueCount: { color: '#C2410C' }, filters: { flexDirection: 'row', alignItems: 'center', gap: 8 }, filtersCompact: { flexDirection: 'column', alignItems: 'stretch' }, filterInput: { minWidth: 220, height: 34, paddingHorizontal: 12, borderWidth: 1, borderColor: '#D4E0FF', borderRadius: 10, backgroundColor: '#F9FBFF', color: '#172033', fontSize: 9, fontWeight: '800' }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 5 }, chip: { minHeight: 32, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, borderWidth: 1, borderColor: '#D4E0FF', borderRadius: 10, backgroundColor: '#F1F5FF' }, chipActive: { borderColor: '#6B8AFF', backgroundColor: '#3156C8', shadowColor: '#0F2C7A', shadowOpacity: 0.24, shadowRadius: 4, shadowOffset: { width: 0, height: 2 }, elevation: 2 }, chipText: { color: '#44577E', fontSize: 8, fontWeight: '900' }, chipTextActive: { color: '#FFFFFF' }, taskList: { gap: 0, overflow: 'hidden', borderWidth: 1, borderColor: '#DCE5FA', borderRadius: 10 },
   taskListJoined: { borderTopWidth: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0 }, taskFullPanel: { gap: 0 }, taskStickyHeader: { overflow: 'hidden', backgroundColor: '#FFFFFF' }, verifiedStickyHeader: { overflow: 'hidden', backgroundColor: '#FFFFFF' }, taskToolbar: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 7, padding: 10, borderWidth: 1, borderColor: '#DCE5FA', borderRadius: 10, backgroundColor: '#F8FAFF' }, taskToolbarHeader: { minWidth: 0, flex: 1, justifyContent: 'flex-end', padding: 0, borderWidth: 0, borderRadius: 0, backgroundColor: 'transparent' }, taskSalesPicker: { width: 190, height: 34, flexDirection: 'row', alignItems: 'center', gap: 3, paddingLeft: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#D4E0FF', borderRadius: 10, backgroundColor: '#F9FBFF' }, taskSalesPickerControl: { minWidth: 0, flex: 1, height: 34, color: '#1E3A8A', fontSize: 9, fontWeight: '900' }, taskSummaryPanelCompact: { width: '100%' }, taskResultsContent: { flex: 1, minHeight: 0 }, taskDashboardFill: { flex: 1, minHeight: 0 }, taskListFill: { flex: 1, minHeight: 0 }, taskRowsScroll: { flex: 1, minHeight: 0 }, taskRowsContent: { flexGrow: 0 },
+  pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#E2E8F0', backgroundColor: '#FFFFFF' }, paginationInfo: { color: '#64748B', fontSize: 9, fontWeight: '700' }, paginationActions: { flexDirection: 'row', alignItems: 'center', gap: 8 }, paginationButton: { minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3, paddingHorizontal: 10, borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 8, backgroundColor: '#EEF3FF' }, paginationButtonDisabled: { borderColor: '#E2E8F0', backgroundColor: '#F8FAFC' }, paginationButtonText: { color: '#3156C8', fontSize: 8, fontWeight: '900' }, paginationButtonTextDisabled: { color: '#94A3B8' }, paginationPage: { color: '#334155', fontSize: 9, fontWeight: '900' },
   backdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 16, backgroundColor: 'rgba(15,23,42,.65)' }, modal: { width: '100%', maxWidth: 900, maxHeight: '94%', overflow: 'hidden', borderRadius: 21, backgroundColor: '#fff' }, modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 16, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: '#E2E8F0', backgroundColor: '#F8FAFC' }, modalHeaderCopy: { minWidth: 0, flex: 1 }, modalEyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: 6 }, modalEyebrowDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#6366F1' }, modalEyebrow: { color: '#4F46E5', fontSize: 9, fontWeight: '900', letterSpacing: 1 }, modalTitle: { marginTop: 3, color: '#0F172A', fontSize: 18, fontWeight: '900' }, modalMeta: { marginTop: 2, color: '#70809B', fontSize: 8, fontWeight: '700' }, close: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17, backgroundColor: '#E2E8F0' }, modalBody: { gap: 13, padding: 15 }, sectionTitle: { marginBottom: 6, color: '#172554', fontSize: 13, fontWeight: '900' }, detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 }, detail: { width: '30%', minWidth: 150, flexGrow: 1, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 9, backgroundColor: '#F8FAFC' }, detailValue: { marginTop: 3, color: '#0F172A', fontSize: 9, fontWeight: '700' }, formSection: { gap: 9, paddingTop: 11, borderTopWidth: 1, borderTopColor: '#E2E8F0' }, help: { color: '#64748B', fontSize: 9, fontWeight: '600' }, formGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, zIndex: 30, elevation: 30 }, field: { width: '31%', minWidth: 190, flexGrow: 1, gap: 3 }, fieldLabel: { color: '#334155', fontSize: 10, fontWeight: '800' }, input: { paddingVertical: 8, paddingHorizontal: 11, borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 10, color: '#0F172A' }, timePickerRow: { flexDirection: 'row', alignItems: 'center', gap: 5 }, timePicker: { width: 112, minWidth: 0, flexGrow: 0, flexShrink: 1 }, timeSeparator: { color: '#64748B', fontSize: 14, fontWeight: '900' }, secondsBox: { width: 42, height: 36, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, backgroundColor: '#F1F5F9' }, secondsValue: { color: '#475569', fontSize: 10, fontWeight: '900' }, error: { color: '#DC2626', fontSize: 10, fontWeight: '800' }, submit: { zIndex: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 13, borderRadius: 11, backgroundColor: '#4F46E5' }, disabled: { opacity: .6 }, submitText: { color: '#fff', fontWeight: '900' },
 });
