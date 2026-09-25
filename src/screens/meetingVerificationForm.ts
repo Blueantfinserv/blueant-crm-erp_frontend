@@ -1,6 +1,10 @@
 import type { MeetingResponse, MeetingVerificationRequest } from '../types/meeting';
 
 const LEAD_FIELDS = ['ageGroup', 'existingSip', 'profession', 'professionDetail', 'bestTimeForMeeting'] as const;
+const meetingWithValue = (value: string | undefined) => {
+  const normalized = value?.trim().toUpperCase().replace(/\s+/g, '_');
+  return ['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(normalized ?? '') ? 'SOMEONE' : normalized === 'SELF' ? 'SELF' : '';
+};
 
 export const createMeetingVerificationForm = (
   meeting: MeetingResponse,
@@ -22,9 +26,9 @@ export const createMeetingVerificationForm = (
   const form = {
     meetingDate: '',
     meetingTiming: '',
-    meetingWith: meeting.meetingWith?.trim() || meeting.aloneWith?.trim() || '',
-    personName: '',
-    position: '',
+    meetingWith: meetingWithValue(meeting.meetingWith) || meetingWithValue(meeting.aloneWith),
+    personName: meeting.personName?.trim() || '',
+    position: meeting.position?.trim() || '',
     ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '',
   };
   for (const field of LEAD_FIELDS) {

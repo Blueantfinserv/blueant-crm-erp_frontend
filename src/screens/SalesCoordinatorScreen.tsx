@@ -49,13 +49,17 @@ const FIELDS: readonly { key: VerificationField; label: string; placeholder: str
   { key: 'profession', label: 'Profession', placeholder: 'Backend code, e.g. DOCTOR' },
   { key: 'bestTimeForMeeting', label: 'Best Time for Meeting', placeholder: 'Backend code, e.g. EVENING' },
   { key: 'professionDetail', label: 'Clinic / Company / Firm Name', placeholder: 'Profession details' },
-  { key: 'meetingWith', label: 'Meeting With', placeholder: 'Backend code, e.g. SOMEONE_ELSE' },
+  { key: 'meetingWith', label: 'Meeting With', placeholder: 'Choose who attended the meeting' },
   { key: 'personName', label: 'Person / Joined Person Name', placeholder: 'Person name' },
   { key: 'position', label: 'Position', placeholder: 'Position' },
 ];
 const emptyForm = (): VerificationForm => ({ meetingDate: '', meetingTiming: '', ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '', meetingWith: '', personName: '', position: '' });
 const HOURS = Array.from({ length: 14 }, (_, index) => String(index + 9).padStart(2, '0'));
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
+const MEETING_WITH_OPTIONS = [
+  { value: 'SELF', label: 'Self' },
+  { value: 'SOMEONE', label: 'With Someone' },
+] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
 const AGE_GROUP_LABELS: Record<string, string> = {
   BELOW_25: 'Below 25', AGE_25_35: '25–35', AGE_36_45: '36–45',
@@ -443,6 +447,20 @@ function VerificationFormField({
     );
   }
 
+  if (field.key === 'meetingWith') {
+    return (
+      <View style={[styles.field, tone]}>
+        <Text style={styles.fieldLabel}>{field.label}</Text>
+        <View style={styles.pickerShell}>
+          <Picker selectedValue={form.meetingWith} onValueChange={update} style={styles.picker}>
+            <Picker.Item label="Select an option" value="" />
+            {MEETING_WITH_OPTIONS.map((option) => <Picker.Item key={option.value} label={option.label} value={option.value} />)}
+          </Picker>
+        </View>
+      </View>
+    );
+  }
+
   const options = field.key === 'existingSip'
     ? PRIOR_INVESTMENT_OPTIONS
     : field.key === 'bestTimeForMeeting'
@@ -467,7 +485,11 @@ function VerificationFormField({
 }
 
 const FILTER_COLUMNS: { key: keyof MeetingColumnFilter; label: string }[] = [
-  { key: 'clientName', label: 'CLIENT NAME' }, { key: 'mobileNumber', label: 'NUMBER' }, { key: 'meetingTitle', label: 'MEETING TYPE' }, { key: 'employeeName', label: 'SALES PERSON' }, { key: 'leadStatus', label: 'LEAD STATUS' }, { key: 'meetingDate', label: 'MEETING DATE' }, { key: 'nextMeetingDate', label: 'NEXT PLAN DATE' }, { key: 'aloneWith', label: 'JOINED' },
+  { key: 'clientName', label: 'CLIENT NAME' }, { key: 'mobileNumber', label: 'NUMBER' }, { key: 'meetingTitle', label: 'MEETING TYPE' }, { key: 'employeeName', label: 'SALES PERSON' }, { key: 'leadStatus', label: 'LEAD STATUS' }, { key: 'nextMeetingDate', label: 'NEXT PLAN DATE' }, { key: 'aloneWith', label: 'JOINED' },
+];
+const MEETING_DATE_COLUMN = { key: 'meetingDate' as const, label: 'MEETING DATE' };
+const TASK_FILTER_COLUMNS = [
+  { key: 'clientName' as const, label: 'CLIENT NAME' }, { key: 'mobileNumber' as const, label: 'NUMBER' }, { key: 'meetingTitle' as const, label: 'MEETING TYPE' }, { key: 'employeeName' as const, label: 'SALES PERSON' }, MEETING_DATE_COLUMN,
 ];
 function InlineCalendar({ value, onSelect }: { value: string; onSelect: (value: string) => void }) {
   const initial = value ? new Date(`${value}T00:00:00`) : new Date();
@@ -482,7 +504,7 @@ function MeetingTableHeader({ verified = false, taskOnly = false, records, filte
   const [draftChoices, setDraftChoices] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [dateTarget, setDateTarget] = useState<'from' | 'to' | null>(null);
-  const columns = taskOnly ? FILTER_COLUMNS.filter((column) => ['clientName', 'mobileNumber', 'meetingTitle', 'employeeName', 'meetingDate'].includes(column.key)) : verified ? [...FILTER_COLUMNS, { key: 'verifiedBy' as const, label: 'VERIFIED BY' }] : FILTER_COLUMNS;
+  const columns = taskOnly ? TASK_FILTER_COLUMNS : verified ? [...FILTER_COLUMNS.slice(0, 5), MEETING_DATE_COLUMN, ...FILTER_COLUMNS.slice(5), { key: 'verifiedBy' as const, label: 'VERIFIED BY' }] : FILTER_COLUMNS;
   const dropdownKeys: (keyof MeetingColumnFilter)[] = taskOnly ? ['employeeName'] : verified
     ? ['employeeName', 'verifiedBy', 'meetingTitle', 'leadStatus', 'meetingDate']
     : ['employeeName', 'meetingTitle', 'leadStatus'];
@@ -501,7 +523,7 @@ function Cards({ items, filters = {}, empty, action, onOpen, verified = false, t
   const compact = useWindowDimensions().width < 760;
   const visibleItems = filterMeetingRecords(items, filters);
   if (!visibleItems.length) return <State message={Object.values(filters).some(Boolean) ? 'No meetings match these filters.' : empty} />;
-  if (compact) return <View style={styles.list}>{visibleItems.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.mobileRow, i % 2 === 1 && styles.listRowAlternate]}><View style={styles.personCell}><View style={styles.cellCopy}><Text style={styles.client}>{show(m.clientName)}</Text><Text style={styles.code}>{show(maskedMobile(m.mobileNumber))}</Text></View></View><View style={styles.mobileMeeting}><Text style={styles.cellMain}>{show(m.meetingTitle ?? m.meetingType)}</Text><Text style={styles.cellSub}>{show(m.meetingDate)} · {show(m.nextMeetingDate)}{verified ? ` · Verified by ${show(m.verifiedBy)}` : ''}</Text></View>{onOpen ? <Pressable onPress={() => onOpen(m)} style={styles.mobileAction}><Icon source="chevron-right" size={16} color="#3156C8" /></Pressable> : null}</View>)}</View>;
+  if (compact) return <View style={styles.list}>{visibleItems.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.mobileRow, i % 2 === 1 && styles.listRowAlternate]}><View style={styles.personCell}><View style={styles.cellCopy}><Text style={styles.client}>{show(m.clientName)}</Text><Text style={styles.code}>{show(maskedMobile(m.mobileNumber))}</Text></View></View><View style={styles.mobileMeeting}><Text style={styles.cellMain}>{show(m.meetingTitle ?? m.meetingType)}</Text><Text style={styles.cellSub}>{verified ? `${show(m.meetingDate)} · ` : ''}{show(m.nextMeetingDate)}{verified ? ` · Verified by ${show(m.verifiedBy)}` : ''}</Text></View>{onOpen ? <Pressable onPress={() => onOpen(m)} style={styles.mobileAction}><Icon source="chevron-right" size={16} color="#3156C8" /></Pressable> : null}</View>)}</View>;
   const columns = (taskOnly ? [
     ['NUMBER', (m: MeetingResponse) => maskedMobile(m.mobileNumber)],
     ['MEETING TYPE', (m: MeetingResponse) => m.meetingTitle ?? m.meetingType],
@@ -512,7 +534,7 @@ function Cards({ items, filters = {}, empty, action, onOpen, verified = false, t
     ['MEETING TYPE', (m: MeetingResponse) => m.meetingTitle ?? m.meetingType],
     ['SALES PERSON', (m: MeetingResponse) => m.employeeName],
     ['LEAD STATUS', (m: MeetingResponse) => m.leadStatus],
-    ['MEETING DATE', (m: MeetingResponse) => m.meetingDate],
+    ...(verified ? [['MEETING DATE', (m: MeetingResponse) => m.meetingDate] as const] : []),
     ['NEXT PLAN DATE', (m: MeetingResponse) => m.nextMeetingDate],
     ['JOINED', (m: MeetingResponse) => m.aloneWith],
     ...(verified ? [['VERIFIED BY', (m: MeetingResponse) => m.verifiedBy] as const] : []),
