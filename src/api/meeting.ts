@@ -62,7 +62,7 @@ export const meetingApi = {
   getByVerificationStatus: (status: 'PENDING' | 'VERIFIED') =>
     call<MeetingResponse[]>(`/v1/meetings?verificationStatus=${encodeURIComponent(status)}`),
   getVerificationDetails: (meetingCode: string) =>
-    call<MeetingDetail>(`/v1/meetings/verification/${codePath(meetingCode)}`),
+    directCall<MeetingDetail>(`/v1/meetings/verification/${codePath(meetingCode)}`, { method: 'GET' }),
   verify: (meetingCode: string, body: MeetingVerificationRequest) =>
     directCall<MeetingResponse>(`/v1/meetings/verification/${codePath(meetingCode)}/verify`, json(body)),
 };

@@ -345,7 +345,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     setSelectedDetailLoading(true);
     try {
       const response = await meetingApi.getVerificationDetails(meetingCode);
-      const details = response.data ? { ...meeting, ...response.data } : meeting;
+      const details = { ...meeting, ...response };
       setSelected(details);
       setForm(createMeetingVerificationForm(details, [...verified, ...meetings]));
     } catch (error) {
@@ -877,7 +877,7 @@ const styles = StyleSheet.create({
   dateCellText: { color: '#334155', fontSize: 10, fontWeight: '800' },
   dateCellTextSelected: { color: '#FFFFFF' },
   pickerShell: { height: 36, justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: '#D4DCE8', borderRadius: 10, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
-  picker: { height: 36, color: '#1F2937', fontSize: 11, fontWeight: '600' },
+  picker: { height: 36, color: 'rgb(13, 36, 69)', fontSize: 11, fontWeight: '600' },
   styledSelect: { height: 36, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingHorizontal: 11, borderWidth: 1, borderColor: '#D4DCE8', borderRadius: 10, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOpacity: 0.035, shadowRadius: 4, shadowOffset: { width: 0, height: 1 }, elevation: 1 },
   styledSelectWrap: { position: 'relative', zIndex: 1 }, styledSelectWrapOpen: { zIndex: 50 }, styledSelectOpen: { borderColor: '#7895E9', borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   styledSelectText: { minWidth: 0, flex: 1, color: '#1F2937', fontSize: 11, fontWeight: '700' }, styledSelectPlaceholder: { color: '#64748B' },
