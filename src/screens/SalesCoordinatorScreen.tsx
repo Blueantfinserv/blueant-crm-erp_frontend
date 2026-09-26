@@ -60,6 +60,7 @@ const FIELDS: readonly { key: VerificationField; label: string; placeholder: str
   { key: 'personName', label: 'Person / Joined Person Name', placeholder: 'Person name' },
   { key: 'position', label: 'Position', placeholder: 'Position' },
 ];
+const MEETING_TIMING_FIELD = FIELDS.find((field) => field.key === 'meetingTiming')!;
 const emptyForm = (): VerificationForm => ({ meetingDate: '', meetingTiming: '', ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '', meetingWith: '', personName: '', position: '' });
 const HOURS = Array.from({ length: 14 }, (_, index) => String(index + 9).padStart(2, '0'));
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
@@ -360,11 +361,14 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     if (!notConducted && !form.meetingDate) {
       setSubmitError('Please choose the meeting date.'); return;
     }
+    if (notConducted && !form.meetingTiming) {
+      setSubmitError('Please choose the meeting time.'); return;
+    }
     if (form.meetingTiming && !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(form.meetingTiming)) {
       setSubmitError('Meeting Time must use HH:mm:ss format.'); return;
     }
     const payload = Object.fromEntries(
-      (notConducted ? [] : FIELDS).filter((field) => isVerificationFieldVisible(field.key, form.meetingWith))
+      (notConducted ? [MEETING_TIMING_FIELD] : FIELDS).filter((field) => isVerificationFieldVisible(field.key, form.meetingWith))
         .map((field) => [field.key, form[field.key].trim()]).filter(([, fieldValue]) => Boolean(fieldValue)),
     ) as MeetingVerificationRequest;
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);
@@ -451,7 +455,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     </View>
     <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
-      <ScrollView contentContainerStyle={styles.modalBody}>{selectedDetailLoading ? <State loading message="Loading verification details..." /> : selected ? <><Details meeting={selected} showMeetingDate={tab === 'responses' || isNotConductedMeeting(selected)} />{selectedDetailError ? <Text style={styles.error}>{selectedDetailError}</Text> : null}{tab === 'responses' ? <VerificationDetails meeting={selected} /> : <View style={styles.formSection}>{isNotConductedMeeting(selected) ? <><Text style={styles.sectionTitle}>Visit Not Conducted</Text><Text style={styles.help}>Review the visit, follow-up and captured location details before verification.</Text></> : <><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View></>}{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting || Boolean(selectedDetailError)} onPress={() => void verify()} style={[styles.submit, (submitting || Boolean(selectedDetailError)) && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'}</Text></Pressable></View>}</> : null}</ScrollView>
+      <ScrollView contentContainerStyle={styles.modalBody}>{selectedDetailLoading ? <State loading message="Loading verification details..." /> : selected ? <><Details meeting={selected} showMeetingDate={tab === 'responses' || isNotConductedMeeting(selected)} />{selectedDetailError ? <Text style={styles.error}>{selectedDetailError}</Text> : null}{tab === 'responses' ? <VerificationDetails meeting={selected} /> : <View style={styles.formSection}>{isNotConductedMeeting(selected) ? <><Text style={styles.sectionTitle}>Visit Not Conducted</Text><Text style={styles.help}>Review the visit, follow-up and captured location details, then confirm the meeting time.</Text><View style={styles.formGrid}><VerificationFormField field={MEETING_TIMING_FIELD} form={form} setForm={setForm} /></View></> : <><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View></>}{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting || Boolean(selectedDetailError)} onPress={() => void verify()} style={[styles.submit, (submitting || Boolean(selectedDetailError)) && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'}</Text></Pressable></View>}</> : null}</ScrollView>
     </View></View></Modal>
     <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
