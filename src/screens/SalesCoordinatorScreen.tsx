@@ -419,18 +419,26 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         .map((field) => [field.key, form[field.key].trim()]).filter(([, fieldValue]) => Boolean(fieldValue)),
     ) as MeetingVerificationRequest;
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);
-    dataGeneration.current += 1;
+    const generation = ++dataGeneration.current;
+    const meetingCode = selected.meetingCode;
+    let verificationSucceeded = false;
     try {
       const verificationResult = await meetingService.verifyMeeting(selected.meetingCode, payload);
-      const [refreshedPending, refreshedVerified, refreshedMeetings] = await Promise.all([
+      verificationSucceeded = true;
+      setPending((items) => items.filter((meeting) => meeting.meetingCode !== meetingCode));
+      setSelected(null);
+      submittingRef.current = false;
+      setSubmitting(false);
+      const [refreshedPending, refreshedVerified, refreshedMeetings, newMeeting] = await Promise.all([
         meetingService.getVerificationMeetings('PENDING'),
         meetingService.getVerificationMeetings('VERIFIED'),
         meetingService.getAllMeetingRecords(),
+        verificationResult.meetingCode?.trim()
+          ? meetingApi.getMeeting(verificationResult.meetingCode.trim()).then((result) => result.data ?? null).catch(() => null)
+          : Promise.resolve(null),
       ]);
+      if (generation !== dataGeneration.current) return;
       const newMeetingCode = verificationResult.meetingCode?.trim();
-      const newMeeting = newMeetingCode
-        ? await meetingApi.getMeeting(newMeetingCode).then((result) => result.data ?? null).catch(() => null)
-        : null;
       const meetingsByCode = new Map(refreshedMeetings.map((meeting) => [meeting.meetingCode ?? String(meeting.id ?? ''), meeting]));
       if (newMeeting && newMeetingCode) meetingsByCode.set(newMeeting.meetingCode ?? newMeetingCode, newMeeting);
       setPending(refreshedPending);
@@ -439,9 +447,13 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       loadedTabs.current.add('today');
       loadedTabs.current.add('responses');
       loadedTabs.current.add('tasks');
-      setSelected(null);
-    } catch (e) { setSubmitError(e instanceof Error ? e.message : 'Meeting verification failed.'); }
-    finally { submittingRef.current = false; setSubmitting(false); }
+    } catch (e) {
+      if (generation !== dataGeneration.current) return;
+      if (verificationSucceeded) setRefreshError('Meeting verified. Lists could not refresh; please refresh to update them.');
+      else setSubmitError(e instanceof Error ? e.message : 'Meeting verification failed.');
+    } finally {
+      if (!verificationSucceeded) { submittingRef.current = false; setSubmitting(false); }
+    }
   };
 
   const renderTab = (item: typeof TABS[number]) => {
