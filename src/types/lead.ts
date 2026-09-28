@@ -164,6 +164,10 @@ export type LeadSearchRequest = {
   keyword?: string;
   filter?: {
     assignedUserId?: number;
+    assignmentSource?: string;
+    assignedByCoordinator?: boolean;
+    assignedFromDate?: string;
+    assignedToDate?: string;
   };
   page?: number;
   size?: number;

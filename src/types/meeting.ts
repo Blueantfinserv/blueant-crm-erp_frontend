@@ -60,7 +60,12 @@ export type MeetingVerificationRequest = {
   personName?: string;
   position?: string;
 };
-export type MeetingSearchRequest = { keyword?: string };
+export type MeetingSearchRequest = {
+  keyword?: string;
+  verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | 'CLARIFICATION';
+  salesPersonId?: number;
+  salesPersonName?: string;
+};
 export type RescheduleMeetingRequest = { meetingCode: string; meetingDate: string; meetingTime: LocalTime; meetingLocation: string; rescheduleReason: string };
 export type CancelMeetingRequest = { meetingId: number; cancellationReason: string };
 

@@ -17,6 +17,7 @@ type VerificationForm = Record<VerificationField, string>;
 type MeetingColumnFilter = Partial<Record<'clientName' | 'mobileNumber' | 'meetingTitle' | 'employeeName' | 'leadStatus' | 'meetingDate' | 'nextMeetingDate' | 'aloneWith' | 'verifiedBy', string>>;
 type AssignedDateRange = { from: string; to: string };
 const PAGE_SIZE = 20;
+const INITIAL_LIST_LIMIT = 500;
 const pageCountFor = (total: number) => Math.max(1, Math.ceil(total / PAGE_SIZE));
 const pageItems = <T,>(items: readonly T[], page: number) => items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 const isVerificationFieldVisible = (field: VerificationField, meetingWith: string) => {
@@ -128,13 +129,21 @@ const exportDatePart = (value: string) => {
   const date = new Date(`${value}T12:00:00`);
   return Number.isNaN(date.getTime()) ? value : `${date.getDate()}${date.toLocaleString('en-IN', { month: 'short' })}`;
 };
-const loadCoordinatorAssignedLeads = async () => {
-  const firstPage = await leadSearchApi.search({ page: 0, size: 100, sortBy: 'assignedAt', sortDirection: 'DESC' });
+const loadCoordinatorAssignedLeads = async (allResults = false) => {
+  const request = {
+    size: INITIAL_LIST_LIMIT,
+    sortBy: 'assignedAt',
+    sortDirection: 'DESC' as const,
+    filter: { assignedByCoordinator: true },
+  };
+  const firstPage = await leadSearchApi.search({ ...request, page: 0 });
   const leads = [...(firstPage.data?.content ?? [])];
   const totalPages = firstPage.data?.totalPages ?? 1;
-  for (let page = 1; page < totalPages; page += 1) {
-    const response = await leadSearchApi.search({ page, size: 100, sortBy: 'assignedAt', sortDirection: 'DESC' });
-    leads.push(...(response.data?.content ?? []));
+  if (allResults && totalPages > 1) {
+    const remaining = await Promise.all(Array.from({ length: totalPages - 1 }, (_, index) => (
+      leadSearchApi.search({ ...request, page: index + 1 })
+    )));
+    leads.push(...remaining.flatMap((response) => response.data?.content ?? []));
   }
   return leads.map((lead) => ({ ...lead, assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt })).filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator);
 };
@@ -154,6 +163,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const loadInFlight = useRef(false);
   const dataGeneration = useRef(0);
   const loadedTabs = useRef(new Set<Tab>());
+  const verifiedFullLoad = useRef(false);
+  const assignedLeadsFullLoad = useRef(false);
   const activeTabRef = useRef<Tab>('today');
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MeetingResponse | null>(null);
@@ -206,11 +217,11 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       const data = targetTab === 'today'
         ? await meetingService.getVerificationMeetings('PENDING')
         : targetTab === 'responses'
-          ? await meetingService.getVerificationMeetings('VERIFIED')
+          ? await meetingService.getVerificationMeetings('VERIFIED', verifiedFullLoad.current)
           : targetTab === 'tasks'
             ? await meetingService.getAllMeetingRecords()
             : targetTab === 'assignedLeads'
-              ? await loadCoordinatorAssignedLeads()
+              ? await loadCoordinatorAssignedLeads(assignedLeadsFullLoad.current)
               : null;
       if (generation !== dataGeneration.current) return;
       if (targetTab === 'today') setPending(data as MeetingResponse[]);
@@ -236,6 +247,16 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     activeTabRef.current = tab;
     void load(tab);
   }, [load, tab]);
+  const verifiedFiltersActive = Boolean(responseSearch.trim() || Object.values(responseColumnFilters).some(Boolean));
+  const assignedLeadFiltersActive = Boolean(assignedSearch.trim() || coordinatorFilter || assignedSalesPersonFilter || assignedDateRange.from || assignedDateRange.to);
+  useEffect(() => {
+    verifiedFullLoad.current = verifiedFiltersActive;
+    if (tab === 'responses') void load('responses');
+  }, [load, responseColumnFilters, responseSearch, tab, verifiedFiltersActive]);
+  useEffect(() => {
+    assignedLeadsFullLoad.current = assignedLeadFiltersActive;
+    if (tab === 'assignedLeads') void load('assignedLeads');
+  }, [assignedLeadFiltersActive, assignedDateRange.from, assignedDateRange.to, assignedSalesPersonFilter, assignedSearch, coordinatorFilter, load, tab]);
   useEffect(() => {
     const timer = setInterval(() => {
       if (loadInFlight.current || submittingRef.current) return;

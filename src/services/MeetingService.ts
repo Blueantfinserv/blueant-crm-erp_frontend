@@ -92,8 +92,16 @@ export class MeetingService {
     return response.data?.meetingCode?.trim() || null;
   }
 
-  async getVerificationMeetings(status: 'PENDING' | 'VERIFIED') {
-    return (await meetingApi.getByVerificationStatus(status)).data ?? [];
+  async getVerificationMeetings(status: 'PENDING' | 'VERIFIED', allResults = false) {
+    const pageSize = 500;
+    const firstPage = await meetingApi.search({ verificationStatus: status }, 0, pageSize);
+    const firstData = firstPage.data;
+    const firstResults = (firstData?.content ?? []) as MeetingResponse[];
+    if (!allResults || !firstData?.totalPages || firstData.totalPages <= 1) return firstResults;
+    const remaining = await Promise.all(Array.from({ length: firstData.totalPages - 1 }, (_, index) => (
+      meetingApi.search({ verificationStatus: status }, index + 1, pageSize)
+    )));
+    return [...firstResults, ...remaining.flatMap((page) => (page.data?.content ?? []) as MeetingResponse[])];
   }
 
   async getAllMeetingRecords() {
