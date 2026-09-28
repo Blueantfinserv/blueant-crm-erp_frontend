@@ -93,15 +93,16 @@ export class MeetingService {
   }
 
   async getVerificationMeetings(status: 'PENDING' | 'VERIFIED', allResults = false) {
-    const pageSize = 500;
-    const firstPage = await meetingApi.search({ verificationStatus: status }, 0, pageSize);
-    const firstData = firstPage.data;
-    const firstResults = (firstData?.content ?? []) as MeetingResponse[];
-    if (!allResults || !firstData?.totalPages || firstData.totalPages <= 1) return firstResults;
-    const remaining = await Promise.all(Array.from({ length: firstData.totalPages - 1 }, (_, index) => (
-      meetingApi.search({ verificationStatus: status }, index + 1, pageSize)
+    // The paginated search endpoint only returns a summary and omits values the
+    // coordinator table must show (phone, employee, lead status and verifier).
+    // Use the detailed queue response, then retain only the newest 500 initially.
+    const meetings = (await meetingApi.getByVerificationStatus(status)).data ?? [];
+    const newestFirst = [...meetings].sort((left, right) => String(
+      right.meetingVerificationDate ?? right.updatedAt ?? right.meetingDate ?? '',
+    ).localeCompare(String(
+      left.meetingVerificationDate ?? left.updatedAt ?? left.meetingDate ?? '',
     )));
-    return [...firstResults, ...remaining.flatMap((page) => (page.data?.content ?? []) as MeetingResponse[])];
+    return allResults ? newestFirst : newestFirst.slice(0, 500);
   }
 
   async getAllMeetingRecords() {
