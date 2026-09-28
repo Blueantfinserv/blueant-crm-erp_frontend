@@ -10,10 +10,10 @@ const meetingWithValue = (value: string | undefined) => {
 export const previousLeadMeetings = (meeting: MeetingResponse, verified: readonly MeetingResponse[]) =>
   verified.filter((item) => {
     if (item.meetingCode && item.meetingCode === meeting.meetingCode) return false;
-    // There is nothing to copy into an intro / first meeting. For later meetings,
-    // only use an earlier meeting of this same lead.
+    // Copy only from an earlier meeting of this same lead. Intro is normally
+    // meeting number 1, so Meeting 1 can correctly inherit Intro's values.
     if (meeting.meetingNumber !== undefined) {
-      if (meeting.meetingNumber <= 1 || item.meetingNumber === undefined || item.meetingNumber >= meeting.meetingNumber) return false;
+      if (item.meetingNumber === undefined || item.meetingNumber >= meeting.meetingNumber) return false;
     }
     if (item.leadCode?.trim() && meeting.leadCode?.trim()) {
       return item.leadCode.trim() === meeting.leadCode.trim();
@@ -34,18 +34,18 @@ export const createMeetingVerificationForm = (
   verified: readonly MeetingResponse[],
 ): Record<keyof MeetingVerificationRequest, string> => {
   const previous = previousLeadMeetings(meeting, verified);
+  const earlier = previous[0];
   const form = {
     meetingDate: '',
     meetingTiming: '',
-    meetingWith: meetingWithValue(meeting.meetingWith) || meetingWithValue(meeting.aloneWith),
-    personName: meeting.personName?.trim() || '',
-    position: meeting.position?.trim() || '',
+    meetingWith: meetingWithValue(earlier?.meetingWith) || meetingWithValue(earlier?.aloneWith),
+    personName: earlier?.personName?.trim() || '',
+    position: earlier?.position?.trim() || '',
     ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '',
   };
   for (const field of LEAD_FIELDS) {
-    form[field] = [meeting, ...previous]
-      .map((item) => item[field]?.trim())
-      .find((value) => Boolean(value)) ?? '';
+    // Do not fill a blank field from older meetings or any other source.
+    form[field] = earlier?.[field]?.trim() || '';
   }
   return form;
 };
