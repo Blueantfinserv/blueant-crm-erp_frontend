@@ -9,7 +9,7 @@ import type { AssignLeadRequest, LeadResponse } from '../types/lead';
 import { meetingService } from '../services/MeetingService';
 import { meetingApi } from '../api/meeting';
 import type { MeetingResponse, MeetingVerificationRequest } from '../types/meeting';
-import { createMeetingVerificationForm } from './meetingVerificationForm';
+import { createMeetingVerificationForm, LEAD_FIELDS, previousLeadMeetings } from './meetingVerificationForm';
 
 type Tab = 'today' | 'responses' | 'tasks' | 'assign' | 'assignedLeads';
 type VerificationField = NonNullable<keyof MeetingVerificationRequest>;
@@ -163,6 +163,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
+  const verificationDetailRequest = useRef(0);
   const [taskSearch, setTaskSearch] = useState('');
   const [todayColumnFilters, setTodayColumnFilters] = useState<MeetingColumnFilter>({});
   const [responseColumnFilters, setResponseColumnFilters] = useState<MeetingColumnFilter>({});
@@ -383,6 +384,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   };
 
   const openVerify = async (meeting: MeetingResponse) => {
+    const request = ++verificationDetailRequest.current;
     setForm(createMeetingVerificationForm(meeting, [...verified, ...meetings]));
     setSubmitError(null); setSelectedDetailError(null); setSelected(meeting);
     const meetingCode = meeting.meetingCode?.trim();
@@ -392,14 +394,39 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     }
     setSelectedDetailLoading(true);
     try {
-      const response = await meetingApi.getVerificationDetails(meetingCode);
+      let autofillUnavailable = false;
+      const [response, previousVerified] = await Promise.all([
+        meetingApi.getVerificationDetails(meetingCode),
+        tab !== 'responses' && !isNotConductedMeeting(meeting)
+          ? meetingService.getVerificationMeetings('VERIFIED').catch(() => {
+            autofillUnavailable = true;
+            return verified;
+          })
+          : Promise.resolve(verified),
+      ]);
       const details = { ...meeting, ...response };
+      const previous = previousLeadMeetings(details, previousVerified);
+      const history: MeetingResponse[] = [];
+      // Read newest first, stopping once all reusable fields are available.
+      for (const earlier of previous) {
+        if (LEAD_FIELDS.every((field) => createMeetingVerificationForm(details, history)[field])) break;
+        if (earlier.meetingCode && LEAD_FIELDS.some((field) => !earlier[field]?.trim())) {
+          const saved = await meetingApi.getVerificationDetails(earlier.meetingCode).catch(() => {
+            autofillUnavailable = true;
+            return null;
+          });
+          history.push({ ...earlier, ...saved });
+        } else history.push(earlier);
+      }
+      if (request !== verificationDetailRequest.current) return;
       setSelected(details);
-      setForm(createMeetingVerificationForm(details, [...verified, ...meetings]));
+      setForm(createMeetingVerificationForm(details, history));
+      if (autofillUnavailable) setSubmitError('Some earlier details could not be loaded. Please check the fields before verifying.');
     } catch (error) {
+      if (request !== verificationDetailRequest.current) return;
       setSelectedDetailError(error instanceof Error ? error.message : 'Verification details could not be loaded.');
     } finally {
-      setSelectedDetailLoading(false);
+      if (request === verificationDetailRequest.current) setSelectedDetailLoading(false);
     }
   };
   const verify = async () => {
@@ -512,8 +539,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     {!loading && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} onOpen={openLeadHistory} /><PaginationControls page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /></> : null}
     </ScrollView> : null}
     </View>
-    <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View style={styles.modal}>
-      <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
+    <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => { verificationDetailRequest.current += 1; setSelected(null); }}><View style={styles.backdrop}><View style={styles.modal}>
+      <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => { verificationDetailRequest.current += 1; setSelected(null); }} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
       <ScrollView contentContainerStyle={styles.modalBody}>{selectedDetailLoading ? <State loading message="Loading verification details..." /> : selected ? <><Details meeting={selected} showMeetingDate={tab === 'responses' || isNotConductedMeeting(selected)} />{selectedDetailError ? <Text style={styles.error}>{selectedDetailError}</Text> : null}{tab === 'responses' ? <VerificationDetails meeting={selected} /> : <View style={styles.formSection}>{isNotConductedMeeting(selected) ? <><Text style={styles.sectionTitle}>Visit Not Conducted</Text><Text style={styles.help}>Review the visit, follow-up and captured location details, then confirm the meeting time.</Text><View style={styles.formGrid}><VerificationFormField field={MEETING_TIMING_FIELD} form={form} setForm={setForm} /></View></> : <><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View></>}{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting || Boolean(selectedDetailError)} onPress={() => void verify()} style={[styles.submit, (submitting || Boolean(selectedDetailError)) && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'}</Text></Pressable></View>}</> : null}</ScrollView>
     </View></View></Modal>
     <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={styles.backdrop}><View style={styles.modal}>

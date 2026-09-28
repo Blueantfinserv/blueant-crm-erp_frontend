@@ -1,17 +1,14 @@
 import type { MeetingResponse, MeetingVerificationRequest } from '../types/meeting';
 
-const LEAD_FIELDS = ['ageGroup', 'existingSip', 'profession', 'professionDetail', 'bestTimeForMeeting'] as const;
+export const LEAD_FIELDS = ['ageGroup', 'existingSip', 'profession', 'professionDetail', 'bestTimeForMeeting'] as const;
 const meetingWithValue = (value: string | undefined) => {
   const normalized = value?.trim().toUpperCase().replace(/\s+/g, '_');
   // Verification uses SOMEONE_ELSE; the sales workflow's aloneWith uses SOMEONE.
   return ['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(normalized ?? '') ? 'SOMEONE_ELSE' : normalized === 'SELF' ? 'SELF' : '';
 };
 
-export const createMeetingVerificationForm = (
-  meeting: MeetingResponse,
-  verified: readonly MeetingResponse[],
-): Record<keyof MeetingVerificationRequest, string> => {
-  const previous = verified.filter((item) => {
+export const previousLeadMeetings = (meeting: MeetingResponse, verified: readonly MeetingResponse[]) =>
+  verified.filter((item) => {
     if (item.meetingCode && item.meetingCode === meeting.meetingCode) return false;
     if (item.leadCode?.trim() && meeting.leadCode?.trim()) {
       return item.leadCode.trim() === meeting.leadCode.trim();
@@ -24,6 +21,11 @@ export const createMeetingVerificationForm = (
     return timestamp(b) - timestamp(a);
   });
 
+export const createMeetingVerificationForm = (
+  meeting: MeetingResponse,
+  verified: readonly MeetingResponse[],
+): Record<keyof MeetingVerificationRequest, string> => {
+  const previous = previousLeadMeetings(meeting, verified);
   const form = {
     meetingDate: '',
     meetingTiming: '',
