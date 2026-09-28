@@ -10,11 +10,19 @@ const meetingWithValue = (value: string | undefined) => {
 export const previousLeadMeetings = (meeting: MeetingResponse, verified: readonly MeetingResponse[]) =>
   verified.filter((item) => {
     if (item.meetingCode && item.meetingCode === meeting.meetingCode) return false;
+    // There is nothing to copy into an intro / first meeting. For later meetings,
+    // only use an earlier meeting of this same lead.
+    if (meeting.meetingNumber !== undefined) {
+      if (meeting.meetingNumber <= 1 || item.meetingNumber === undefined || item.meetingNumber >= meeting.meetingNumber) return false;
+    }
     if (item.leadCode?.trim() && meeting.leadCode?.trim()) {
       return item.leadCode.trim() === meeting.leadCode.trim();
     }
     return item.leadId != null && meeting.leadId != null && item.leadId === meeting.leadId;
   }).sort((a, b) => {
+    if (a.meetingNumber !== undefined && b.meetingNumber !== undefined && a.meetingNumber !== b.meetingNumber) {
+      return b.meetingNumber - a.meetingNumber;
+    }
     const timestamp = (item: MeetingResponse) => Date.parse(
       item.meetingVerificationDate || item.updatedAt || item.lastModifiedDate || item.meetingDate || '',
     ) || 0;

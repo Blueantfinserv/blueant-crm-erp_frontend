@@ -392,42 +392,26 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       setSelectedDetailError('Meeting code is unavailable.');
       return;
     }
-    setSelectedDetailLoading(true);
     try {
-      let autofillUnavailable = false;
       const [response, previousVerified] = await Promise.all([
         meetingApi.getVerificationDetails(meetingCode),
         tab !== 'responses' && !isNotConductedMeeting(meeting)
-          ? meetingService.getVerificationMeetings('VERIFIED').catch(() => {
-            autofillUnavailable = true;
-            return verified;
-          })
+          ? meetingService.getVerificationMeetings('VERIFIED').catch(() => verified)
           : Promise.resolve(verified),
       ]);
       const details = { ...meeting, ...response };
-      const previous = previousLeadMeetings(details, previousVerified);
-      const history: MeetingResponse[] = [];
-      // Read newest first, stopping once all reusable fields are available.
-      for (const earlier of previous) {
-        if (LEAD_FIELDS.every((field) => createMeetingVerificationForm(details, history)[field])) break;
-        if (earlier.meetingCode && LEAD_FIELDS.some((field) => !earlier[field]?.trim())) {
-          const saved = await meetingApi.getVerificationDetails(earlier.meetingCode).catch(() => {
-            autofillUnavailable = true;
-            return null;
-          });
-          history.push({ ...earlier, ...saved });
-        } else history.push(earlier);
-      }
+      // Only the latest earlier verified meeting of this exact lead can supply autofill.
+      const earlier = previousLeadMeetings(details, previousVerified)[0];
+      const savedEarlier = earlier?.meetingCode
+        ? await meetingApi.getVerificationDetails(earlier.meetingCode).catch(() => earlier)
+        : earlier;
       if (request !== verificationDetailRequest.current) return;
       setSelected(details);
-      setForm(createMeetingVerificationForm(details, history));
-      if (autofillUnavailable) setSubmitError('Some earlier details could not be loaded. Please check the fields before verifying.');
+      setForm(createMeetingVerificationForm(details, savedEarlier ? [savedEarlier] : []));
     } catch (error) {
       if (request !== verificationDetailRequest.current) return;
       setSelectedDetailError(error instanceof Error ? error.message : 'Verification details could not be loaded.');
-    } finally {
-      if (request === verificationDetailRequest.current) setSelectedDetailLoading(false);
-    }
+    } finally { setSelectedDetailLoading(false); }
   };
   const verify = async () => {
     if (!selected?.meetingCode || submittingRef.current) return;
