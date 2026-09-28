@@ -3,7 +3,8 @@ import type { MeetingResponse, MeetingVerificationRequest } from '../types/meeti
 const LEAD_FIELDS = ['ageGroup', 'existingSip', 'profession', 'professionDetail', 'bestTimeForMeeting'] as const;
 const meetingWithValue = (value: string | undefined) => {
   const normalized = value?.trim().toUpperCase().replace(/\s+/g, '_');
-  return ['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(normalized ?? '') ? 'SOMEONE' : normalized === 'SELF' ? 'SELF' : '';
+  // Verification uses SOMEONE_ELSE; the sales workflow's aloneWith uses SOMEONE.
+  return ['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(normalized ?? '') ? 'SOMEONE_ELSE' : normalized === 'SELF' ? 'SELF' : '';
 };
 
 export const createMeetingVerificationForm = (

@@ -66,7 +66,7 @@ const HOURS = Array.from({ length: 14 }, (_, index) => String(index + 9).padStar
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
 const MEETING_WITH_OPTIONS = [
   { value: 'SELF', label: 'Self' },
-  { value: 'SOMEONE', label: 'With Someone' },
+  { value: 'SOMEONE_ELSE', label: 'With Someone' },
 ] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
 const AGE_GROUP_LABELS: Record<string, string> = {
@@ -121,6 +121,13 @@ const mapUrlFor = (meeting: MeetingResponse) => meeting.googleMapsUrl || (meetin
 const matchesSearch = (value: unknown, query: string) => !query.trim() || String(value ?? '').toLowerCase().includes(query.trim().toLowerCase());
 const leadCardTone = (lead: LeadResponse) => [...String(lead.assignedByEmployeeCode ?? lead.assignedByEmployeeName ?? '')].reduce((total, character) => total + character.charCodeAt(0), 0) % 4;
 const filterMeetingRecords = (items: readonly MeetingResponse[], filters: MeetingColumnFilter) => items.filter((meeting) => Object.entries(filters).every(([key, filter]) => { if (key === 'meetingDate' && filter?.startsWith('range:')) { const [from, to] = filter.slice(6).split(','); const date = String(meeting.meetingDate ?? ''); return (!from || date >= from) && (!to || date <= to); } const choices = filter?.split('|').filter(Boolean) ?? []; const current = String(key === 'meetingTitle' ? meeting.meetingTitle ?? meeting.meetingType ?? '' : meeting[key as keyof MeetingResponse] ?? '').toLowerCase(); return !choices.length || choices.some((choice) => { const selected = choice.toLowerCase(); return key === 'employeeName' ? current === selected || current.startsWith(`${selected} `) || selected.startsWith(`${current} `) : current.includes(selected); }); }));
+const csvCell = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+const exportNamePart = (value: string) => value.trim().replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '') || 'all-sales-persons';
+const exportDatePart = (value: string) => {
+  if (!value) return '';
+  const date = new Date(`${value}T12:00:00`);
+  return Number.isNaN(date.getTime()) ? value : `${date.getDate()}${date.toLocaleString('en-IN', { month: 'short' })}`;
+};
 const loadCoordinatorAssignedLeads = async () => {
   const firstPage = await leadSearchApi.search({ page: 0, size: 100, sortBy: 'assignedAt', sortDirection: 'DESC' });
   const leads = [...(firstPage.data?.content ?? [])];
@@ -172,6 +179,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [verifiedPage, setVerifiedPage] = useState(1);
   const [tasksPage, setTasksPage] = useState(1);
   const [assignedLeadsPage, setAssignedLeadsPage] = useState(1);
+  const [exportingAssignedLeads, setExportingAssignedLeads] = useState(false);
   const [historyLead, setHistoryLead] = useState<LeadResponse | null>(null);
   const [historyMeetings, setHistoryMeetings] = useState<MeetingResponse[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
@@ -308,6 +316,45 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     const row = result[key] ?? { name: m.employeeName ?? key, TODAY: 0, PENDING: 0, OVERDUE: 0, FUTURE: 0 };
     row[taskStatus(m)] += 1; result[key] = row; return result;
   }, {}), [taskRecords]);
+  const exportAssignedLeads = async () => {
+    if (Platform.OS !== 'web') { Alert.alert('Excel export', 'Excel export is currently available on the web version.'); return; }
+    setExportingAssignedLeads(true);
+    try {
+      const rows = (await Promise.all(visibleAssignedLeads.map(async (lead) => {
+        const leadIdentifier = lead.uniqueLeadId ?? (lead.leadId !== undefined ? String(lead.leadId) : '');
+        const localMeetings = meetings.filter((meeting) => (lead.leadId !== undefined && meeting.leadId === lead.leadId) || (Boolean(lead.leadCode) && meeting.leadCode === lead.leadCode));
+        const [detailsResult, historyResult] = await Promise.all([
+          lead.uniqueLeadId ? leadApi.getLeadDetails(lead.uniqueLeadId).catch(() => null) : Promise.resolve(null),
+          leadIdentifier ? meetingApi.getHistory(leadIdentifier).catch(() => null) : Promise.resolve(null),
+        ]);
+        const detailedLead = detailsResult?.data ? { ...lead, ...detailsResult.data } : lead;
+        const byCode = new Map<string, MeetingResponse>();
+        [...(historyResult?.data ?? []), ...localMeetings].forEach((meeting) => {
+          const key = meeting.meetingCode ?? String(meeting.id ?? '');
+          if (key) byCode.set(key, { ...byCode.get(key), ...meeting });
+        });
+        const detailedMeetings = await Promise.all([...byCode.values()].map(async (meeting) => meeting.meetingCode ? meetingApi.getMeeting(meeting.meetingCode).then((result) => result.data ?? meeting).catch(() => meeting) : meeting));
+        const orderedMeetings = detailedMeetings.sort((a, b) => String(a.meetingDate ?? a.createdAt ?? '').localeCompare(String(b.meetingDate ?? b.createdAt ?? '')));
+        const latestVerification = [...orderedMeetings].reverse().find((meeting) => meeting.verificationStatus === 'VERIFIED' || Boolean(meeting.verifiedBy) || Boolean(meeting.ageGroup));
+        const meetingRows = orderedMeetings.length ? orderedMeetings : [undefined];
+        return meetingRows.map((meeting) => [
+          detailedLead.clientName, detailedLead.mobileNumber, detailedLead.speciality, detailedLead.location, detailedLead.clinicAddress,
+          detailedLead.assignedEmployeeName, detailedLead.assignedByEmployeeName, detailedLead.assignedAt, detailedLead.leadStatus?.replace(/_/g, ' '),
+          latestVerification?.ageGroup, latestVerification?.existingSip, latestVerification?.profession, latestVerification?.professionDetail, latestVerification?.bestTimeForMeeting,
+          meeting?.meetingTitle ?? meeting?.meetingType, meeting?.meetingStatus, meeting?.meetingDate, meeting?.meetingMode, meeting?.leadStatus?.replace(/_/g, ' '), meeting?.aloneWith, meeting?.personName, meeting?.position, meeting?.remarks ?? meeting?.meetingRemarks ?? meeting?.discussion, meeting?.nextMeetingDate,
+        ]);
+      }))).flat();
+      const headers = ['Client Name', 'Mobile Number', 'Speciality', 'Location', 'Clinic Address', 'Sales Person', 'Sales Coordinator', 'Assigned Date', 'Current Lead Status', 'SC Age Group', 'SC Prior Investment', 'SC Profession', 'SC Firm / Clinic', 'SC Best Time', 'Meeting Type', 'Meeting Status', 'Meeting Date', 'Meeting Mode', 'Meeting Lead Status', 'Joined With', 'Person Name', 'Position', 'Meeting Remarks', 'Next Plan Date'];
+      const blob = new Blob([`\uFEFF${[headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')}`], { type: 'text/csv;charset=utf-8' });
+      const salesPersonName = exportNamePart(assignedSalesPersonFilter);
+      const from = exportDatePart(assignedDateRange.from);
+      const to = exportDatePart(assignedDateRange.to);
+      const dateRangeName = from && to ? `${from}-to-${to}` : from ? `from-${from}` : to ? `to-${to}` : 'all-dates';
+      const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = `assigned-leads-${salesPersonName}-${dateRangeName}.csv`; link.click(); URL.revokeObjectURL(url);
+    } catch (e) { Alert.alert('Excel export', e instanceof Error ? e.message : 'Assigned lead export failed.'); }
+    finally { setExportingAssignedLeads(false); }
+  };
+
   const assignLead = async () => {
     const values = Object.values(assignForm).map((value) => value.trim());
     if (values.some((value) => !value)) { setAssignMessage({ type: 'error', text: 'Please complete all fields, including the employee code.' }); return; }
@@ -438,7 +485,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
           </View>
           {tab === 'responses' ? <TextInput value={responseSearch} onChangeText={setResponseSearch} placeholder="Search lead name or number" placeholderTextColor="#CBD9FF" style={[styles.headerSearch, compact && styles.headerSearchCompact]} /> : null}
           {tab === 'tasks' && !loading && !error ? <TaskToolbar header search={taskSearch} onSearch={setTaskSearch} status={statusFilter} onStatus={setStatusFilter} /> : null}
-          {tab === 'assignedLeads' ? <View style={[styles.assignedHeaderActions, compact && styles.assignedHeaderActionsCompact]}><HeaderLeadFilters leads={assignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} setDateRange={setAssignedDateRange} search={assignedSearch} setSearch={setAssignedSearch} />{assignedSearch || coordinatorFilter || assignedSalesPersonFilter || assignedDateRange.from || assignedDateRange.to ? <Pressable accessibilityLabel="Clear assigned lead filters" onPress={() => { setAssignedSearch(''); setCoordinatorFilter(''); setAssignedSalesPersonFilter(''); setAssignedDateRange({ from: '', to: '' }); }} style={styles.assignedClearButton}><Text style={styles.assignedClearText}>Clear</Text></Pressable> : null}</View> : null}
+          {tab === 'assignedLeads' ? <View style={[styles.assignedHeaderActions, compact && styles.assignedHeaderActionsCompact]}><Pressable accessibilityRole="button" accessibilityLabel="Export assigned leads to Excel" disabled={loading || Boolean(error) || exportingAssignedLeads || !visibleAssignedLeads.length} onPress={() => void exportAssignedLeads()} style={[styles.exportButton, compact && styles.exportButtonCompact, (loading || Boolean(error) || exportingAssignedLeads || !visibleAssignedLeads.length) && { opacity: 0.5 }]}>{exportingAssignedLeads ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Icon source="microsoft-excel" size={16} color="#FFFFFF" />}<Text style={styles.exportButtonText}>{exportingAssignedLeads ? 'Exporting...' : 'Excel'}</Text></Pressable><HeaderLeadFilters leads={assignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} setDateRange={setAssignedDateRange} search={assignedSearch} setSearch={setAssignedSearch} />{assignedSearch || coordinatorFilter || assignedSalesPersonFilter || assignedDateRange.from || assignedDateRange.to ? <Pressable accessibilityLabel="Clear assigned lead filters" onPress={() => { setAssignedSearch(''); setCoordinatorFilter(''); setAssignedSalesPersonFilter(''); setAssignedDateRange({ from: '', to: '' }); }} style={styles.assignedClearButton}><Text style={styles.assignedClearText}>Clear</Text></Pressable> : null}</View> : null}
         </View>
       </View>
     {!compact && !loading && !error && tab === 'today' ? <MeetingTableHeader records={pending} filters={todayColumnFilters} onFiltersChange={setTodayColumnFilters} /> : null}
