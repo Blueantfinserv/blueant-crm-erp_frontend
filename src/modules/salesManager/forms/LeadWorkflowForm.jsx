@@ -138,7 +138,9 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       if (!form.liveLocation) nextErrors.liveLocation = "Live location is required.";
       // Temporarily disabled while the backend visiting-card flow is being fixed.
       // if (!form.cardImage) nextErrors.cardImage = "Card image is required.";
-      if (conducted || form.meetingStatus === "Visited but Not Met") {
+      const followUpRequired = form.meetingStatus === "Visited but Not Met"
+        || (conducted && form.leadStatus === "Work In Progress");
+      if (followUpRequired) {
         const { today, latestDate } = getFollowupDateBounds();
         const nextPlanDate = new Date(`${form.nextPlanDate}T00:00:00`);
         if (!form.nextPlanDate) {
@@ -239,7 +241,9 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       aloneWith: form.joinedWith === "Alone" ? "SELF" : "SOMEONE",
       } : {}),
       remarks: form.remarks.trim(),
-      nextPlanDate: form.nextPlanDate,
+      ...(form.meetingStatus === "Visited but Not Met" || form.leadStatus === "Work In Progress"
+        ? { nextPlanDate: form.nextPlanDate }
+        : {}),
       latitude: form.liveLocation?.latitude,
       longitude: form.liveLocation?.longitude,
       address: form.liveLocation?.address,
@@ -274,6 +278,8 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   };
 
   const meetingConducted = form.meetingStatus === "Meeting Conducted";
+  const showNextFollowUp = form.meetingStatus === "Visited but Not Met"
+    || (meetingConducted && form.leadStatus === "Work In Progress");
 
   return (
     <View style={styles.screen}>
@@ -458,9 +464,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
               </Field>
               */}
 
-              <Field label="Next Follow Up" required error={errors.nextPlanDate}>
-                <FollowUpOptions value={form.nextPlanDate} onSelect={(value) => update("nextPlanDate", value)} />
-              </Field>
+              {showNextFollowUp ? (
+                <Field label="Next Follow Up" required error={errors.nextPlanDate}>
+                  <FollowUpOptions value={form.nextPlanDate} onSelect={(value) => update("nextPlanDate", value)} />
+                </Field>
+              ) : null}
 
             </>
           )}
