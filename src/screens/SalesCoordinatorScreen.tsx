@@ -67,6 +67,7 @@ const HOURS = Array.from({ length: 14 }, (_, index) => String(index + 9).padStar
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
 const MEETING_WITH_OPTIONS = ['SELF', 'SOMEONE_ELSE'] as const;
+const EXCLUDED_TASK_LEAD_STATUSES = new Set(['ALREADY_CLIENT', 'CONVERTED', 'CONVERTED_CLIENT', 'CLIENT_REMOVED', 'CLIENT_NOT_INTERESTED', 'REMOVED', 'NOT_INTERESTED']);
 const AGE_GROUP_LABELS: Record<string, string> = {
   BELOW_25: 'Below 25', AGE_25_35: '25–35', AGE_36_45: '36–45',
   AGE_46_55: '46–55', AGE_56_65: '56–65', ABOVE_65: '65+',
@@ -176,7 +177,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [responseColumnFilters, setResponseColumnFilters] = useState<MeetingColumnFilter>({});
   const [taskColumnFilters, setTaskColumnFilters] = useState<MeetingColumnFilter>({});
   const [responseSearch, setResponseSearch] = useState(''); const [assignedSearch, setAssignedSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'TODAY' | 'PENDING' | 'OVERDUE'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'TODAY' | 'PENDING'>('ALL');
   const [assignForm, setAssignForm] = useState(emptyAssignForm);
   const [assigning, setAssigning] = useState(false);
   const [assignMessage, setAssignMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -281,39 +282,54 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     return () => { clearInterval(timer); dataGeneration.current += 1; };
   }, [load]);
 
-  const taskStatus = (m: MeetingResponse): 'TODAY' | 'PENDING' | 'OVERDUE' => {
-    const meetingDate = String(m.meetingDate ?? '').slice(0, 10);
-    if (meetingDate === localToday()) return 'TODAY';
-    const weekAgo = new Date(`${localToday()}T00:00:00`);
-    weekAgo.setDate(weekAgo.getDate() - 7);
-    return meetingDate && meetingDate < calendarDate(weekAgo) ? 'OVERDUE' : 'PENDING';
+  const taskStatus = (m: MeetingResponse): 'TODAY' | 'PENDING' | 'OTHER' => {
+    const taskDate = String(m.nextMeetingDate ?? m.meetingDate ?? '').slice(0, 10);
+    if (taskDate === localToday()) return 'TODAY';
+    if (m.meetingTitle === 'Lead') return !taskDate || taskDate < localToday() ? 'PENDING' : 'OTHER';
+    return taskDate && taskDate < localToday() ? 'PENDING' : 'OTHER';
   };
-  const taskMeetings = useMemo(() => meetings.filter((m) => String(m.meetingStatus ?? '').toUpperCase() !== 'COMPLETED'), [meetings]);
+  const taskMeetings = useMemo(() => meetings.filter((meeting) => {
+    if (String(meeting.meetingStatus ?? '').toUpperCase() === 'COMPLETED') return false;
+    const assignedLead = assignedLeads.find((lead) => (
+      (meeting.leadId !== undefined && lead.leadId === meeting.leadId)
+      || (Boolean(meeting.leadCode) && lead.leadCode === meeting.leadCode)
+    ));
+    return !EXCLUDED_TASK_LEAD_STATUSES.has(String(meeting.leadStatus ?? '').toUpperCase())
+      && !EXCLUDED_TASK_LEAD_STATUSES.has(String(assignedLead?.leadStatus ?? '').toUpperCase());
+  }), [assignedLeads, meetings]);
   const taskLeads = useMemo<MeetingResponse[]>(() => {
     const meetingLeadKeys = new Set(taskMeetings.flatMap((meeting) => [
       meeting.leadId !== undefined ? `id:${meeting.leadId}` : '',
       meeting.leadCode ? `code:${meeting.leadCode}` : '',
     ]).filter(Boolean));
-    const excludedStatuses = new Set(['ALREADY_CLIENT', 'CONVERTED_CLIENT', 'CLIENT_REMOVED', 'CLIENT_NOT_INTERESTED', 'REMOVED', 'NOT_INTERESTED']);
     return assignedLeads
       .filter((lead) => {
         const status = String(lead.leadStatus ?? '').toUpperCase();
         const keys = [lead.leadId !== undefined ? `id:${lead.leadId}` : '', lead.leadCode ? `code:${lead.leadCode}` : ''].filter(Boolean);
-        return !excludedStatuses.has(status) && keys.every((key) => !meetingLeadKeys.has(key));
+        return !EXCLUDED_TASK_LEAD_STATUSES.has(status) && keys.every((key) => !meetingLeadKeys.has(key));
       })
-      .map((lead) => ({
-        leadId: lead.leadId,
-        leadCode: lead.leadCode,
-        clientName: lead.clientName,
-        mobileNumber: lead.mobileNumber,
-        employeeName: lead.assignedEmployeeName,
-        employeeCode: lead.assignedEmployeeCode,
-        meetingTitle: 'Lead',
-        meetingDate: String(lead.assignedAt ?? '').slice(0, 10),
-        meetingStatus: 'SCHEDULED',
-        leadStatus: lead.leadStatus as MeetingResponse['leadStatus'],
-      }));
-  }, [assignedLeads, taskMeetings]);
+      .map((lead) => {
+        const latestMeetingWithNextPlan = [...meetings, ...pending, ...verified]
+          .filter((meeting) => Boolean(meeting.nextMeetingDate) && (
+            (lead.leadId !== undefined && meeting.leadId === lead.leadId)
+            || (Boolean(lead.leadCode) && meeting.leadCode === lead.leadCode)
+            || Boolean(lead.mobileNumber && meeting.mobileNumber && digitsOnly(lead.mobileNumber) === digitsOnly(meeting.mobileNumber))
+          ))
+          .sort((left, right) => String(right.workflowUpdatedAt ?? right.updatedAt ?? right.lastModifiedDate ?? right.meetingDate ?? '').localeCompare(String(left.workflowUpdatedAt ?? left.updatedAt ?? left.lastModifiedDate ?? left.meetingDate ?? '')))[0];
+        return {
+          leadId: lead.leadId,
+          leadCode: lead.leadCode,
+          clientName: lead.clientName,
+          mobileNumber: lead.mobileNumber,
+          employeeName: lead.assignedEmployeeName,
+          employeeCode: lead.assignedEmployeeCode,
+          meetingTitle: 'Lead',
+          meetingDate: String(latestMeetingWithNextPlan?.nextMeetingDate ?? lead.assignedAt ?? '').slice(0, 10),
+          meetingStatus: 'SCHEDULED',
+          leadStatus: lead.leadStatus as MeetingResponse['leadStatus'],
+        };
+      });
+  }, [assignedLeads, meetings, pending, taskMeetings, verified]);
   const taskRecords = useMemo(() => [...taskLeads, ...taskMeetings], [taskLeads, taskMeetings]);
   const filteredTasks = useMemo(() => {
     const query = taskSearch.trim().toLowerCase();
@@ -331,11 +347,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     && (!assignedSalesPersonFilter || lead.assignedEmployeeName === assignedSalesPersonFilter)
     && matchesAssignedDate(lead.assignedAt, assignedDateRange)
   )), [assignedDateRange, assignedLeads, assignedSalesPersonFilter, assignedSearch, coordinatorFilter]);
-  const summaries = useMemo(() => taskRecords.reduce<Record<string, { name: string; TODAY: number; PENDING: number; OVERDUE: number }>>((result, m) => {
-    const key = m.employeeCode ?? m.employeeName; if (!key) return result;
-    const row = result[key] ?? { name: m.employeeName ?? key, TODAY: 0, PENDING: 0, OVERDUE: 0 };
-    row[taskStatus(m)] += 1; result[key] = row; return result;
-  }, {}), [taskRecords]);
+  const taskSalesPeople = useMemo(() => new Set(taskRecords.map((record) => record.employeeCode ?? record.employeeName).filter(Boolean)).size, [taskRecords]);
   const assignLead = async () => {
     const values = Object.values(assignForm).map((value) => value.trim());
     if (values.some((value) => !value)) { setAssignMessage({ type: 'error', text: 'Please complete all fields, including the employee code.' }); return; }
@@ -431,7 +443,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     } catch (e) { setHistoryError(e instanceof Error ? e.message : 'Lead history could not be loaded.'); setHistoryMeetings(localMeetings); }
     finally { setHistoryLoading(false); }
   };
-  const metricsBlock = <View style={styles.metrics}><Metric icon="clock-outline" value={pending.length} label="To review" tone="blue" /><Metric icon="account-outline" value={Object.keys(summaries).length} label="Sales people" tone="orange" /></View>;
+  const metricsBlock = <View style={styles.metrics}><Metric icon="clock-outline" value={pending.length} label="To review" tone="blue" /><Metric icon="account-outline" value={taskSalesPeople} label="Sales people" tone="orange" /></View>;
   const syncBlock = <View style={[styles.syncControls, compact && styles.syncControlsCompact]}><Pressable disabled={refreshing || submitting} onPress={() => void load()} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable><View style={styles.autoRefreshBadge}><View style={styles.autoRefreshDot} /><Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : 'Auto-refresh'}</Text><View style={styles.countdownBadge}>{refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{refreshSeconds}s</Text>}</View></View></View>;
   return <View style={[styles.page, compact && styles.pageCompact]}>
     <View style={styles.topSection}>
@@ -480,8 +492,8 @@ function Metric({ icon, value, label, tone }: { icon: string; value: number; lab
   return <View style={[styles.metric, accentStyle]}><View style={[styles.metricIcon, toneStyle]}><Icon source={icon} size={15} color={color} /></View><View><Text style={styles.metricValue}>{value}</Text><Text style={styles.metricLabel}>{label}</Text></View></View>;
 }
 
-function TaskToolbar({ search, onSearch, status, onStatus, header = false }: { search: string; onSearch: (value: string) => void; status: 'ALL' | 'TODAY' | 'PENDING' | 'OVERDUE'; onStatus: (value: 'ALL' | 'TODAY' | 'PENDING' | 'OVERDUE') => void; header?: boolean }) {
-  return <View style={[styles.taskToolbar, header && styles.taskToolbarHeader]}><TextInput value={search} onChangeText={onSearch} placeholder="Search lead name or number" placeholderTextColor="#94A3B8" style={styles.filterInput} /><View style={styles.chips}>{(['ALL', 'TODAY', 'PENDING', 'OVERDUE'] as const).map((value) => <Pressable key={value} onPress={() => onStatus(value)} style={[styles.chip, status === value && styles.chipActive]}><Text style={[styles.chipText, status === value && styles.chipTextActive]}>{value === 'ALL' ? 'ALL TASKS' : `${value} TASKS`}</Text></Pressable>)}</View></View>;
+function TaskToolbar({ search, onSearch, status, onStatus, header = false }: { search: string; onSearch: (value: string) => void; status: 'ALL' | 'TODAY' | 'PENDING'; onStatus: (value: 'ALL' | 'TODAY' | 'PENDING') => void; header?: boolean }) {
+  return <View style={[styles.taskToolbar, header && styles.taskToolbarHeader]}><TextInput value={search} onChangeText={onSearch} placeholder="Search lead name or number" placeholderTextColor="#94A3B8" style={styles.filterInput} /><View style={styles.chips}>{(['ALL', 'TODAY', 'PENDING'] as const).map((value) => <Pressable key={value} onPress={() => onStatus(value)} style={[styles.chip, status === value && styles.chipActive]}><Text style={[styles.chipText, status === value && styles.chipTextActive]}>{value === 'ALL' ? 'ALL TASKS' : `${value} TASKS`}</Text></Pressable>)}</View></View>;
 }
 
 const verificationStyles = StyleSheet.create({

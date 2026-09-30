@@ -84,7 +84,8 @@ const meetingTitleOrder = (title: string) => {
   return match ? Number(match[1]) : Number.POSITIVE_INFINITY;
 };
 
-const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
+const mapLeadToSalesTask = (lead: LeadResponse, index: number, meetingNextPlanDate?: string): SalesTask => {
+  const nextPlanDate = meetingNextPlanDate ?? lead.nextPlanDate;
   return {
     id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId ?? `lead-${index}`),
     taskKind: 'LEAD',
@@ -94,7 +95,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     leadId: lead.leadId,
     leadStatus: lead.leadStatus,
     assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
-    scheduledAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
+    scheduledAt: nextPlanDate ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
     name: lead.clientName ?? 'Unnamed prospect',
     phone: lead.mobileNumber ?? '',
     locationText: lead.location ?? 'Location unavailable',
@@ -104,9 +105,9 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     taskLabel: 'PROSPECTS',
     remarks: lead.remarks ?? 'No remarks available.',
     lastUpdated: formatTimestamp(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt),
-    nextFollowUpDate: formatDate(lead.nextPlanDate),
-    nextPlanDate: lead.nextPlanDate,
-    schedule: getTaskSchedule(lead.nextPlanDate),
+    nextFollowUpDate: formatDate(nextPlanDate),
+    nextPlanDate,
+    schedule: getTaskSchedule(nextPlanDate),
     email: lead.email,
     leadSource: lead.leadSource,
   };
@@ -344,10 +345,19 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           const keys = [lead.leadCode ? `code:${lead.leadCode}` : '', lead.leadId !== undefined ? `id:${lead.leadId}` : ''].filter(Boolean);
           return keys.every((key) => !meetingLeadKeys.has(key));
         })
-        .map((lead, index) => ({
-          ...mapLeadToSalesTask(lead, index),
-          verificationPending: hasPendingVerification(lead.leadId, lead.leadCode, lead.mobileNumber),
-        }));
+        .map((lead, index) => {
+          const latestMeetingWithNextPlan = meetingHistory
+            .filter((meeting) => Boolean(meeting.nextMeetingDate) && (
+              (lead.leadId !== undefined && meeting.leadId === lead.leadId)
+              || (Boolean(lead.leadCode) && meeting.leadCode === lead.leadCode)
+              || Boolean(lead.mobileNumber && meeting.mobileNumber && lead.mobileNumber.replace(/\D/g, '') === meeting.mobileNumber.replace(/\D/g, ''))
+            ))
+            .sort((left, right) => String(right.workflowUpdatedAt ?? right.updatedAt ?? right.lastModifiedDate ?? right.meetingDate ?? '').localeCompare(String(left.workflowUpdatedAt ?? left.updatedAt ?? left.lastModifiedDate ?? left.meetingDate ?? '')))[0];
+          return {
+            ...mapLeadToSalesTask(lead, index, latestMeetingWithNextPlan?.nextMeetingDate),
+            verificationPending: hasPendingVerification(lead.leadId, lead.leadCode, lead.mobileNumber),
+          };
+        });
       return [...leadTasks, ...meetingTasks];
     },
     [leadState.leads, meetingState.meetings],
@@ -356,7 +366,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
     () => leadState.leads
       .filter((lead) => !isHiddenCompletedLead(lead.leadStatus))
       .filter((lead) => !isRemovedLead(lead.leadStatus))
-      .map(mapLeadToSalesTask),
+      .map((lead, index) => mapLeadToSalesTask(lead, index)),
     [leadState.leads],
   );
   const meetingFilterOptions = useMemo(() => [
@@ -433,14 +443,14 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
     });
     const countableTasks = searchedTasks.filter((task) => {
       const matchesTaskType = task.taskKind === 'LEAD'
-        ? matchesAssignmentTaskFilter(task.assignedAt, taskType)
+        ? matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, taskType)
         : taskType === 'All Tasks' || task.schedule === taskType;
       return matchesTaskType;
     });
     const activeLeads = countableTasks.filter((task) => (
       task.taskKind === 'LEAD' && !isRemovedLead(task.leadStatus)
     ));
-    const todayLeads = activeLeads.filter((task) => assignedOnToday(task.assignedAt)).length;
+    const todayLeads = activeLeads.filter((task) => assignedOnToday(task.nextPlanDate ?? task.assignedAt)).length;
     const removedLeads = countableTasks.filter((task) => (
       task.taskKind === 'LEAD' && isRemovedLead(task.leadStatus)
     )).length;
@@ -483,20 +493,20 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       if (taskToDoMode) {
         const matchesTaskToDo = task.taskKind === 'LEAD'
           ? !isRemovedLead(task.leadStatus) && (
-            matchesAssignmentTaskFilter(task.assignedAt, 'Today') || matchesAssignmentTaskFilter(task.assignedAt, 'Pending')
+            matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, 'Today') || matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, 'Pending')
           )
           : task.schedule === 'Today' || task.schedule === 'Pending';
         return matchesSearch && matchesTaskToDo;
       }
       if (todaysTaskMode) {
         const matchesTodaysTask = task.taskKind === 'LEAD'
-          ? matchesAssignmentTaskFilter(task.assignedAt, 'Today')
+          ? matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, 'Today')
           : task.schedule === 'Today';
         return matchesSearch && matchesTodaysTask;
       }
       if (pendingTaskMode) {
         const matchesPendingTask = task.taskKind === 'LEAD'
-          ? matchesAssignmentTaskFilter(task.assignedAt, 'Pending')
+          ? matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, 'Pending')
           : task.schedule === 'Pending';
         return matchesSearch && matchesPendingTask;
       }
@@ -505,7 +515,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         return matchesSearch && calendarDateFromValue(task.scheduledAt) === calendarDateOffset(offset);
       }
       const matchesTaskType = task.taskKind === 'LEAD'
-        ? matchesAssignmentTaskFilter(task.assignedAt, taskType)
+        ? matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, taskType)
         : taskType === 'All Tasks' || task.schedule === taskType;
       const matchesStage = (taskStage === 'Leads' && task.taskKind === 'LEAD')
         || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
