@@ -57,12 +57,12 @@ export const leadSearchApi = {
     const searchResponse = payload as ApiResponsePageResponseLeadResponse | null;
     if (!response.ok || searchResponse?.success !== true) {
       throw new LeadSearchApiError(
-        getBackendMessage(payload) ?? `Lead search failed (${response.status}).`,
+        getBackendMessage(payload) ?? `Prospect search failed (${response.status}).`,
         String(response.status),
       );
     }
     if (!Array.isArray(searchResponse.data?.content)) {
-      throw new LeadSearchApiError('Lead search response data is unavailable.', 'INVALID_RESPONSE');
+      throw new LeadSearchApiError('Prospect search response data is unavailable.', 'INVALID_RESPONSE');
     }
     return searchResponse;
   },

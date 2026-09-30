@@ -13,7 +13,7 @@ const initialState: LeadSearchState = {
 const toMessage = (error: unknown) => {
   if (error instanceof LeadSearchApiError) return error.message;
   if (error instanceof Error) return error.message;
-  return 'Leads could not be loaded.';
+  return 'Prospects could not be loaded.';
 };
 
 export class LeadSearchService {

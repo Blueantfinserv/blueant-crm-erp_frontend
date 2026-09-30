@@ -44,8 +44,8 @@ const toLeadListItem = (lead: LeadResponse, eventDate = lead.assignmentDate ?? l
   const assignmentDate = toCalendarDate(eventDate);
   return {
     id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId),
-    primaryText: lead.clientName ?? 'Unnamed lead',
-    secondaryText: [lead.leadStatus, lead.leadStage].filter(Boolean).join(' · ') || 'Lead',
+    primaryText: lead.clientName ?? 'Unnamed prospect',
+    secondaryText: [lead.leadStatus, lead.leadStage].filter(Boolean).join(' · ') || 'Prospect',
     dateLabel: assignmentDate
       ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(assignmentDate)
       : 'Date unavailable',
@@ -214,13 +214,13 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
               </View> : list.id === 'lead-collected-list' ? (
                 <Pressable
                   accessibilityRole="button"
-                  accessibilityLabel={showRemovedLeads ? 'Show active assigned leads' : 'Show removed leads'}
+                  accessibilityLabel={showRemovedLeads ? 'Show active assigned prospects' : 'Show removed prospects'}
                   onPress={() => setShowRemovedLeads((current) => !current)}
                   style={[styles.removedLeadsButton, isCompactHeader && styles.compactPeriodSelector]}
                 >
                   <Icon source={showRemovedLeads ? 'account-check-outline' : 'account-remove-outline'} size={15} color={showRemovedLeads ? '#2563EB' : '#DC2626'} />
                   <Text style={[styles.removedLeadsButtonText, { color: showRemovedLeads ? '#2563EB' : '#DC2626' }]}>
-                    {showRemovedLeads ? 'Assigned Leads' : 'Removed Leads'}
+                    {showRemovedLeads ? 'Assigned Prospects' : 'Removed Prospects'}
                   </Text>
                 </Pressable>
               ) : null}

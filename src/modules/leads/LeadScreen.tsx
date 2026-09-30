@@ -16,20 +16,20 @@ export function LeadScreen({ onOpenLeadDetails }: { onOpenLeadDetails?: (lead: L
       <View style={styles.shell}>
         <View style={styles.header}>
           <View style={styles.headerTextBlock}>
-            <Text style={styles.title}>Leads</Text>
-            <Text style={styles.subtitle}>Manage and track all sales leads.</Text>
+            <Text style={styles.title}>Prospects</Text>
+            <Text style={styles.subtitle}>Manage and track all sales prospects.</Text>
           </View>
           <View style={styles.headerActions}>
-            <AuthButton title="Import Leads" onPress={() => {}} variant="secondary" />
-            <AuthButton title="Add Lead" onPress={() => {}} />
+            <AuthButton title="Import Prospects" onPress={() => {}} variant="secondary" />
+            <AuthButton title="Add Prospect" onPress={() => {}} />
           </View>
         </View>
 
         <LeadFilterBar />
 
         <View style={styles.statsGrid}>
-          <LeadStatsCard title="Total Leads" value="384" />
-          <LeadStatsCard title="New Leads" value="96" tone="warning" />
+          <LeadStatsCard title="Total Prospects" value="384" />
+          <LeadStatsCard title="New Prospects" value="96" tone="warning" />
           <LeadStatsCard title="Follow-up Today" value="28" tone="success" />
           <LeadStatsCard title="Converted" value="63" />
           <LeadStatsCard title="Lost" value="21" />
@@ -37,13 +37,13 @@ export function LeadScreen({ onOpenLeadDetails }: { onOpenLeadDetails?: (lead: L
 
         <View style={styles.tableShell}>
           <View style={styles.tableHeader}>
-            {['Lead ID', 'Customer Name', 'Company', 'Phone', 'Source', 'Assigned To', 'Lead Status', 'Priority', 'Next Follow-up', 'Created Date', 'Actions'].map((column) => (
+            {['Prospect ID', 'Customer Name', 'Company', 'Phone', 'Source', 'Assigned To', 'Prospect Status', 'Priority', 'Next Follow-up', 'Created Date', 'Actions'].map((column) => (
               <Text key={column} style={styles.tableHeaderText}>
                 {column}
               </Text>
             ))}
           </View>
-          {isLoading ? <LoadingSkeleton /> : rows.length ? <LeadTable rows={rows} onLeadPress={onOpenLeadDetails} /> : <EmptyState title="No leads found." description="Try adjusting filters or create a new lead to get started." />}
+          {isLoading ? <LoadingSkeleton /> : rows.length ? <LeadTable rows={rows} onLeadPress={onOpenLeadDetails} /> : <EmptyState title="No prospects found." description="Try adjusting filters or create a new prospect to get started." />}
         </View>
 
         <View style={styles.paginationFooter}>
@@ -64,7 +64,7 @@ export function LeadScreen({ onOpenLeadDetails }: { onOpenLeadDetails?: (lead: L
               <Text style={styles.rowsPerPageText}>10</Text>
             </View>
           </View>
-          <Text style={styles.paginationText}>{`Showing ${showingStart}–${showingEnd} of ${total} Leads`}</Text>
+          <Text style={styles.paginationText}>{`Showing ${showingStart}–${showingEnd} of ${total} Prospects`}</Text>
         </View>
       </View>
     </ScrollView>

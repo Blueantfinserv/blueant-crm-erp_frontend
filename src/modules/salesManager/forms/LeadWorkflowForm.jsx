@@ -21,6 +21,7 @@ import * as Location from "expo-location";
 const LEAD_SOURCES = ["Referral", "Website", "Walk-in", "Other"];
 const MEETING_MODES = ["Physical", "Virtual"];
 const JOINED_WITH_OPTIONS = ["Alone", "With Someone"];
+const MEETING_STATUS_OPTIONS = ["Meeting Conducted", "Visited but Not Met"];
 const LEAD_STATUSES = [
   "Work In Progress",
   "Converted as Client",
@@ -28,8 +29,7 @@ const LEAD_STATUSES = [
   "Remove This Client",
   "Already Blueant Client",
 ];
-const getLocalDate = () => {
-  const now = new Date();
+const getLocalDate = (now = new Date()) => {
   const offset = now.getTimezoneOffset() * 60_000;
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
@@ -77,11 +77,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
   const [submissionSuccess, setSubmissionSuccess] = useState("");
-  const [datePickerOpen, setDatePickerOpen] = useState(false);
-  const [viewedMonth, setViewedMonth] = useState(() => {
-    const date = new Date();
-    return new Date(date.getFullYear(), date.getMonth(), 1);
-  });
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState({
     name: lead?.name ?? "",
@@ -89,11 +84,12 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     leadSource: "",
     remarks: "",
     locationText: lead?.locationText ?? "",
+    meetingStatus: "Meeting Conducted",
     meetingMode: "",
-    meetingDate: getLocalDate(),
+    meetingDate: lead?.scheduledAt?.slice(0, 10) || getLocalDate(),
     leadStatus: "",
     joinedWith: "Alone",
-    nextPlanDate: "",
+    nextPlanDate: lead?.nextPlanDate ?? "",
     liveLocation: null,
     cardImage: null,
   });
@@ -107,7 +103,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   }, [onClose, submissionSuccess]);
 
   const title = useMemo(() => {
-    if (isNewLead) return "New Lead";
+    if (isNewLead) return "New Prospect";
     return "Meeting Update";
   }, [isNewLead]);
   const subtitle = isNewLead
@@ -125,24 +121,24 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     if (isNewLead) {
       if (!form.name.trim()) nextErrors.name = "Name is required.";
       if (!/^\+?[\d\s-]{10,}$/.test(form.number.trim())) nextErrors.number = "Valid number is required.";
-      if (!form.leadSource) nextErrors.leadSource = "Lead source is required.";
+      if (!form.leadSource) nextErrors.leadSource = "Prospect source is required.";
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
       if (!form.locationText.trim()) nextErrors.locationText = "Location is required.";
     } else {
+      if (!form.meetingStatus) nextErrors.meetingStatus = "Meeting status is required.";
       if (lead?.taskKind === "MEETING" && !lead?.meetingCode) {
-        nextErrors.meetingCode = "No active meeting is available for this lead.";
+        nextErrors.meetingCode = "No active meeting is available for this prospect.";
       }
-      if (!form.meetingMode) nextErrors.meetingMode = "Meeting mode is required.";
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.meetingDate)) {
-        nextErrors.meetingDate = "Use date format YYYY-MM-DD.";
-      }
-      if (!form.leadStatus) nextErrors.leadStatus = "Lead status is required.";
-      if (!form.joinedWith) nextErrors.joinedWith = "Joined With is required.";
+      const conducted = form.meetingStatus === "Meeting Conducted";
+      if (conducted && !form.meetingMode) nextErrors.meetingMode = "Meeting mode is required.";
+      if (conducted && !/^\d{4}-\d{2}-\d{2}$/.test(form.meetingDate)) nextErrors.meetingDate = "Meeting date is unavailable.";
+      if (conducted && !form.leadStatus) nextErrors.leadStatus = "Prospect status is required.";
+      if (conducted && !form.joinedWith) nextErrors.joinedWith = "Joined With is required.";
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
       if (!form.liveLocation) nextErrors.liveLocation = "Live location is required.";
       // Temporarily disabled while the backend visiting-card flow is being fixed.
       // if (!form.cardImage) nextErrors.cardImage = "Card image is required.";
-      if (form.leadStatus === "Work In Progress") {
+      if (conducted || form.meetingStatus === "Visited but Not Met") {
         const { today, latestDate } = getFollowupDateBounds();
         const nextPlanDate = new Date(`${form.nextPlanDate}T00:00:00`);
         if (!form.nextPlanDate) {
@@ -235,12 +231,15 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     const meetingPayload = {
       leadId: lead?.uniqueLeadId,
       meetingCode: lead?.meetingCode,
+      meetingConducted: form.meetingStatus === "Visited but Not Met" ? "NOT_CONDUCTED" : "CONDUCTED",
+      ...(form.meetingStatus === "Meeting Conducted" ? {
       meetingMode: form.meetingMode,
       meetingDate: form.meetingDate,
       leadStatus: form.leadStatus,
       aloneWith: form.joinedWith === "Alone" ? "SELF" : "SOMEONE",
+      } : {}),
       remarks: form.remarks.trim(),
-      nextPlanDate: form.leadStatus === "Work In Progress" ? form.nextPlanDate : "",
+      nextPlanDate: form.nextPlanDate,
       latitude: form.liveLocation?.latitude,
       longitude: form.liveLocation?.longitude,
       address: form.liveLocation?.address,
@@ -261,12 +260,12 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     setSubmitting(true);
     try {
       const successMessage = await onSubmit?.(isNewLead ? createLeadRequest : meetingPayload);
-      setSubmissionSuccess(successMessage || (isNewLead ? "Lead created successfully." : "Meeting submitted successfully."));
+      setSubmissionSuccess(successMessage || (isNewLead ? "Prospect created successfully." : "Meeting submitted successfully."));
     } catch (error) {
       const errorMessage =
         typeof error === "object" && error !== null && "message" in error && typeof error.message === "string"
           ? error.message
-          : isNewLead ? "Lead creation failed." : "Meeting submission failed.";
+          : isNewLead ? "Prospect creation failed." : "Meeting submission failed.";
       setSubmissionError(errorMessage);
     } finally {
       submittingRef.current = false;
@@ -274,7 +273,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     }
   };
 
-  const showNextPlanDate = form.leadStatus === "Work In Progress";
+  const meetingConducted = form.meetingStatus === "Meeting Conducted";
 
   return (
     <View style={styles.screen}>
@@ -295,7 +294,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
             />
           </View>
           <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>{isNewLead ? "Lead creation" : lead?.taskLabel}</Text>
+            <Text style={styles.eyebrow}>{isNewLead ? "Prospect creation" : lead?.taskLabel}</Text>
             <Text style={styles.title}>{title}</Text>
             <Text style={styles.subtitle}>{subtitle}</Text>
           </View>
@@ -313,7 +312,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                 <Icon source={isNewLead ? "account-details-outline" : "clipboard-text-outline"} size={17} color="#2563EB" />
               </View>
               <View style={styles.formCardHeadingCopy}>
-                <Text style={styles.formCardTitle}>{isNewLead ? "Lead Information" : "Meeting Information"}</Text>
+                <Text style={styles.formCardTitle}>{isNewLead ? "Prospect Information" : "Meeting Information"}</Text>
                 <Text style={styles.formCardCaption}>Fields marked with * are required</Text>
               </View>
             </View>
@@ -330,7 +329,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                   placeholder="Mobile number"
                 />
               </Field>
-              <Field label="Lead Source" required error={errors.leadSource}>
+              <Field label="Prospect Source" required error={errors.leadSource}>
                 <Select value={form.leadSource} options={LEAD_SOURCES} onChange={(value) => update("leadSource", value)} />
               </Field>
               <Field label="Remarks" required error={errors.remarks}>
@@ -364,29 +363,26 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
               </View>
 
               {errors.meetingCode ? <Text style={styles.error}>{errors.meetingCode}</Text> : null}
-              <Field label="Meeting Mode" required error={errors.meetingMode}>
-                <Select value={form.meetingMode} options={MEETING_MODES} onChange={(value) => update("meetingMode", value)} />
-              </Field>
-              <Field label="Meeting Date" required error={errors.meetingDate}>
-                <Input value={form.meetingDate} editable={false} selectTextOnFocus={false} style={styles.readOnlyInput} />
-              </Field>
-              <Field label="Lead Status" required error={errors.leadStatus}>
-                <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
-              </Field>
-              <Field label="Joined With" required error={errors.joinedWith}>
-                <ChoiceGroup value={form.joinedWith} options={JOINED_WITH_OPTIONS} onChange={(value) => update("joinedWith", value)} />
-              </Field>
-              <Field label="Remarks" required error={errors.remarks}>
-                <Input
-                  value={form.remarks}
-                  onChangeText={(value) => update("remarks", value)}
-                  multiline
-                  style={styles.textarea}
-                  placeholder="Meeting remarks"
-                />
+              <Field label="Meeting Status" required error={errors.meetingStatus}>
+                <ChoiceGroup value={form.meetingStatus} options={MEETING_STATUS_OPTIONS} onChange={(value) => update("meetingStatus", value)} />
               </Field>
 
-              <Field label="Live Location" required error={errors.liveLocation}>
+              {meetingConducted ? <>
+                <Field label="Meeting Mode" required error={errors.meetingMode}>
+                  <Select value={form.meetingMode} options={MEETING_MODES} onChange={(value) => update("meetingMode", value)} />
+                </Field>
+                <Field label="Meeting Date" required error={errors.meetingDate}>
+                  <Input value={form.meetingDate} editable={false} selectTextOnFocus={false} style={styles.readOnlyInput} />
+                </Field>
+                <Field label="Prospect Status" required error={errors.leadStatus}>
+                  <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
+                </Field>
+                <Field label="Joined With" required error={errors.joinedWith}>
+                  <ChoiceGroup value={form.joinedWith} options={JOINED_WITH_OPTIONS} onChange={(value) => update("joinedWith", value)} />
+                </Field>
+              </> : null}
+
+              <Field label="Location Pinned" required error={errors.liveLocation}>
                 <Pressable
                   disabled={fetchingLocation}
                   onPress={() => void captureLiveLocation()}
@@ -429,6 +425,16 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                 </Pressable>
               </Field>
 
+              <Field label="Remarks" required error={errors.remarks}>
+                <Input
+                  value={form.remarks}
+                  onChangeText={(value) => update("remarks", value)}
+                  multiline
+                  style={styles.textarea}
+                  placeholder={meetingConducted ? "Meeting remarks" : "Visit remarks"}
+                />
+              </Field>
+
               {/* Temporarily hidden while the backend visiting-card flow is being fixed.
               <Field label="Visiting Card Image" required error={errors.cardImage}>
                 <Pressable
@@ -452,39 +458,9 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
               </Field>
               */}
 
-              {showNextPlanDate ? (
-                <Field label="Next Plan Date" required error={errors.nextPlanDate}>
-                  <Pressable style={styles.dateInput} onPress={() => setDatePickerOpen(true)}>
-                    <View style={styles.dateIcon}>
-                      <Icon source="calendar-month-outline" size={18} color="#6D28D9" />
-                    </View>
-                    <View style={styles.dateCopy}>
-                      <Text style={styles.dateCaption}>Choose follow-up date (up to 24 days from today)</Text>
-                      <Text style={form.nextPlanDate ? styles.inputText : styles.placeholder}>
-                        {form.nextPlanDate
-                          ? new Intl.DateTimeFormat("en-IN", {
-                              day: "2-digit",
-                              month: "long",
-                              year: "numeric",
-                            }).format(new Date(`${form.nextPlanDate}T00:00:00`))
-                          : "Tap to open calendar"}
-                      </Text>
-                    </View>
-                    <Icon source="chevron-right" size={19} color="#A78BFA" />
-                  </Pressable>
-                  {datePickerOpen ? (
-                    <CompactCalendar
-                      viewedMonth={viewedMonth}
-                      selectedDate={form.nextPlanDate}
-                      onChangeMonth={setViewedMonth}
-                      onSelect={(value) => {
-                        update("nextPlanDate", value);
-                        setDatePickerOpen(false);
-                      }}
-                    />
-                  ) : null}
-                </Field>
-              ) : null}
+              <Field label="Next Follow Up" required error={errors.nextPlanDate}>
+                <FollowUpOptions value={form.nextPlanDate} onSelect={(value) => update("nextPlanDate", value)} />
+              </Field>
 
             </>
           )}
@@ -506,7 +482,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
                   ? <ActivityIndicator size="small" color="#5B21B6" />
                   : <Icon source={isNewLead ? "account-check-outline" : "check-bold"} size={17} color="#5B21B6" />}
               </View>
-              <Text style={styles.submitText}>{isNewLead ? "Create Lead" : "Submit Update"}</Text>
+              <Text style={styles.submitText}>{isNewLead ? "Create Prospect" : "Submit Update"}</Text>
               <View style={styles.submitArrow}>
                 <Icon source="arrow-right" size={16} color="#FFFFFF" />
               </View>
@@ -520,7 +496,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
           <View style={styles.successIcon}>
             <Icon source="check-bold" size={34} color="#FFFFFF" />
           </View>
-          <Text style={styles.successTitle}>{isNewLead ? "Lead Created" : "Meeting Updated"}</Text>
+          <Text style={styles.successTitle}>{isNewLead ? "Prospect Created" : "Meeting Updated"}</Text>
           <Text style={styles.successMessage}>{submissionSuccess}</Text>
         </View>
       ) : null}
@@ -529,72 +505,61 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   );
 }
 
-function CompactCalendar({ viewedMonth, selectedDate, onChangeMonth, onSelect }) {
-  const year = viewedMonth.getFullYear();
-  const month = viewedMonth.getMonth();
-  const leadingDays = new Date(year, month, 1).getDay();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = Array.from({ length: leadingDays + daysInMonth }, (_, index) =>
-    index < leadingDays ? null : index - leadingDays + 1
-  );
-  while (cells.length % 7) cells.push(null);
+const FOLLOW_UP_OPTIONS = [
+  ["Tomorrow", 1],
+  ["Day after tomorrow", 2],
+  ["After 3 days", 3],
+  ["This week (4 days)", 4],
+  ["After 7 days", 7],
+  ["Next week (8 days)", 8],
+  ["After 15 days", 15],
+];
 
-  const { today, latestDate } = getFollowupDateBounds();
-  const firstAllowedMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-  const lastAllowedMonth = new Date(latestDate.getFullYear(), latestDate.getMonth(), 1);
-  const canGoBack = viewedMonth > firstAllowedMonth;
-  const canGoForward = viewedMonth < lastAllowedMonth;
-  const monthLabel = new Intl.DateTimeFormat("en-IN", {
-    month: "long",
-    year: "numeric",
-  }).format(viewedMonth);
+const getFollowUpOptions = () => {
+  const { today } = getFollowupDateBounds();
+  return FOLLOW_UP_OPTIONS.map(([label, days]) => {
+    const date = new Date(today);
+    date.setDate(date.getDate() + days);
+    const displayDate = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(date);
+    const weekday = new Intl.DateTimeFormat("en-IN", { weekday: "long" }).format(date);
+    return { label, value: getLocalDate(date), detail: displayDate + ", " + weekday };
+  });
+};
 
+const FOLLOW_UP_TONES = [
+  { text: "#4E79CA", background: "#F7FAFF", icon: "#EBF2FF" },
+  { text: "#8262BF", background: "#FBF9FF", icon: "#F1EBFF" },
+  { text: "#309273", background: "#F6FDF9", icon: "#E7F7EF" },
+  { text: "#BF7836", background: "#FFFBF6", icon: "#FFF0E1" },
+];
+
+function FollowUpOptions({ value, onSelect }) {
+  const options = getFollowUpOptions();
   return (
-    <View style={styles.compactCalendar}>
-      <View style={styles.calendarHeader}>
+    <View style={{ gap: 6 }}>
+      {value && !options.some((option) => option.value === value) ? (
+        <Text style={styles.choiceText}>Current follow-up: {value}</Text>
+      ) : null}
+      <View style={styles.followUpList}>
+      {options.map((option, index) => {
+        const tone = FOLLOW_UP_TONES[index % FOLLOW_UP_TONES.length];
+        const selected = value === option.value;
+        return (
         <Pressable
-          disabled={!canGoBack}
-          onPress={() => onChangeMonth(new Date(year, month - 1, 1))}
-          style={[styles.calendarArrow, !canGoBack && styles.calendarArrowDisabled]}
+          key={option.value}
+          accessibilityRole="radio"
+          accessibilityState={{ checked: value === option.value }}
+          onPress={() => onSelect(option.value)}
+          style={[styles.followUpRow, { backgroundColor: tone.background }, index > 0 && styles.followUpDivider, selected && styles.followUpSelected]}
         >
-          <Icon source="chevron-left" size={17} color={canGoBack ? "#6D28D9" : "#CBD5E1"} />
+          <View style={[styles.followUpIcon, { backgroundColor: tone.icon }]}>
+            <Icon source={selected ? "check-circle-outline" : "calendar-blank-outline"} size={19} color={tone.text} />
+          </View>
+          <Text style={[styles.followUpLabel, { color: tone.text }]}>{option.label}</Text>
+          <Text style={[styles.followUpDate, { color: tone.text }]}>({option.detail})</Text>
         </Pressable>
-        <Text style={styles.calendarMonth}>{monthLabel}</Text>
-        <Pressable
-          disabled={!canGoForward}
-          onPress={() => onChangeMonth(new Date(year, month + 1, 1))}
-          style={[styles.calendarArrow, !canGoForward && styles.calendarArrowDisabled]}
-        >
-          <Icon source="chevron-right" size={17} color={canGoForward ? "#6D28D9" : "#CBD5E1"} />
-        </Pressable>
-      </View>
-      <View style={styles.calendarGrid}>
-        {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
-          <Text key={`${day}-${index}`} style={styles.weekDay}>{day}</Text>
-        ))}
-        {cells.map((day, index) => {
-          if (!day) return <View key={`empty-${index}`} style={styles.calendarCell} />;
-          const date = new Date(year, month, day);
-          const disabled = date < today || date > latestDate;
-          const value = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-          const selected = value === selectedDate;
-          return (
-            <Pressable
-              key={value}
-              disabled={disabled}
-              onPress={() => onSelect(value)}
-              style={[styles.calendarCell, selected && styles.calendarCellSelected]}
-            >
-              <Text style={[
-                styles.calendarDay,
-                disabled && styles.calendarDayDisabled,
-                selected && styles.calendarDaySelected,
-              ]}>
-                {day}
-              </Text>
-            </Pressable>
-          );
-        })}
+        );
+      })}
       </View>
     </View>
   );
@@ -639,6 +604,13 @@ function ChoiceGroup({ value, options, onChange }) {
 }
 
 const styles = StyleSheet.create({
+  followUpList: { borderWidth: 1, borderColor: "#E5D7FF", borderRadius: 20, overflow: "hidden", backgroundColor: "#FFFFFF" },
+  followUpRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, paddingRight: 16, paddingLeft: 13, borderLeftWidth: 3, borderLeftColor: "transparent" },
+  followUpDivider: { borderTopWidth: 1, borderTopColor: "#EEE7F8" },
+  followUpSelected: { borderLeftColor: "#8B5CF6", backgroundColor: "#EEE8FC" },
+  followUpIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  followUpLabel: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: "800" },
+  followUpDate: { flexShrink: 1, maxWidth: "48%", fontSize: 12, fontWeight: "800", textAlign: "right" },
   flex: { flex: 1 },
   screen: { flex: 1, overflow: "hidden", backgroundColor: "#F8FAFC" },
   header: {

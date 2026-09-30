@@ -31,6 +31,7 @@ export interface SalesTask {
   remarks: string;
   lastUpdated: string;
   nextFollowUpDate: string;
+  nextPlanDate?: string;
   schedule: TaskScheduleFilter;
   email?: string;
   leadSource?: string;

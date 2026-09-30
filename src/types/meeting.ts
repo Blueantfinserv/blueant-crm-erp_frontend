@@ -43,12 +43,13 @@ export type CreateMeetingRequest = Omit<ScheduleMeetingRequest, 'meetingTime'> &
   meetingStatus?: MeetingStatus;
 };
 export type MeetingWorkflowRequest = {
-  leadStatus: MeetingLeadStatus; aloneWith: AloneWith; meetingDate?: string; meetingMode?: MeetingMode;
+  leadStatus?: MeetingLeadStatus; aloneWith?: AloneWith; meetingDate?: string; meetingMode?: MeetingMode;
   meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED';
-  remarks?: string; nextPlanDate?: string; latitude?: number; longitude?: number; address?: string; accuracy?: number;
+  remarks?: string; meetingRemarks?: string; nextPlanDate?: string; latitude?: number; longitude?: number; address?: string; accuracy?: number;
   visitingCard?: string;
 };
 export type MeetingVerificationRequest = {
+  aloneWith?: AloneWith;
   meetingDate?: string;
   meetingTiming?: string;
   ageGroup?: string;
@@ -65,9 +66,10 @@ export type RescheduleMeetingRequest = { meetingCode: string; meetingDate: strin
 export type CancelMeetingRequest = { meetingId: number; cancellationReason: string };
 
 export type MeetingFormSubmission = {
-  leadId?: string; meetingCode?: string; meetingMode: 'Physical' | 'Virtual'; meetingDate: string;
-  leadStatus: 'Work In Progress' | 'Converted as Client' | 'Client Not Interested' | 'Remove This Client' | 'Already Blueant Client';
-  aloneWith: AloneWith; nextPlanDate: string; remarks: string;
+  leadId?: string; meetingCode?: string; meetingMode?: 'Physical' | 'Virtual'; meetingDate?: string;
+  meetingConducted: 'CONDUCTED' | 'NOT_CONDUCTED';
+  leadStatus?: 'Work In Progress' | 'Converted as Client' | 'Client Not Interested' | 'Remove This Client' | 'Already Blueant Client';
+  aloneWith?: AloneWith; nextPlanDate: string; remarks: string;
   latitude?: number; longitude?: number; address?: string; accuracy?: number | null;
   cardImage?: import('../api/document').UploadDocumentAsset | null;
   visitingCard?: string;

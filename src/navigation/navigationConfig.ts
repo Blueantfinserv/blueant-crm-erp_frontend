@@ -29,7 +29,7 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
       ...commonItems,
       { key: 'users-roles', label: 'Users & Roles', route: 'users-roles' },
       { key: 'team-mapping', label: 'Team Mapping', route: 'team-mapping' },
-      { key: 'leads', label: 'Leads', route: 'leads' },
+      { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
   },
   ADMIN: {
@@ -40,7 +40,7 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
       ...commonItems,
       { key: 'users-roles', label: 'Users & Roles', route: 'users-roles' },
       { key: 'team-mapping', label: 'Team Mapping', route: 'team-mapping' },
-      { key: 'leads', label: 'Leads', route: 'leads' },
+      { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
   },
   LEADER: {
@@ -50,26 +50,26 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
     menuItems: [
       ...commonItems,
       { key: 'team-mapping', label: 'Team Mapping', route: 'team-mapping' },
-      { key: 'leads', label: 'Leads', route: 'leads' },
+      { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
   },
   TEAM_LEADER: {
     role: 'TEAM_LEADER',
     title: 'Team Leader Dashboard',
-    subtitle: 'Team-level execution, lead supervision, and task coordination.',
+    subtitle: 'Team-level execution, prospect supervision, and task coordination.',
     menuItems: [
       ...commonItems,
       { key: 'team-mapping', label: 'Team Mapping', route: 'team-mapping' },
-      { key: 'leads', label: 'Leads', route: 'leads' },
+      { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
   },
   SALES_MANAGER: {
     role: 'SALES_MANAGER',
     title: 'Sales Manager Dashboard',
-    subtitle: 'Lead flow, sales performance, and team productivity.',
+    subtitle: 'Prospect flow, sales performance, and team productivity.',
     menuItems: [
       ...commonItems,
-      { key: 'leads', label: 'Leads', route: 'leads' },
+      { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
   },
   SALES_COORDINATOR: {
@@ -90,7 +90,7 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
     subtitle: 'Your assigned work and daily activity overview.',
     menuItems: [
       ...commonItems,
-      { key: 'leads', label: 'Leads', route: 'leads' },
+      { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
   },
 };

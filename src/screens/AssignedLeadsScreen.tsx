@@ -8,13 +8,13 @@ export function AssignedLeadsScreen() {
         <View style={styles.icon}><Icon source="clipboard-account-outline" size={22} color="#3156C8" /></View>
         <View>
           <Text style={styles.title}>Assigned Tasks</Text>
-          <Text style={styles.subtitle}>Leads assigned to you today by the Sales Coordinator.</Text>
+          <Text style={styles.subtitle}>Prospects assigned to you today by the Sales Coordinator.</Text>
         </View>
       </View>
       <View style={styles.empty}>
         <Icon source="database-clock-outline" size={34} color="#8A95A7" />
-        <Text style={styles.emptyTitle}>Assigned leads will appear here</Text>
-        <Text style={styles.emptyText}>The page is ready. Lead cards will be connected when the assigned-leads list endpoint is available.</Text>
+        <Text style={styles.emptyTitle}>Assigned prospects will appear here</Text>
+        <Text style={styles.emptyText}>The page is ready. Prospect cards will be connected when the assigned-prospects list endpoint is available.</Text>
       </View>
     </View>
   );

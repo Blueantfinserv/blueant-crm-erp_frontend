@@ -52,7 +52,7 @@ export function CurrentWeekPerformanceSection({ title, period, onPeriodChange, g
             <HeaderCell label="YEST. CL." width={layout.yestCl} />
             <HeaderCell label="TOD. Meet." width={layout.todayMeet} />
             <HeaderCell label="TOD. CL." width={layout.todayCl} />
-            <HeaderCell label="LEADS" width={layout.leads} />
+            <HeaderCell label="PROSPECTS" width={layout.leads} />
             <HeaderCell label="MEETINGS" width={layout.meetings} />
             <HeaderCell label="TGT-RPT" width={layout.tgtRpt} />
             <HeaderCell label="DOC" width={layout.doc} />

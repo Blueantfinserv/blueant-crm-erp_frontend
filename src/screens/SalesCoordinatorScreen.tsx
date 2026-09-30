@@ -14,7 +14,7 @@ import { createMeetingVerificationForm } from './meetingVerificationForm';
 
 type Tab = 'today' | 'responses' | 'tasks' | 'assign' | 'assignedLeads';
 type VerificationField = NonNullable<keyof MeetingVerificationRequest>;
-type VerificationForm = Record<VerificationField, string>;
+type VerificationForm = Record<Exclude<VerificationField, 'aloneWith'>, string>;
 type MeetingColumnFilter = Partial<Record<'clientName' | 'mobileNumber' | 'meetingTitle' | 'employeeName' | 'leadStatus' | 'meetingDate' | 'nextMeetingDate' | 'aloneWith' | 'verifiedBy', string>>;
 type AssignedDateRange = { from: string; to: string };
 const isVerificationFieldVisible = (field: VerificationField, meetingWith: string) => {
@@ -23,6 +23,9 @@ const isVerificationFieldVisible = (field: VerificationField, meetingWith: strin
     meetingWith.trim().toUpperCase().replace(/\s+/g, '_'),
   );
 };
+const isNotConductedMeeting = (meeting?: MeetingResponse | null) => (
+  meeting?.meetingConducted === 'NOT_CONDUCTED' || meeting?.meetingStatus === 'NOT_CONDUCTED'
+);
 const TABS: readonly { key: Tab; label: string; icon: string }[] = [
   { key: 'today', label: 'Today Meetings', icon: 'calendar-check-outline' },
   { key: 'responses', label: 'Verified Meetings', icon: 'clipboard-check-outline' },
@@ -42,7 +45,7 @@ const assignedSalesPersonForMobile = async (mobileNumber: string) => {
   if (!uniqueLeadId) return null;
   return (await leadApi.getLeadDetails(uniqueLeadId)).data?.assignedEmployeeName?.trim() || null;
 };
-const FIELDS: readonly { key: VerificationField; label: string; placeholder: string }[] = [
+const FIELDS: readonly { key: keyof VerificationForm; label: string; placeholder: string }[] = [
   { key: 'meetingDate', label: 'Meeting Date', placeholder: 'Choose meeting date' },
   { key: 'meetingTiming', label: 'Meeting Time', placeholder: 'HH:mm:ss' },
   { key: 'ageGroup', label: 'Age Group', placeholder: 'Backend code, e.g. AGE_25_35' },
@@ -54,10 +57,15 @@ const FIELDS: readonly { key: VerificationField; label: string; placeholder: str
   { key: 'personName', label: 'Person / Joined Person Name', placeholder: 'Person name' },
   { key: 'position', label: 'Position', placeholder: 'Position' },
 ];
+const NOT_CONDUCTED_FIELDS = [
+  FIELDS.find((field) => field.key === 'meetingTiming'),
+  FIELDS.find((field) => field.key === 'meetingDate'),
+].filter((field): field is (typeof FIELDS)[number] => Boolean(field));
 const emptyForm = (): VerificationForm => ({ meetingDate: '', meetingTiming: '', ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '', meetingWith: '', personName: '', position: '' });
 const HOURS = Array.from({ length: 14 }, (_, index) => String(index + 9).padStart(2, '0'));
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
+const MEETING_WITH_OPTIONS = ['SELF', 'SOMEONE'] as const;
 const AGE_GROUP_LABELS: Record<string, string> = {
   BELOW_25: 'Below 25', AGE_25_35: '25–35', AGE_36_45: '36–45',
   AGE_46_55: '46–55', AGE_56_65: '56–65', ABOVE_65: '65+',
@@ -89,7 +97,6 @@ const PROFESSION_LABELS: Record<string, string> = {
   NOT_DISCLOSED: 'Not Disclosed',
 };
 const PROFESSION_OPTIONS = Object.keys(PROFESSION_LABELS);
-const POSITION_OPTIONS = ['Sales person', 'Team Leader', 'RM', 'Admin', 'Super Admin'] as const;
 const SALES_PERSON_CODES = ['RK1507', 'AS0108', 'AK0107', 'RG1108', 'HP0605', 'AKS0108', 'SM2403', 'GK0902', 'AS1909', 'US2601'] as const;
 const show = (v: unknown) => v === undefined || v === null || v === '' ? '—' : String(v);
 const maskedMobile = (value: unknown) => {
@@ -361,16 +368,32 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   };
   const verify = async () => {
     if (!selected?.meetingCode || submittingRef.current) return;
+    const notConducted = isNotConductedMeeting(selected);
     if (!form.meetingDate) {
       setSubmitError('Please choose the meeting date.'); return;
+    }
+    if (!form.meetingTiming) {
+      setSubmitError('Please choose the meeting time.'); return;
     }
     if (form.meetingTiming && !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(form.meetingTiming)) {
       setSubmitError('Meeting Time must use HH:mm:ss format.'); return;
     }
-    const payload = Object.fromEntries(
-      FIELDS.filter((field) => isVerificationFieldVisible(field.key, form.meetingWith))
+    if (!notConducted && !form.meetingWith) {
+      setSubmitError('Please choose who joined the meeting.'); return;
+    }
+    if (!notConducted && form.meetingWith === 'SOMEONE' && (!form.personName.trim() || !form.position.trim())) {
+      setSubmitError('Please enter the person name and position.'); return;
+    }
+    const visibleValues = Object.fromEntries(
+      (notConducted ? NOT_CONDUCTED_FIELDS : FIELDS)
+        .filter((field) => isVerificationFieldVisible(field.key, form.meetingWith))
         .map((field) => [field.key, form[field.key].trim()]).filter(([, fieldValue]) => Boolean(fieldValue)),
     ) as MeetingVerificationRequest;
+    const payload: MeetingVerificationRequest = notConducted ? visibleValues : {
+      ...visibleValues,
+      aloneWith: form.meetingWith as 'SELF' | 'SOMEONE',
+      meetingWith: form.meetingWith,
+    };
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);
     dataGeneration.current += 1;
     try {
@@ -440,7 +463,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     </View>
     <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
-      <ScrollView contentContainerStyle={styles.modalBody}>{selected ? <Details meeting={selected} /> : null}{tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected ? <View style={styles.formSection}><Text style={styles.sectionTitle}>PC Additional Information</Text><Text style={styles.help}>Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.</Text><View style={styles.formGrid}>{FIELDS.map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting} onPress={() => void verify()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : 'Verify Meeting'}</Text></Pressable></View> : null}</ScrollView>
+      <ScrollView contentContainerStyle={styles.modalBody}>{selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} /> : null}{tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected ? <View style={styles.formSection}><Text style={styles.sectionTitle}>{isNotConductedMeeting(selected) ? 'Verify Location Visit' : 'PC Additional Information'}</Text><Text style={styles.help}>{isNotConductedMeeting(selected) ? 'Confirm only the date and time of this visited-but-not-met record.' : 'Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.'}</Text><View style={styles.formGrid}>{(isNotConductedMeeting(selected) ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting} onPress={() => void verify()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'}</Text></Pressable></View> : null}</ScrollView>
     </View></View></Modal>
     <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
@@ -470,7 +493,11 @@ function VerificationFormField({
   setForm: React.Dispatch<React.SetStateAction<VerificationForm>>;
 }) {
   const [datePickerVisible, setDatePickerVisible] = useState(false);
-  const update = (value: string) => setForm((current) => ({ ...current, [field.key]: value }));
+  const update = (value: string) => setForm((current) => ({
+    ...current,
+    [field.key]: value,
+    ...(field.key === 'meetingWith' && value === 'SELF' ? { personName: '', position: '' } : {}),
+  }));
   const tone = field.key === 'meetingTiming' || field.key === 'ageGroup' ? styles.fieldToneBlue : field.key === 'existingSip' || field.key === 'profession' ? styles.fieldToneTeal : field.key === 'professionDetail' || field.key === 'bestTimeForMeeting' ? styles.fieldToneViolet : styles.fieldToneAmber;
 
   if (!isVerificationFieldVisible(field.key, form.meetingWith)) return null;
@@ -521,14 +548,14 @@ function VerificationFormField({
         ? AGE_GROUP_OPTIONS
         : field.key === 'profession'
           ? PROFESSION_OPTIONS
-          : field.key === 'position'
-            ? POSITION_OPTIONS
+          : field.key === 'meetingWith'
+            ? MEETING_WITH_OPTIONS
             : null;
   if (options) {
     return (
       <View style={[styles.field, tone]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
-        <View style={styles.pickerShell}><Picker selectedValue={form[field.key]} onValueChange={update} style={styles.picker}><Picker.Item label="Select an option" value="" />{options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : option} value={option} />)}</Picker></View>
+        <View style={styles.pickerShell}><Picker selectedValue={form[field.key]} onValueChange={update} style={styles.picker}><Picker.Item label="Select an option" value="" />{options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : field.key === 'meetingWith' ? option === 'SELF' ? 'Self' : 'With someone' : option} value={option} />)}</Picker></View>
       </View>
     );
   }
@@ -597,11 +624,15 @@ function Cards({ items, filters = {}, empty, action, onOpen, verified = false, t
   ]) as readonly [string, (m: MeetingResponse) => unknown][];
   return <View style={styles.desktopTable}>{visibleItems.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.listRow, styles.desktopRow, i % 2 === 1 && styles.listRowAlternate]}><View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>{columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn, label === 'LEAD STATUS' && styles.leadStatusColumn]}><Text numberOfLines={1} style={[styles.cellMain, label === 'LEAD STATUS' && styles.status, label === 'LEAD STATUS' && styles.leadStatusValue, label === 'LEAD STATUS' && m.leadStatus === 'CONVERTED_CLIENT' && styles.statusVerified, label === 'JOINED' && styles.joinedBadge]}>{label === 'LEAD STATUS' ? show(value(m)).replace(/_/g, ' ') : show(value(m))}</Text></View>)}{onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : taskOnly ? null : <View style={styles.desktopActionColumn} />}</View>)}</View>;
 }
-function Details({ meeting: m }: { meeting: MeetingResponse }) {
+function Details({ meeting: m, visitOnly = false }: { meeting: MeetingResponse; visitOnly?: boolean }) {
   const meetingPlace = m.meetingLocation ?? m.location ?? m.address;
   const mapUrl = mapUrlFor(m);
-  const overviewFields = [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate], ['Lead Status', m.leadStatus?.replace(/_/g, ' ')]] as const;
-  const contactFields = [['Mobile Number', maskedMobile(m.mobileNumber)], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
+  const overviewFields = visitOnly
+    ? [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate]] as const
+    : [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate], ['Lead Status', m.leadStatus?.replace(/_/g, ' ')]] as const;
+  const contactFields = visitOnly
+    ? [['Mobile Number', maskedMobile(m.mobileNumber)], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : [])] as const
+    : [['Mobile Number', maskedMobile(m.mobileNumber)], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
   return <View style={styles.detailsWrap}>
     <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
     <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>

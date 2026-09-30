@@ -6,7 +6,7 @@ import { LeadPriority, LeadStatus } from '../leadData';
 
 export function LeadInfoCard({ lead }: { lead: LeadInfo }) {
   const fields = [
-    ['Lead ID', lead.leadId],
+    ['Prospect ID', lead.leadId],
     ['Customer Name', lead.customerName],
     ['Company', lead.company],
     ['Email', lead.email],
@@ -20,7 +20,7 @@ export function LeadInfoCard({ lead }: { lead: LeadInfo }) {
 
   return (
     <View style={styles.card}>
-      <SectionTitle title="Lead Information" />
+      <SectionTitle title="Prospect Information" />
       <View style={styles.infoGrid}>
         {fields.map(([label, value]) => (
           <View key={label} style={styles.infoItem}>
@@ -148,7 +148,7 @@ export function LeadHeader({
         <PriorityBadge priority={priority} />
       </View>
       <View style={styles.headerActions}>
-        <AuthButton title="Edit Lead" onPress={() => {}} variant="secondary" />
+        <AuthButton title="Edit Prospect" onPress={() => {}} variant="secondary" />
         <AuthButton title="Schedule Meeting" onPress={() => {}} />
         <AuthButton title="Add Follow-up" onPress={onAddFollowup ?? (() => {})} variant="secondary" />
         <Pressable style={styles.moreButton}>

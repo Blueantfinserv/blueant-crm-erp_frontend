@@ -23,10 +23,10 @@ type Props = {
 };
 
 const infoFields = (lead: SalesTask) => [
-  { label: 'Lead ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
+  { label: 'Prospect ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
   { label: 'Email', value: lead.email ?? '------', icon: 'email-outline' },
   { label: 'Clinic Address', value: lead.clinicAddress ?? '------', icon: 'hospital-building' },
-  { label: 'Lead Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
+  { label: 'Prospect Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
 ] as const;
 
 const verificationFields = (meeting: MeetingResponse) => [
@@ -57,6 +57,7 @@ const meetingTimeText = (time?: MeetingSummary['meetingTime']) => time?.hour ===
 export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 600;
+  const isVerificationPending = lead.verificationPending === true;
   const [verifiedMeeting, setVerifiedMeeting] = useState<MeetingResponse | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(true);
   const [verificationError, setVerificationError] = useState<string | null>(null);
@@ -139,7 +140,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
 
   return (
     <View style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+      <View style={styles.fixedHeader}>
         <View style={[styles.hero, isMobile && styles.mobileHero]}>
           <View style={styles.heroGlowLarge} />
           <View style={styles.heroGlowSmall} />
@@ -152,7 +153,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 <Icon source="account-outline" size={22} color="#FFFFFF" />
               </View>
               <View style={styles.heroCopy}>
-                <Text style={styles.eyebrow}>LEAD DETAILS</Text>
+                <Text style={styles.eyebrow}>PROSPECT DETAILS</Text>
                 <Text numberOfLines={1} style={styles.title}>{lead.name}</Text>
               </View>
             </View>
@@ -172,25 +173,32 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 <Text style={[styles.heroActionText, isMobile && styles.mobileHeroActionText]}>WhatsApp</Text>
               </Pressable>
               <Pressable
-                onPress={() => onUpdateMeeting(lead)}
+                accessibilityRole="button"
+                accessibilityLabel={isVerificationPending ? 'Verification pending' : `Update meeting for ${lead.name}`}
+                accessibilityState={{ disabled: isVerificationPending }}
+                disabled={isVerificationPending}
+                onPress={() => { if (!isVerificationPending) onUpdateMeeting(lead); }}
                 style={[
                   styles.heroAction,
                   styles.updateAction,
                   isMobile && styles.mobileHeroAction,
                   isMobile && styles.mobileUpdateAction,
+                  isVerificationPending && styles.updateActionDisabled,
                 ]}
               >
-                <Icon source="calendar-edit" size={isMobile ? 12 : 15} color="#4C1D95" />
-                <Text style={[styles.updateActionText, isMobile && styles.mobileHeroActionText]}>Update Meeting</Text>
+                <Icon source={isVerificationPending ? 'clock-alert-outline' : 'calendar-edit'} size={isMobile ? 12 : 15} color={isVerificationPending ? '#94A3B8' : '#4C1D95'} />
+                <Text style={[styles.updateActionText, isMobile && styles.mobileHeroActionText, isVerificationPending && styles.updateActionTextDisabled]}>{isVerificationPending ? 'Verification Pending' : 'Update Meeting'}</Text>
               </Pressable>
             </View>
 
           </View>
         </View>
+      </View>
 
+      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.grid}>
           <View style={[styles.panel, styles.infoPanel, isMobile && styles.mobilePanel]}>
-            <SectionHeading icon="account-details-outline" title="Lead Information" subtitle="Key contact and meeting details" />
+            <SectionHeading icon="account-details-outline" title="Prospect Information" subtitle="Key contact and meeting details" />
             <View style={[styles.infoGrid, isMobile && styles.mobileInfoGrid]}>
               {infoFields(lead).map((field) => (
                 <View
@@ -252,7 +260,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
               ) : (
                 <View style={styles.verificationState}>
                   <Icon source="clock-outline" size={18} color="#94A3B8" />
-                  <Text style={styles.verificationStateText}>This lead does not have a verified meeting response yet.</Text>
+                  <Text style={styles.verificationStateText}>This prospect does not have a verified meeting response yet.</Text>
                 </View>
               )}
             </View>
@@ -310,7 +318,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
 
         <View style={[styles.panel, isMobile && styles.mobilePanel]}>
           <SectionHeading icon="history" title="Meeting History" subtitle={historyLoading ? 'Loading meeting history...' : `${meetingHistory.length} meeting${meetingHistory.length === 1 ? '' : 's'} recorded`} />
-          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(meeting.meetingTime) ? ` · ${meetingTimeText(meeting.meetingTime)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{meeting.nextMeetingDate ? <Text style={styles.historyNext}>Next plan: {meeting.nextMeetingDate}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this lead.</Text></View>}
+          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(meeting.meetingTime) ? ` · ${meetingTimeText(meeting.meetingTime)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{meeting.nextMeetingDate ? <Text style={styles.historyNext}>Next plan: {meeting.nextMeetingDate}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this prospect.</Text></View>}
         </View>
       </ScrollView>
     </View>
@@ -331,6 +339,8 @@ function SectionHeading({ icon, title, subtitle }: { icon: string; title: string
 
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 0, backgroundColor: '#F5F7FB' },
+  fixedHeader: { width: '100%', maxWidth: 1120, alignSelf: 'center', flexShrink: 0, marginBottom: 14 },
+  scrollArea: { flex: 1, minHeight: 0 },
   content: { width: '100%', maxWidth: 1120, alignSelf: 'center', gap: 14, paddingBottom: 28 },
   hero: { position: 'relative', overflow: 'hidden', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 18, backgroundColor: '#312E81' },
   mobileHero: { paddingHorizontal: 11, paddingVertical: 10, borderRadius: 16 },
@@ -364,7 +374,9 @@ const styles = StyleSheet.create({
   heroActionText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
   mobileHeroActionText: { fontSize: 8 },
   updateAction: { borderColor: '#FFFFFF', backgroundColor: '#FFFFFF' },
+  updateActionDisabled: { borderColor: '#E2E8F0', backgroundColor: '#F1F5F9', opacity: 0.8 },
   updateActionText: { color: '#4C1D95', fontSize: 10, fontWeight: '900' },
+  updateActionTextDisabled: { color: '#94A3B8' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 },
   panel: { padding: 18, gap: 15, borderWidth: 1, borderColor: '#E4E8F0', borderRadius: 18, backgroundColor: '#FFFFFF', ...theme.shadow.card },
   mobilePanel: { padding: 11, gap: 10, borderRadius: 14 },

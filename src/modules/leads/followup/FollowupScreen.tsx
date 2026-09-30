@@ -79,7 +79,7 @@ export function AddFollowupScreen({
       <View style={styles.shell}>
         <View style={styles.header}>
           <Text style={styles.title}>Add Follow-up</Text>
-          <Text style={styles.subtitle}>Schedule the next interaction with this lead.</Text>
+          <Text style={styles.subtitle}>Schedule the next interaction with this prospect.</Text>
         </View>
 
         {successMessage ? (
@@ -111,13 +111,13 @@ export function AddFollowupScreen({
 export function LeadSummaryCard() {
   return (
     <View style={styles.card}>
-      <Text style={styles.sectionTitle}>Lead Summary</Text>
+      <Text style={styles.sectionTitle}>Prospect Summary</Text>
       <View style={styles.summaryGrid}>
-        <SummaryField label="Lead Name" value={leadInfo.customerName} />
+        <SummaryField label="Prospect Name" value={leadInfo.customerName} />
         <SummaryField label="Company" value={leadInfo.company} />
         <SummaryField label="Phone" value={leadInfo.phone} />
         <SummaryField label="Assigned Sales Manager" value={leadInfo.assignedSalesManager} />
-        <SummaryField label="Current Lead Status" status={leadInfo.leadStatus} />
+        <SummaryField label="Current Prospect Status" status={leadInfo.leadStatus} />
       </View>
     </View>
   );

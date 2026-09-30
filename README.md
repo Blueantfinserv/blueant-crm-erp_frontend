@@ -62,7 +62,7 @@ flowchart TD
 
 The form records meeting mode, result/status, remarks, live location, and a future next-plan date.
 
-- **Meeting Date** is read-only and is set to the current local date when the update form opens.
+- **Meeting Date** is read-only and is loaded from the existing backend meeting date when the update form opens.
 - **Next Plan Date** is a separate future follow-up date.
 - Live location can include address, latitude, longitude, accuracy, and a maps link.
 - The client prevents duplicate submits: the button is disabled during submission and the service prevents another request for the same meeting code while the first request is active.
@@ -257,3 +257,33 @@ When functionality for Sales Person or Sales Coordinator changes, update this RE
 - Sales Person task cards now keep the next workflow update locked while any earlier meeting for the same lead is awaiting SC verification. The card shows **Verification Pending** and disables **Update Meeting** until the pending verification is cleared by the existing backend verification flow.
 
 - For an active Meeting card, **Last Updated** now shows the latest earlier/past meeting date for that lead. A future date for the currently scheduled meeting remains under **Next Follow-up**. If no earlier meeting exists, the SC assignment date is displayed.
+
+## Release update - 30 September 2026
+
+### Sales Person meeting outcomes
+
+The Meeting Update form now starts with **Meeting Status** and supports two outcomes:
+
+- **Meeting Conducted** keeps the normal fields in this order: Meeting Mode, read-only Meeting Date, Prospect Status, Joined With, Location Pinned, Remarks, and Next Follow Up.
+- **Visited but Not Met** shows only Location Pinned, Remarks, and Next Follow Up.
+
+A visited-but-not-met submission reuses the existing workflow endpoint and sends `meetingConducted: NOT_CONDUCTED`, `meetingRemarks`, the resolved `nextPlanDate`, latitude, longitude, and accuracy. It does not send Meeting Mode, Prospect Status, Joined With, or placeholder values for fields that do not apply.
+
+The existing seven relative follow-up options work for both outcomes: Tomorrow, Day after tomorrow, After 3 days, This week (4 days), After 7 days, Next week (8 days), and After 15 days. Each option calculates a real date dynamically and sends it as `YYYY-MM-DD`.
+
+### PC verification
+
+- Conducted meetings retain the existing full verification questionnaire.
+- `NOT_CONDUCTED` visits are identified from `meetingConducted` or `meetingStatus` and show only Meeting Time and Meeting Date for verification.
+- Joined With is editable during conducted-meeting verification. The Sales Person's value is selected by default; choosing **With someone** displays Person Name and Position.
+- Existing meeting and verification endpoints remain unchanged, and meeting codes continue to identify verification requests.
+
+### Prospect details
+
+The Sales Person prospect-details header is outside the scrolling content. The prospect name, meeting stage, Call, WhatsApp, and Update Meeting actions remain visible while prospect information and meeting history scroll beneath it.
+
+### Validation
+
+- `npx tsc --noEmit`
+- `git diff --check`
+- No production API submissions were made while validating these changes.

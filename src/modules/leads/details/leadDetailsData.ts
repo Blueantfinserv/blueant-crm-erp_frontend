@@ -60,9 +60,9 @@ export const leadInfo: LeadInfo = {
 export const timelineActivities: TimelineActivity[] = [
   {
     icon: '✦',
-    title: 'Lead Created',
+    title: 'Prospect Created',
     dateTime: '21 Jul 2026, 09:14 AM',
-    description: 'Lead captured from the website inquiry form.',
+    description: 'Prospect captured from the website inquiry form.',
     performedBy: 'System',
   },
   {
@@ -97,7 +97,7 @@ export const timelineActivities: TimelineActivity[] = [
     icon: '✓',
     title: 'Follow-up Completed',
     dateTime: '21 Jul 2026, 11:12 AM',
-    description: 'Lead confirmed availability for the meeting slot.',
+    description: 'Prospect confirmed availability for the meeting slot.',
     performedBy: 'Arjun Malhotra',
   },
 ];

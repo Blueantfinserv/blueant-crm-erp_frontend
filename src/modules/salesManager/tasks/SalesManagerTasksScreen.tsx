@@ -24,7 +24,7 @@ const parseBackendCalendarDate = (value?: string | null) => {
 };
 
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
-const LEAD_FILTER_OPTIONS = ['All Leads', 'Removed Leads'] as const;
+const LEAD_FILTER_OPTIONS = ['All Prospects', 'Removed Prospects'] as const;
 const SERVICE_REQUEST_FORM_URL = 'https://docs.google.com/forms/d/14H3qkLVigG18GVMhcIqGb0PrR2hk3C5L9EHHDKxbqD0/viewform?edit_requested=true';
 const SHOW_NEW_LEAD_ACTION = false;
 const FUTURE_DAY_OPTIONS = ['Tomorrow', 'Day After Tomorrow', 'In 3 Days'] as const;
@@ -95,16 +95,17 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number): SalesTask => {
     leadStatus: lead.leadStatus,
     assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
     scheduledAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
-    name: lead.clientName ?? 'Unnamed lead',
+    name: lead.clientName ?? 'Unnamed prospect',
     phone: lead.mobileNumber ?? '',
     locationText: lead.location ?? 'Location unavailable',
     clinicAddress: lead.clinicAddress,
     coordinates: { latitude: 0, longitude: 0 },
     hasLocationPin: false,
-    taskLabel: 'LEADS',
+    taskLabel: 'PROSPECTS',
     remarks: lead.remarks ?? 'No remarks available.',
     lastUpdated: formatTimestamp(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt),
     nextFollowUpDate: formatDate(lead.nextPlanDate),
+    nextPlanDate: lead.nextPlanDate,
     schedule: getTaskSchedule(lead.nextPlanDate),
     email: lead.email,
     leadSource: lead.leadSource,
@@ -147,6 +148,7 @@ const mapMeetingToSalesTask = (
   remarks: meeting.remarks ?? 'No remarks available.',
   lastUpdated: formatTimestamp(lastMeetingDate ?? lead?.assignmentDate ?? lead?.assignedDate ?? lead?.assignedAt),
   nextFollowUpDate: formatDate(meeting.meetingDate),
+  nextPlanDate: meeting.meetingDate,
   schedule: getTaskSchedule(meeting.meetingDate),
 });
 
@@ -160,7 +162,11 @@ type DropdownProps<T extends string> = {
   accessibilityLabel: string;
 };
 
-const taskFilterLabel = (value: string) => value === 'Today' ? "Today's Task" : value;
+const taskFilterLabel = (value: string) => value === 'Today'
+  ? "Today's Task"
+  : value === 'Leads'
+    ? 'Prospects'
+    : value;
 
 function FilterDropdown<T extends string>({
   value,
@@ -235,7 +241,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const [search, setSearch] = useState('');
   const [taskType, setTaskType] = useState<TaskTypeFilter>(initialTaskType);
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
-  const [leadFilter, setLeadFilter] = useState<typeof LEAD_FILTER_OPTIONS[number]>('All Leads');
+  const [leadFilter, setLeadFilter] = useState<typeof LEAD_FILTER_OPTIONS[number]>('All Prospects');
   const [meetingFilter, setMeetingFilter] = useState('All Meetings');
   const [allTaskFilter, setAllTaskFilter] = useState('All Task');
   const [futureDayFilter, setFutureDayFilter] = useState<FutureDayFilter>('Tomorrow');
@@ -250,7 +256,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
       const meetingHistory = Array.from(
         new Map(
-          [...meetingState.meetings, ...meetingService.getPendingVerificationMeetings()]
+          [
+            ...meetingState.meetings,
+            ...meetingService.getPendingVerificationMeetings(),
+            ...meetingService.getVerifiedMeetings(),
+          ]
             .map((meeting) => [meeting.meetingCode ?? String(meeting.id ?? ''), meeting] as const)
             .filter(([meetingCode]) => Boolean(meetingCode)),
         ).values(),
@@ -309,6 +319,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
             && calendarDateFromValue(candidate.meetingDate) <= todayCalendarDate()
             && isSameMeetingLead(candidate, meeting)
           ))
+          .filter((candidate) => candidate.verificationStatus === 'VERIFIED' || Boolean(candidate.verifiedBy))
           .filter((candidate) => (
             meeting.meetingNumber === undefined
             || candidate.meetingNumber === undefined
@@ -442,7 +453,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   }, [search, taskType, tasks]);
 
   const getLeadFilterCount = (option: typeof LEAD_FILTER_OPTIONS[number]) => (
-    option === 'All Leads' ? filterCounts.activeLeads : filterCounts.removedLeads
+    option === 'All Prospects' ? filterCounts.activeLeads : filterCounts.removedLeads
   );
   const getMeetingFilterCount = (option: string) => (
     option === 'All Meetings' ? filterCounts.meetings : (filterCounts.meetingsByTitle[option] ?? 0)
@@ -500,7 +511,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
       const removedLead = isRemovedLead(task.leadStatus);
       const matchesLead = taskStage !== 'Leads'
-        || (leadFilter === 'Removed Leads'
+        || (leadFilter === 'Removed Prospects'
           ? removedLead
           : !removedLead);
       const matchesMeeting = taskStage !== 'Meetings'
@@ -521,7 +532,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           <View style={styles.headerCard}>
             <View style={[styles.heading, isMobile && styles.mobileHeading]}>
               <View style={[styles.headingCopy, isMobile && styles.mobileHeadingCopy]}>
-                <Text style={styles.title}>{allTaskMode ? 'All Task' : allLeadsMode ? 'All Leads' : taskToDoMode ? 'Task To Do' : todaysTaskMode ? "Today's Task" : pendingTaskMode ? 'Pending Task' : future3DaysTaskMode ? 'Future 3 Days' : 'Your Tasks'}</Text>
+                <Text style={styles.title}>{allTaskMode ? 'All Task' : allLeadsMode ? 'All Prospects' : taskToDoMode ? 'Task To Do' : todaysTaskMode ? "Today's Task" : pendingTaskMode ? 'Pending Task' : future3DaysTaskMode ? 'Future 3 Days' : 'Your Tasks'}</Text>
               </View>
               <View style={[styles.headingActions, isMobile && styles.mobileHeadingActions]}>
                 <Pressable
@@ -538,11 +549,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                 {SHOW_NEW_LEAD_ACTION ? (
                   <Pressable
                     accessibilityRole="button"
-                    accessibilityLabel="Create new lead"
+                    accessibilityLabel="Create new prospect"
                     onPress={onCreateNewLead}
                     style={({ pressed }) => [styles.secondaryAction, pressed && styles.pressed]}
                   >
-                    <Text style={styles.secondaryActionText}>New Lead</Text>
+                    <Text style={styles.secondaryActionText}>New Prospect</Text>
                   </Pressable>
                 ) : null}
                 <Pressable
@@ -590,7 +601,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                       setAllTaskFilter(value);
                       setOpenDropdown(null);
                     }}
-                    accessibilityLabel="Filter all tasks by lead or meeting label"
+                    accessibilityLabel="Filter all tasks by prospect or meeting label"
                   />
                 </View>
               ) : allLeadsMode ? null : future3DaysTaskMode ? (
@@ -626,7 +637,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                   <View style={[styles.meetingStageRoot, isMobile && styles.mobileStageRoot]}>
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel="Filter leads by status"
+                      accessibilityLabel="Filter prospects by status"
                       accessibilityState={{
                         expanded: openDropdown === 'lead',
                         selected: taskStage === 'Leads',
@@ -799,7 +810,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           ) : (
             <View style={styles.emptyState}>
               <Icon source="clipboard-search-outline" size={30} color={theme.colors.subtle} />
-              <Text style={styles.emptyTitle}>{allLeadsMode && !search ? 'No leads assigned' : allLeadsMode ? 'No matching leads found' : pendingTaskMode && !search ? 'No pending tasks' : future3DaysTaskMode && !search ? 'No tasks scheduled' : 'No matching tasks found'}</Text>
+              <Text style={styles.emptyTitle}>{allLeadsMode && !search ? 'No prospects assigned' : allLeadsMode ? 'No matching prospects found' : pendingTaskMode && !search ? 'No pending tasks' : future3DaysTaskMode && !search ? 'No tasks scheduled' : 'No matching tasks found'}</Text>
               <Text style={styles.emptyText}>{pendingTaskMode && !search ? 'There are no pending tasks.' : future3DaysTaskMode && !search ? `There are no tasks scheduled for ${futureDayFilter.toLowerCase()}.` : 'Try changing the search.'}</Text>
             </View>
           )}

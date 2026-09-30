@@ -38,6 +38,7 @@ import { leadService } from './src/services/LeadService';
 import { leadSearchService } from './src/services/LeadSearchService';
 import { meetingService } from './src/services/MeetingService';
 import { documentApi } from './src/api/document';
+import { meetingApi } from './src/api/meeting';
 import type { CreateLeadRequest } from './src/types/lead';
 import type {
   MeetingFormSubmission,
@@ -48,7 +49,7 @@ import { PwaInstallPrompt } from './src/components/PwaInstallPrompt';
 
 registerTranslation('en', en);
 
-const MEETING_LEAD_STATUS: Record<MeetingFormSubmission['leadStatus'], MeetingLeadStatus> = {
+const MEETING_LEAD_STATUS: Record<NonNullable<MeetingFormSubmission['leadStatus']>, MeetingLeadStatus> = {
   'Work In Progress': 'WORK_IN_PROGRESS',
   'Converted as Client': 'CONVERTED_CLIENT',
   'Client Not Interested': 'CLIENT_NOT_INTERESTED',
@@ -57,7 +58,23 @@ const MEETING_LEAD_STATUS: Record<MeetingFormSubmission['leadStatus'], MeetingLe
 };
 
 const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; workflow: MeetingWorkflowRequest } => {
-  if (!form.meetingCode) throw new Error('No active meeting is available for this lead.');
+  if (!form.meetingCode) throw new Error('No active meeting is available for this prospect.');
+  if (form.meetingConducted === 'NOT_CONDUCTED') {
+    return {
+      meetingCode: form.meetingCode,
+      workflow: {
+        meetingConducted: 'NOT_CONDUCTED',
+        meetingRemarks: form.remarks.trim(),
+        nextPlanDate: form.nextPlanDate,
+        latitude: form.latitude,
+        longitude: form.longitude,
+        ...(form.accuracy !== null && form.accuracy !== undefined ? { accuracy: form.accuracy } : {}),
+      },
+    };
+  }
+  if (!form.meetingMode || !form.leadStatus || !form.aloneWith) {
+    throw new Error('Meeting details are incomplete.');
+  }
   const meetingMode = form.meetingMode === 'Physical' ? 'PHYSICAL' : 'VIRTUAL/ONLINE';
   return {
     meetingCode: form.meetingCode,
@@ -72,7 +89,7 @@ const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; 
       address: form.address,
       ...(form.accuracy !== null && form.accuracy !== undefined ? { accuracy: form.accuracy } : {}),
       ...(form.visitingCard ? { visitingCard: form.visitingCard } : {}),
-      ...(form.leadStatus === 'Work In Progress' ? { nextPlanDate: form.nextPlanDate } : {}),
+      ...(form.nextPlanDate ? { nextPlanDate: form.nextPlanDate } : {}),
     },
   };
 };
@@ -173,24 +190,33 @@ function AppShell() {
 
   const openTaskWorkflowForm = async (task: SalesTask) => {
     setMessage(null);
+    if (task.verificationPending) {
+      setMessage('Verification is pending for this prospect. The update form will be available after Process Coordinator verification.');
+      return;
+    }
     const existingMeetingCode = task.meetingCode?.trim();
     if (existingMeetingCode) {
-      setLeadForm({ type: 'meeting', lead: { ...task, meetingCode: existingMeetingCode } });
+      const detail = await meetingApi.getMeeting(existingMeetingCode).catch(() => null);
+      setLeadForm({
+        type: 'meeting',
+        lead: { ...task, meetingCode: existingMeetingCode, scheduledAt: detail?.data?.meetingDate ?? task.scheduledAt },
+      });
       return;
     }
 
     const leadId = getTaskLeadIdentifier(task);
     if (!leadId) {
-      setMessage('No backend lead identifier is available for this meeting.');
+      setMessage('No backend prospect identifier is available for this meeting.');
       return;
     }
     try {
       const meetingCode = await meetingService.resolveActiveMeetingCode(leadId);
       if (!meetingCode) {
-        setMessage('No active meeting is available for this lead.');
+        setMessage('No active meeting is available for this prospect.');
         return;
       }
-      const resolvedTask = { ...task, meetingCode };
+      const detail = await meetingApi.getMeeting(meetingCode).catch(() => null);
+      const resolvedTask = { ...task, meetingCode, scheduledAt: detail?.data?.meetingDate ?? task.scheduledAt };
       setSelectedSalesTask((current) => current?.id === task.id ? resolvedTask : current);
       setLeadForm({ type: 'meeting', lead: resolvedTask });
     } catch (error) {
@@ -314,7 +340,7 @@ function AppShell() {
       { key: 'today-task', label: "Today's Task" },
       { key: 'pending-task', label: 'Pending Task' },
       { key: 'future-3-days', label: 'Future 3 Days' },
-      { key: 'all-leads', label: 'All Leads' },
+      { key: 'all-leads', label: 'All Prospects' },
       { key: 'all-clients', label: 'All Clients', disabled: true },
       { key: 'profile', label: 'My Profile' },
     ] as const;
@@ -762,14 +788,14 @@ function AppShell() {
                   onSubmit={leadForm.type === 'new-lead'
                     ? async (request: CreateLeadRequest) => {
                         await leadService.createLead(request);
-                        return leadService.getState().success ?? 'Lead created successfully.';
+                        return leadService.getState().success ?? 'Prospect created successfully.';
                       }
                     : async (form: MeetingFormSubmission) => {
                           const task = leadForm.lead;
-                          if (!task) throw new Error('Lead task is unavailable.');
+                          if (!task) throw new Error('Prospect task is unavailable.');
                           const meetingCode = form.meetingCode?.trim() || task.meetingCode?.trim() || null;
                           if (!meetingCode) {
-                            throw new Error('No active meeting is available for this lead. Please refresh and try again.');
+                            throw new Error('No active meeting is available for this prospect. Please refresh and try again.');
                           }
                           const visitingCard = form.cardImage
                             ? await documentApi.upload(form.cardImage)

@@ -45,12 +45,12 @@ export class LeadService {
       this.setState({
         createdLead,
         error: null,
-        success: response.message ?? 'Lead created successfully.',
+        success: response.message ?? 'Prospect created successfully.',
       });
       return createdLead;
     } catch (error) {
       this.setState({
-        error: toMessage(error, 'Lead creation failed.'),
+        error: toMessage(error, 'Prospect creation failed.'),
       });
       throw error;
     } finally {

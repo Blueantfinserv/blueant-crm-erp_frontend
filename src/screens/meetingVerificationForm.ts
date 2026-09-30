@@ -2,10 +2,16 @@ import type { MeetingResponse, MeetingVerificationRequest } from '../types/meeti
 
 const LEAD_FIELDS = ['ageGroup', 'existingSip', 'profession', 'professionDetail', 'bestTimeForMeeting'] as const;
 
+const normalizedMeetingWith = (value?: string) => {
+  const normalized = value?.trim().toUpperCase().replace(/\s+/g, '_');
+  if (['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(normalized ?? '')) return 'SOMEONE';
+  return normalized === 'SELF' ? 'SELF' : '';
+};
+
 export const createMeetingVerificationForm = (
   meeting: MeetingResponse,
   verified: readonly MeetingResponse[],
-): Record<keyof MeetingVerificationRequest, string> => {
+): Record<Exclude<keyof MeetingVerificationRequest, 'aloneWith'>, string> => {
   const previous = verified.filter((item) => {
     if (item.meetingCode && item.meetingCode === meeting.meetingCode) return false;
     if (item.leadCode?.trim() && meeting.leadCode?.trim()) {
@@ -22,9 +28,9 @@ export const createMeetingVerificationForm = (
   const form = {
     meetingDate: '',
     meetingTiming: '',
-    meetingWith: meeting.meetingWith?.trim() || meeting.aloneWith?.trim() || '',
-    personName: '',
-    position: '',
+    meetingWith: normalizedMeetingWith(meeting.meetingWith || meeting.aloneWith),
+    personName: meeting.personName?.trim() || '',
+    position: meeting.position?.trim() || '',
     ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '',
   };
   for (const field of LEAD_FIELDS) {

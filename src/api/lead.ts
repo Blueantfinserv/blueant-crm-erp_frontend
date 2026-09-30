@@ -54,12 +54,12 @@ const request = async <T extends LeadResponse>(path: string, init: RequestInit):
   const leadResponse = payload as ApiResponseLeadResponse<T> | null;
   if (!response.ok || leadResponse?.success !== true) {
     throw new LeadApiError(
-      getBackendMessage(payload) ?? `Lead request failed (${response.status}).`,
+      getBackendMessage(payload) ?? `Prospect request failed (${response.status}).`,
       String(response.status),
     );
   }
   if (!leadResponse.data) {
-    throw new LeadApiError('Lead response data is unavailable.', 'INVALID_RESPONSE');
+    throw new LeadApiError('Prospect response data is unavailable.', 'INVALID_RESPONSE');
   }
   return leadResponse;
 };

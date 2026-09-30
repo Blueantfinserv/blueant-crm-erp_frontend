@@ -12,6 +12,7 @@ export class MeetingService {
   private hiddenTaskLeadKeys = new Set<string>();
   private workflowTimestamps = new Map<string, string>();
   private pendingVerificationMeetings: MeetingResponse[] = [];
+  private verifiedMeetings: MeetingResponse[] = [];
   private employeeCode: string | null = null;
   private requestGeneration = 0;
 
@@ -29,6 +30,7 @@ export class MeetingService {
   subscribe(listener: Listener) { this.listeners.add(listener); listener(this.state); return () => { this.listeners.delete(listener); }; }
   getState() { return this.state; }
   getPendingVerificationMeetings() { return this.pendingVerificationMeetings; }
+  getVerifiedMeetings() { return this.verifiedMeetings; }
   private setState(next: Partial<MeetingQueueState>) { this.state = { ...this.state, ...next }; this.listeners.forEach((listener) => listener(this.state)); }
 
   async loadMeetings() {
@@ -36,9 +38,10 @@ export class MeetingService {
     const employeeCode = this.employeeCode;
     this.setState({ isLoading: true, error: null });
     try {
-      const [response, pendingVerificationResponse] = await Promise.all([
+      const [response, pendingVerificationResponse, verifiedResponse] = await Promise.all([
         meetingApi.getMeetings(),
         meetingApi.getByVerificationStatus('PENDING').catch(() => null),
+        meetingApi.getByVerificationStatus('VERIFIED').catch(() => null),
       ]);
       const pendingVerificationCodes = new Set(
         (pendingVerificationResponse?.data ?? [])
@@ -78,6 +81,9 @@ export class MeetingService {
       }));
       if (generation !== this.requestGeneration) return;
       this.pendingVerificationMeetings = pendingVerificationResponse?.data ?? [];
+      this.verifiedMeetings = (verifiedResponse?.data ?? []).filter((meeting) => (
+        employeeCode === null || meeting.employeeCode === employeeCode
+      ));
       this.setState({ meetings: meetings.filter((meeting) => !this.isHiddenTaskLead(meeting)), timestamp: response.timestamp ?? null, error: null });
     } catch (error) {
       if (generation === this.requestGeneration) this.setState({ meetings: [], timestamp: null, error: toMessage(error) });
@@ -108,7 +114,7 @@ export class MeetingService {
 
   async submitWorkflow(meetingCode: string, request: MeetingWorkflowRequest): Promise<MeetingResponse> {
     const code = meetingCode.trim();
-    if (!code) throw new Error('No active meeting is available for this lead.');
+    if (!code) throw new Error('No active meeting is available for this prospect.');
     if (this.submissions.has(code)) throw new Error('This meeting submission is already in progress.');
     this.submissions.add(code);
     try {
@@ -140,6 +146,7 @@ export class MeetingService {
     this.hiddenTaskLeadKeys.clear();
     this.workflowTimestamps.clear();
     this.pendingVerificationMeetings = [];
+    this.verifiedMeetings = [];
     this.setState(initialState);
   }
 }

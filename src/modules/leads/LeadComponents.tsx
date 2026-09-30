@@ -14,7 +14,7 @@ export function LeadStatsCard({ title, value, tone = 'default' }: { title: strin
 export function LeadFilterBar() {
   return (
     <View style={styles.filterBar}>
-      {['Search Lead', 'Lead Status Filter', 'Assigned To Filter', 'Source Filter', 'Date Range Filter'].map((label, index) => (
+      {['Search Prospect', 'Prospect Status Filter', 'Assigned To Filter', 'Source Filter', 'Date Range Filter'].map((label, index) => (
         <View key={label} style={[styles.filterBox, index === 0 && styles.searchBox]}>
           <Text style={styles.filterText}>{label}</Text>
         </View>
