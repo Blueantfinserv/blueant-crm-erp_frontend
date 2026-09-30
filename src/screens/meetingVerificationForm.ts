@@ -4,7 +4,7 @@ const LEAD_FIELDS = ['ageGroup', 'existingSip', 'profession', 'professionDetail'
 
 const normalizedMeetingWith = (value?: string) => {
   const normalized = value?.trim().toUpperCase().replace(/\s+/g, '_');
-  if (['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(normalized ?? '')) return 'SOMEONE';
+  if (['SOMEONE', 'SOMEONE_ELSE', 'WITH_SOMEONE'].includes(normalized ?? '')) return 'SOMEONE_ELSE';
   return normalized === 'SELF' ? 'SELF' : '';
 };
 

@@ -66,7 +66,7 @@ const emptyForm = (): VerificationForm => ({ meetingDate: '', meetingTiming: '',
 const HOURS = Array.from({ length: 14 }, (_, index) => String(index + 9).padStart(2, '0'));
 const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
-const MEETING_WITH_OPTIONS = ['SELF', 'SOMEONE'] as const;
+const MEETING_WITH_OPTIONS = ['SELF', 'SOMEONE_ELSE'] as const;
 const AGE_GROUP_LABELS: Record<string, string> = {
   BELOW_25: 'Below 25', AGE_25_35: '25–35', AGE_36_45: '36–45',
   AGE_46_55: '46–55', AGE_56_65: '56–65', ABOVE_65: '65+',
@@ -382,7 +382,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     if (!notConducted && !form.meetingWith) {
       setSubmitError('Please choose who joined the meeting.'); return;
     }
-    if (!notConducted && form.meetingWith === 'SOMEONE' && (!form.personName.trim() || !form.position.trim())) {
+    if (!notConducted && form.meetingWith === 'SOMEONE_ELSE' && (!form.personName.trim() || !form.position.trim())) {
       setSubmitError('Please enter the person name and position.'); return;
     }
     const visibleValues = Object.fromEntries(
@@ -392,7 +392,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     ) as MeetingVerificationRequest;
     const payload: MeetingVerificationRequest = notConducted ? visibleValues : {
       ...visibleValues,
-      aloneWith: form.meetingWith as 'SELF' | 'SOMEONE',
+      aloneWith: form.meetingWith === 'SELF' ? 'SELF' : 'SOMEONE',
       meetingWith: form.meetingWith,
     };
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);

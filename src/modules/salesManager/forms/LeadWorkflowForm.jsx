@@ -86,7 +86,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
     locationText: lead?.locationText ?? "",
     meetingStatus: "Meeting Conducted",
     meetingMode: "",
-    meetingDate: lead?.scheduledAt?.slice(0, 10) || getLocalDate(),
+    meetingDate: getLocalDate(),
     leadStatus: "",
     joinedWith: "Alone",
     nextPlanDate: lead?.nextPlanDate ?? "",
