@@ -45,6 +45,7 @@ const assignedSalesPersonForMobile = async (mobileNumber: string) => {
   if (!uniqueLeadId) return null;
   return (await leadApi.getLeadDetails(uniqueLeadId)).data?.assignedEmployeeName?.trim() || null;
 };
+const POSITION_OPTIONS = ['Team leader', 'Admin', 'Super Admin', 'Sales Manager', 'RM'];
 const FIELDS: readonly { key: keyof VerificationForm; label: string; placeholder: string }[] = [
   { key: 'meetingDate', label: 'Meeting Date', placeholder: 'Choose meeting date' },
   { key: 'meetingTiming', label: 'Meeting Time', placeholder: 'HH:mm:ss' },
@@ -463,7 +464,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     </View>
     <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
-      <ScrollView contentContainerStyle={styles.modalBody}>{selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} /> : null}{tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected ? <View style={styles.formSection}><Text style={styles.sectionTitle}>{isNotConductedMeeting(selected) ? 'Verify Location Visit' : 'PC Additional Information'}</Text><Text style={styles.help}>{isNotConductedMeeting(selected) ? 'Confirm only the date and time of this visited-but-not-met record.' : 'Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.'}</Text><View style={styles.formGrid}>{(isNotConductedMeeting(selected) ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting} onPress={() => void verify()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'}</Text></Pressable></View> : null}</ScrollView>
+      <ScrollView contentContainerStyle={styles.modalBody}>{selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} /> : null}{tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected ? <View style={[styles.formSection, verificationStyles.section]}><Text style={styles.sectionTitle}>{isNotConductedMeeting(selected) ? 'Verify Location Visit' : 'PC Additional Information'}</Text><Text style={styles.help}>{isNotConductedMeeting(selected) ? 'Confirm only the date and time of this visited-but-not-met record.' : 'Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.'}</Text><View style={styles.formGrid}>{(isNotConductedMeeting(selected) ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}<Pressable disabled={submitting} onPress={() => void verify()} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'}</Text></Pressable></View> : null}</ScrollView>
     </View></View></Modal>
     <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={styles.backdrop}><View style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
@@ -482,6 +483,13 @@ function Metric({ icon, value, label, tone }: { icon: string; value: number; lab
 function TaskToolbar({ search, onSearch, status, onStatus, header = false }: { search: string; onSearch: (value: string) => void; status: 'ALL' | 'TODAY' | 'PENDING' | 'OVERDUE'; onStatus: (value: 'ALL' | 'TODAY' | 'PENDING' | 'OVERDUE') => void; header?: boolean }) {
   return <View style={[styles.taskToolbar, header && styles.taskToolbarHeader]}><TextInput value={search} onChangeText={onSearch} placeholder="Search lead name or number" placeholderTextColor="#94A3B8" style={styles.filterInput} /><View style={styles.chips}>{(['ALL', 'TODAY', 'PENDING', 'OVERDUE'] as const).map((value) => <Pressable key={value} onPress={() => onStatus(value)} style={[styles.chip, status === value && styles.chipActive]}><Text style={[styles.chipText, status === value && styles.chipTextActive]}>{value === 'ALL' ? 'ALL TASKS' : `${value} TASKS`}</Text></Pressable>)}</View></View>;
 }
+
+const verificationStyles = StyleSheet.create({
+  section: { gap: 6, paddingTop: 7 },
+  field: { width: '23%', minWidth: 170, gap: 2 },
+  control: { height: Platform.OS === 'web' ? 30 : 36 },
+  input: { height: Platform.OS === 'web' ? 30 : 36, paddingVertical: 4, paddingHorizontal: 9, fontSize: 11 },
+});
 
 function VerificationFormField({
   field,
@@ -504,9 +512,9 @@ function VerificationFormField({
 
   if (field.key === 'meetingDate') {
     return (
-      <View style={[styles.field, tone]}>
+      <View style={[styles.field, tone, verificationStyles.field]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
-        <Pressable onPress={() => setDatePickerVisible(true)} style={styles.assignDatePicker}>
+        <Pressable onPress={() => setDatePickerVisible(true)} style={[styles.assignDatePicker, verificationStyles.control]}>
           <Icon source="calendar-month-outline" size={18} color="#3156C8" />
           <Text style={styles.assignDatePickerText}>{form.meetingDate || field.placeholder}</Text>
           <Icon source="chevron-down" size={18} color="#64748B" />
@@ -527,14 +535,14 @@ function VerificationFormField({
       update(hour ? `${hour}:00:00` : '');
     };
     return (
-      <View style={[styles.field, tone]}>
+      <View style={[styles.field, tone, verificationStyles.field]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
         <View style={styles.timePickerRow}>
-          <View style={[styles.pickerShell, styles.timePicker]}><Picker selectedValue={selectedHour} onValueChange={updateTime} style={styles.picker}><Picker.Item label="Hour" value="" />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} />)}</Picker></View>
+          <View style={[styles.pickerShell, styles.timePicker, verificationStyles.control]}><Picker selectedValue={selectedHour} onValueChange={updateTime} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Hour" value="" />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} />)}</Picker></View>
           <Text style={styles.timeSeparator}>:</Text>
-          <View style={styles.secondsBox}><Text style={styles.secondsValue}>00</Text></View>
+          <View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
           <Text style={styles.timeSeparator}>:</Text>
-          <View style={styles.secondsBox}><Text style={styles.secondsValue}>00</Text></View>
+          <View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
         </View>
       </View>
     );
@@ -550,17 +558,19 @@ function VerificationFormField({
           ? PROFESSION_OPTIONS
           : field.key === 'meetingWith'
             ? MEETING_WITH_OPTIONS
-            : null;
+            : field.key === 'position'
+              ? POSITION_OPTIONS
+              : null;
   if (options) {
     return (
-      <View style={[styles.field, tone]}>
+      <View style={[styles.field, tone, verificationStyles.field]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
-        <View style={styles.pickerShell}><Picker selectedValue={form[field.key]} onValueChange={update} style={styles.picker}><Picker.Item label="Select an option" value="" />{options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : field.key === 'meetingWith' ? option === 'SELF' ? 'Self' : 'With someone' : option} value={option} />)}</Picker></View>
+        <View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue={form[field.key]} onValueChange={update} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Select an option" value="" />{options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : field.key === 'meetingWith' ? option === 'SELF' ? 'Self' : 'With someone' : option} value={option} />)}</Picker></View>
       </View>
     );
   }
 
-  return <View style={[styles.field, tone]}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={styles.input} /></View>;
+  return <View style={[styles.field, tone, verificationStyles.field]}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={[styles.input, verificationStyles.input]} /></View>;
 }
 
 function StyledSelect({ value, onChange, placeholder, options }: { value: string; onChange: (value: string) => void; placeholder: string; options: readonly { value: string; label: string }[] }) {

@@ -12,6 +12,12 @@ export const createMeetingVerificationForm = (
   meeting: MeetingResponse,
   verified: readonly MeetingResponse[],
 ): Record<Exclude<keyof MeetingVerificationRequest, 'aloneWith'>, string> => {
+  const currentRecords = [meeting, ...verified.filter((item) => (
+    Boolean(meeting.meetingCode) && item.meetingCode === meeting.meetingCode
+  ))];
+  const meetingWith = currentRecords.map((item) => normalizedMeetingWith(item.aloneWith))
+    .find(Boolean) || currentRecords.map((item) => normalizedMeetingWith(item.meetingWith))
+    .find(Boolean) || '';
   const previous = verified.filter((item) => {
     if (item.meetingCode && item.meetingCode === meeting.meetingCode) return false;
     if (item.leadCode?.trim() && meeting.leadCode?.trim()) {
@@ -28,7 +34,7 @@ export const createMeetingVerificationForm = (
   const form = {
     meetingDate: '',
     meetingTiming: '',
-    meetingWith: normalizedMeetingWith(meeting.meetingWith || meeting.aloneWith),
+    meetingWith,
     personName: meeting.personName?.trim() || '',
     position: meeting.position?.trim() || '',
     ageGroup: '', existingSip: '', profession: '', professionDetail: '', bestTimeForMeeting: '',
