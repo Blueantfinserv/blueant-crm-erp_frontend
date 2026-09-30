@@ -464,10 +464,17 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     if (form.meetingTiming && !/^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(form.meetingTiming)) {
       setSubmitError('Meeting Time must use HH:mm:ss format.'); return;
     }
+    if (!notConducted && form.meetingWith === 'SOMEONE_ELSE' && (!form.personName.trim() || !form.position.trim())) {
+      setSubmitError('Please enter the person name and position.'); return;
+    }
     const payload = Object.fromEntries(
       (notConducted ? [MEETING_TIMING_FIELD] : FIELDS).filter((field) => isVerificationFieldVisible(field.key, form.meetingWith))
         .map((field) => [field.key, form[field.key].trim()]).filter(([, fieldValue]) => Boolean(fieldValue)),
     ) as MeetingVerificationRequest;
+    if (!notConducted) {
+      payload.aloneWith = form.meetingWith === 'SELF' ? 'SELF' : 'SOMEONE';
+      payload.meetingWith = form.meetingWith;
+    }
     submittingRef.current = true; setSubmitting(true); setSubmitError(null);
     const generation = ++dataGeneration.current;
     const meetingCode = selected.meetingCode;
