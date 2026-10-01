@@ -412,10 +412,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     try {
       await meetingService.verifyMeeting(selected.meetingCode, payload);
       setPending((items) => items.filter((m) => m.meetingCode !== selected.meetingCode));
+      setVerified(await meetingService.getVerificationMeetings('VERIFIED'));
       setSelected(null);
-      void meetingService.getVerificationMeetings('VERIFIED')
-        .then(setVerified)
-        .catch(() => undefined);
     } catch (e) { setSubmitError(e instanceof Error ? e.message : 'Meeting verification failed.'); }
     finally { submittingRef.current = false; setSubmitting(false); }
   };
