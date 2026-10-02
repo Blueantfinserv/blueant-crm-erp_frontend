@@ -1,4 +1,5 @@
 import { SecureStorageService } from '../services/SecureStorageService';
+import { requestWithSessionRefresh } from './authenticatedRequest';
 import type { ActiveMeetingResponse, ApiResponse, CancelMeetingRequest, MeetingDetail, MeetingDropdown, MeetingResponse, MeetingSearchRequest, MeetingSummary, MeetingUpdate, PageResponse, RescheduleMeetingRequest, ScheduleMeetingRequest, MeetingWorkflowRequest, MeetingVerificationRequest } from '../types/meeting';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
@@ -10,7 +11,7 @@ const call = async <T>(path: string, init: RequestInit = {}): Promise<ApiRespons
   if (!token) throw new MeetingApiError('Authentication token is unavailable.', 'UNAUTHENTICATED');
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers: { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${token}`, ...init.headers } });
+    response = await requestWithSessionRefresh(token, (accessToken) => fetch(`${API_BASE_URL}${path}`, { ...init, headers: { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${accessToken}`, ...init.headers } }));
   } catch { throw new MeetingApiError('Network unavailable. Please check your internet connection.', 'NETWORK_ERROR'); }
   const payload: unknown = response.status === 204 ? { success: true, status: 204 } : await response.json().catch(() => null);
   const result = payload as ApiResponse<T> | null;
@@ -25,15 +26,15 @@ const directCall = async <T>(path: string, init: RequestInit): Promise<T> => {
   if (!token) throw new MeetingApiError('Authentication token is unavailable.', 'UNAUTHENTICATED');
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await requestWithSessionRefresh(token, (accessToken) => fetch(`${API_BASE_URL}${path}`, {
       ...init,
       headers: {
         Accept: 'application/json',
         ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${accessToken}`,
         ...init.headers,
       },
-    });
+    }));
   } catch {
     throw new MeetingApiError('Network unavailable. Please check your internet connection.', 'NETWORK_ERROR');
   }

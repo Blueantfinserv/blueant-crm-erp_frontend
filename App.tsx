@@ -6,13 +6,12 @@ import { AuthProvider } from './src/context/AuthProvider';
 import { useAuth } from './src/context/AuthContext';
 import { SplashScreen } from './src/screens/auth/SplashScreen';
 import { LoginScreen } from './src/screens/auth/LoginScreen';
-import { CreateAccountScreen } from './src/screens/auth/CreateAccountScreen';
 import { theme } from './src/theme/theme';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { SalesCoordinatorScreen } from './src/screens/SalesCoordinatorScreen';
 import { AssignedLeadsScreen } from './src/screens/AssignedLeadsScreen';
 import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
-import { AuthRole, RegisterCredentials } from './src/types/auth';
+import { AuthRole } from './src/types/auth';
 import { LoginFormValues } from './src/utils/authValidation';
 import { getRoleNavigationConfig } from './src/navigation/navigationConfig';
 import { getRoleExperience, isSalesWorkspaceExperience, type FrontendExperience } from './src/navigation/roleExperience';
@@ -97,7 +96,6 @@ const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; 
 type ScreenState =
   | 'splash'
   | 'login'
-  | 'createAccount'
   | 'dashboard'
   | 'reports'
   | 'dashboard-list'
@@ -271,7 +269,7 @@ function AppShell() {
       }
       return;
     }
-    if (!['login', 'createAccount'].includes(screen)) {
+    if (screen !== 'login') {
       screenHistory.current = [];
       setScreen('login');
     }
@@ -385,9 +383,6 @@ function AppShell() {
             onLogin={(credentials: LoginFormValues) => {
               void runAction(() => auth.login(credentials));
             }}
-            onCreateAccount={(credentials) => {
-              void runAction(() => auth.createAccount(credentials), 'dashboard');
-            }}
             onForgotPassword={(credentials) => auth.forgotPassword(credentials)}
             onResetPassword={(credentials) => auth.resetPassword(credentials)}
             onHelp={() => openLegalPage('help')}
@@ -397,18 +392,6 @@ function AppShell() {
             loading={auth.isLoading || auth.isRefreshing}
             errorMessage={message ?? auth.error}
             successMessage={auth.success}
-          />
-        );
-      case 'createAccount':
-        return (
-          <CreateAccountScreen
-            onBack={() => navigate('login')}
-            onCreateAccount={(credentials: RegisterCredentials) => {
-              void runAction(() => auth.createAccount(credentials), 'login');
-            }}
-            onLogin={() => navigate('login')}
-            loading={auth.isLoading || auth.isRefreshing}
-            errorMessage={message ?? auth.error}
           />
         );
       case 'dashboard':

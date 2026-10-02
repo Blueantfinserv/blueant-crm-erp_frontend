@@ -51,17 +51,6 @@ export const validateResetToken = (value: string) => {
   return '';
 };
 
-export const validateRegisterForm = (values: { email: string; password: string; confirmPassword: string }) => {
-  const email = validateEmail(values.email);
-  const password = validateStrongPassword(values.password);
-  const confirmPassword = validateConfirmPassword(values.password, values.confirmPassword);
-  return {
-    ...(email ? { email } : null),
-    ...(password ? { password } : null),
-    ...(confirmPassword ? { confirmPassword } : null),
-  };
-};
-
 export const validateLoginForm = (values: Pick<LoginFormValues, 'employeeCode' | 'password'>): LoginFieldErrors => {
   const employeeCode = validateEmployeeCode(values.employeeCode);
   const password = validatePassword(values.password);

@@ -1,4 +1,5 @@
 import { SecureStorageService } from '../services/SecureStorageService';
+import { requestWithSessionRefresh } from './authenticatedRequest';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
 
@@ -36,14 +37,14 @@ export const documentApi = {
 
     let response: Response;
     try {
-      response = await fetch(`${API_BASE_URL}/v1/documents`, {
+      response = await requestWithSessionRefresh(token, (accessToken) => fetch(`${API_BASE_URL}/v1/documents`, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: formData,
-      });
+      }));
     } catch {
       throw new Error('Visiting card upload failed. Please check your internet connection.');
     }

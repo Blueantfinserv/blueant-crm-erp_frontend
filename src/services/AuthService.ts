@@ -7,7 +7,6 @@ import {
   AuthUser,
   ForgotPasswordCredentials,
   LoginCredentials,
-  RegisterCredentials,
   ResetPasswordCredentials,
 } from '../types/auth';
 
@@ -126,21 +125,6 @@ export class AuthService {
       if (generation === this.operationGeneration) {
         this.setState({ isInitialized: true, isLoading: false, error: toMessage(error, 'Login failed.') });
       }
-      throw error;
-    }
-  }
-
-  async createAccount(credentials: RegisterCredentials): Promise<AuthResponse> {
-    this.setState({ isLoading: true, error: null, success: null });
-    try {
-      const response = await authApi.register(credentials);
-      await this.persistSession(response, true);
-      return response;
-    } catch (error) {
-      this.setState({
-        isLoading: false,
-        error: toMessage(error, 'Account activation failed.'),
-      });
       throw error;
     }
   }
@@ -270,7 +254,6 @@ export const authService = new AuthService();
 
 export type AuthServiceApi = {
   login: (credentials: LoginCredentials) => Promise<AuthResponse>;
-  createAccount: (credentials: RegisterCredentials) => Promise<AuthResponse>;
   forgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   resetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   refreshToken: (refreshToken: string) => Promise<import('../types/auth').RefreshTokenResponseData>;

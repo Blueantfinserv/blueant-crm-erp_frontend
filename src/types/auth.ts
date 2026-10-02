@@ -57,12 +57,6 @@ export type LoginRequest = LoginCredentials & {
   operatingSystem?: string;
 };
 
-export type RegisterCredentials = {
-  email: string;
-  password: string;
-  confirmPassword: string;
-};
-
 export type ForgotPasswordCredentials = {
   employeeCode: string;
   email: string;

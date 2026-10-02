@@ -59,26 +59,15 @@ export class MeetingService {
         seenMeetingCodes.add(meetingCode);
         return true;
       });
-      const meetings = await Promise.all(uniqueMeetings.map(async (meeting) => {
+      const meetings = uniqueMeetings.map((meeting) => {
         const meetingCode = meeting.meetingCode?.trim();
         if (!meetingCode) return meeting;
-        try {
-          const details = (await meetingApi.getMeeting(meetingCode)).data;
-          const merged = details ? { ...meeting, ...details } : meeting;
-          const withVerificationStatus = pendingVerificationCodes.has(meetingCode)
-            ? { ...merged, verificationStatus: 'PENDING' as const }
-            : merged;
-          const workflowUpdatedAt = this.workflowTimestamps.get(meetingCode);
-          return workflowUpdatedAt ? { ...withVerificationStatus, workflowUpdatedAt } : withVerificationStatus;
-        }
-        catch {
-          const workflowUpdatedAt = this.workflowTimestamps.get(meetingCode);
-          const withVerificationStatus = pendingVerificationCodes.has(meetingCode)
-            ? { ...meeting, verificationStatus: 'PENDING' as const }
-            : meeting;
-          return workflowUpdatedAt ? { ...withVerificationStatus, workflowUpdatedAt } : withVerificationStatus;
-        }
-      }));
+        const withVerificationStatus = pendingVerificationCodes.has(meetingCode)
+          ? { ...meeting, verificationStatus: 'PENDING' as const }
+          : meeting;
+        const workflowUpdatedAt = this.workflowTimestamps.get(meetingCode);
+        return workflowUpdatedAt ? { ...withVerificationStatus, workflowUpdatedAt } : withVerificationStatus;
+      });
       if (generation !== this.requestGeneration) return;
       this.pendingVerificationMeetings = pendingVerificationResponse?.data ?? [];
       this.verifiedMeetings = (verifiedResponse?.data ?? []).filter((meeting) => (

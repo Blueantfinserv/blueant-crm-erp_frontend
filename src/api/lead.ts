@@ -1,4 +1,5 @@
 import { SecureStorageService } from '../services/SecureStorageService';
+import { requestWithSessionRefresh } from './authenticatedRequest';
 import { ApiResponseLeadResponse, AssignLeadRequest, CreateLeadRequest, LeadDetailResponse, LeadResponse } from '../types/lead';
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
@@ -34,15 +35,15 @@ const request = async <T extends LeadResponse>(path: string, init: RequestInit):
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    response = await requestWithSessionRefresh(accessToken, (token) => fetch(`${API_BASE_URL}${path}`, {
       ...init,
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `Bearer ${token}`,
         ...init.headers,
       },
-    });
+    }));
   } catch {
     throw new LeadApiError(
       'Network unavailable. Please check your internet connection.',

@@ -7,7 +7,6 @@ import type { ForgotPasswordCredentials, ResetPasswordCredentials } from '../../
 
 type Props = {
   onLogin: (credentials: LoginFormValues) => Promise<void> | void;
-  onCreateAccount: (credentials: { email: string; password: string; confirmPassword: string }) => Promise<void> | void;
   onForgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   onResetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   onHelp: () => void;

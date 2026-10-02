@@ -1,11 +1,10 @@
 import { createContext, useContext } from 'react';
 import { AuthState } from '../types/auth';
 import { AuthService } from '../services/AuthService';
-import { ForgotPasswordCredentials, LoginCredentials, RegisterCredentials, ResetPasswordCredentials } from '../types/auth';
+import { ForgotPasswordCredentials, LoginCredentials, ResetPasswordCredentials } from '../types/auth';
 
 export type AuthContextValue = AuthState & {
   login: (credentials: LoginCredentials) => Promise<void>;
-  createAccount: (credentials: RegisterCredentials) => Promise<void>;
   forgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   resetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
@@ -25,9 +24,6 @@ export const createAuthContextValue = (state: AuthState, service: AuthService): 
   ...state,
   login: async (credentials) => {
     await service.login(credentials);
-  },
-  createAccount: async (credentials) => {
-    await service.createAccount(credentials);
   },
   forgotPassword: async (credentials) => {
     return service.forgotPassword(credentials);

@@ -9,7 +9,6 @@ import {
   normalizeAuthRole,
   RefreshTokenRequest,
   RefreshTokenResponseData,
-  RegisterCredentials,
   ResetPasswordCredentials,
 } from '../types/auth';
 import { Platform } from 'react-native';
@@ -95,8 +94,6 @@ const toAuthResponse = (response: ApiSuccessResponse<LoginResponseData>): AuthRe
   };
 };
 
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 export class AuthApiError extends Error {
   code: string;
 
@@ -106,13 +103,6 @@ export class AuthApiError extends Error {
     this.code = code;
   }
 }
-
-const simulateNetwork = async (shouldFail = false) => {
-  await delay(900 + Math.round(Math.random() * 500));
-  if (shouldFail) {
-    throw new AuthApiError('Network request failed. Please try again.', 'NETWORK_ERROR');
-  }
-};
 
 export const authApi = {
   login: async (credentials: LoginCredentials): Promise<AuthResponse> => {
@@ -128,27 +118,6 @@ export const authApi = {
       body: JSON.stringify(body),
     });
     return toAuthResponse(response);
-  },
-
-  register: async (credentials: RegisterCredentials): Promise<AuthResponse> => {
-    await simulateNetwork(false);
-    return {
-      success: true,
-      message: 'Registration Successful',
-      user: {
-        id: Date.now(),
-        fullName: credentials.email.split('@')[0],
-        email: credentials.email,
-        role: 'LEADER',
-        permissions: ['lead:view'],
-        provider: 'password',
-      },
-      tokens: {
-        accessToken: `dummy-access-token.LEADER.${Date.now()}`,
-        refreshToken: `dummy-refresh-token.LEADER.${Date.now()}`,
-        expiresIn: 900,
-      },
-    };
   },
 
   forgotPassword: async (credentials: ForgotPasswordCredentials): Promise<{ success: boolean; message: string }> => {

@@ -20,7 +20,6 @@ const visionLogoAsset = require('../../../../assets/Vision Logo.png');
 
 export type LoginScreenProps = {
   onLogin: (credentials: LoginFormValues) => Promise<void> | void;
-  onCreateAccount: (credentials: { email: string; password: string; confirmPassword: string }) => Promise<void> | void;
   onForgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   onResetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
   onHelp: () => void;
@@ -32,13 +31,12 @@ export type LoginScreenProps = {
   successMessage: string | null;
 };
 
-type LoginCardProps = Pick<LoginScreenProps, 'onLogin' | 'onCreateAccount' | 'onForgotPassword' | 'onResetPassword' | 'loading' | 'errorMessage' | 'successMessage'> & {
+type LoginCardProps = Pick<LoginScreenProps, 'onLogin' | 'onForgotPassword' | 'onResetPassword' | 'loading' | 'errorMessage' | 'successMessage'> & {
   density?: 'default' | 'compact';
 };
 
 export function LoginCard({
   onLogin,
-  onCreateAccount,
   onForgotPassword,
   onResetPassword,
   loading,
