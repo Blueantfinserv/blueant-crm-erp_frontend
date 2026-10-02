@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { ActivityIndicator, Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Icon } from 'react-native-paper';
@@ -68,6 +68,7 @@ const PRIOR_INVESTMENT_OPTIONS = ['YES', 'NO'] as const;
 const BEST_TIME_OPTIONS = ['MORNING', 'AFTERNOON', 'EVENING'] as const;
 const MEETING_WITH_OPTIONS = ['SELF', 'SOMEONE_ELSE'] as const;
 const EXCLUDED_TASK_LEAD_STATUSES = new Set(['ALREADY_CLIENT', 'CONVERTED', 'CONVERTED_CLIENT', 'CLIENT_REMOVED', 'CLIENT_NOT_INTERESTED', 'REMOVED', 'NOT_INTERESTED']);
+const PAGE_SIZE = 100;
 const AGE_GROUP_LABELS: Record<string, string> = {
   BELOW_25: 'Below 25', AGE_25_35: '25–35', AGE_36_45: '36–45',
   AGE_46_55: '46–55', AGE_56_65: '56–65', ABOVE_65: '65+',
@@ -159,8 +160,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [verified, setVerified] = useState<MeetingResponse[]>([]);
   const [meetings, setMeetings] = useState<MeetingResponse[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tabLoading, setTabLoading] = useState<Tab | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshSeconds, setRefreshSeconds] = useState<number | null>(10);
   const nextRefreshAt = useRef(Date.now() + 10_000);
   const nextVerifiedRefreshAt = useRef(Date.now() + 5 * 60_000);
   const nextTaskRefreshAt = useRef(Date.now() + 60 * 60_000);
@@ -173,6 +174,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const assignedLeadsRefreshInFlight = useRef(false);
   const dataGeneration = useRef(0);
   const hasLoaded = useRef(false);
+  const hasTaskData = useRef(false);
+  const hasAssignedLeadsData = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MeetingResponse | null>(null);
   const [form, setForm] = useState(emptyForm);
@@ -180,6 +183,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [submitError, setSubmitError] = useState<string | null>(null);
   const submittingRef = useRef(false);
   const [taskSearch, setTaskSearch] = useState('');
+  const [taskPage, setTaskPage] = useState(0);
   const [todayColumnFilters, setTodayColumnFilters] = useState<MeetingColumnFilter>({});
   const [responseColumnFilters, setResponseColumnFilters] = useState<MeetingColumnFilter>({});
   const [taskColumnFilters, setTaskColumnFilters] = useState<MeetingColumnFilter>({});
@@ -189,6 +193,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [assigning, setAssigning] = useState(false);
   const [assignMessage, setAssignMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [assignedLeads, setAssignedLeads] = useState<LeadResponse[]>([]);
+  const [assignedLeadsPage, setAssignedLeadsPage] = useState(0);
   const [coordinatorFilter, setCoordinatorFilter] = useState('');
   const [assignedSalesPersonFilter, setAssignedSalesPersonFilter] = useState('');
   const [assignedDateRange, setAssignedDateRange] = useState<AssignedDateRange>({ from: '', to: '' });
@@ -254,16 +259,21 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     finally { setExportingAssignedLeads(false); }
   };
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (includeDeferredData = false) => {
     if (loadInFlight.current || submittingRef.current) return;
     loadInFlight.current = true;
     const generation = dataGeneration.current;
     if (!hasLoaded.current) setLoading(true);
     setRefreshing(true);
     try {
-      const [p, v, all, coordinatorAssignedLeads] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), meetingService.getVerificationMeetings('VERIFIED'), meetingService.getAllMeetingRecords(), loadCoordinatorAssignedLeads()]);
+      const [p, v, deferred] = await Promise.all([
+        meetingService.getVerificationMeetings('PENDING'),
+        meetingService.getVerificationMeetings('VERIFIED'),
+        includeDeferredData ? Promise.all([meetingService.getAllMeetingRecords(), loadCoordinatorAssignedLeads()]) : Promise.resolve(null),
+      ]);
       if (generation !== dataGeneration.current) return;
-      setPending(p); setVerified(v); setMeetings(all); setAssignedLeads(coordinatorAssignedLeads);
+      setPending(p); setVerified(v);
+      if (deferred) { setMeetings(deferred[0]); setAssignedLeads(deferred[1]); hasTaskData.current = true; hasAssignedLeadsData.current = true; }
       hasLoaded.current = true;
       setError(null); setRefreshError(null);
     } catch (e) {
@@ -278,15 +288,29 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000;
       nextTaskRefreshAt.current = Date.now() + 60 * 60_000;
       nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000;
-      setRefreshSeconds(10);
     }
   }, []);
   const refreshPendingMeetings = useCallback(async () => { if (loadInFlight.current || pendingRefreshInFlight.current || submittingRef.current) return; pendingRefreshInFlight.current = true; try { setPending(await meetingService.getVerificationMeetings('PENDING')); } finally { pendingRefreshInFlight.current = false; nextRefreshAt.current = Date.now() + 10_000; } }, []);
   const refreshVerifiedMeetings = useCallback(async () => { if (loadInFlight.current || verifiedRefreshInFlight.current || submittingRef.current) return; verifiedRefreshInFlight.current = true; try { setVerified(await meetingService.getVerificationMeetings('VERIFIED')); } finally { verifiedRefreshInFlight.current = false; nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000; } }, []);
-  const refreshTaskMeetings = useCallback(async () => { if (loadInFlight.current || taskRefreshInFlight.current || submittingRef.current) return; taskRefreshInFlight.current = true; try { setMeetings(await meetingService.getAllMeetingRecords()); } finally { taskRefreshInFlight.current = false; nextTaskRefreshAt.current = Date.now() + 60 * 60_000; } }, []);
-  const refreshAssignedLeads = useCallback(async () => { if (loadInFlight.current || assignedLeadsRefreshInFlight.current || submittingRef.current) return; assignedLeadsRefreshInFlight.current = true; try { setAssignedLeads(await loadCoordinatorAssignedLeads()); } finally { assignedLeadsRefreshInFlight.current = false; nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000; } }, []);
+  const refreshTaskMeetings = useCallback(async () => { if (!hasTaskData.current || loadInFlight.current || taskRefreshInFlight.current || submittingRef.current) return; taskRefreshInFlight.current = true; try { setMeetings(await meetingService.getAllMeetingRecords()); } finally { taskRefreshInFlight.current = false; nextTaskRefreshAt.current = Date.now() + 60 * 60_000; } }, []);
+  const refreshAssignedLeads = useCallback(async () => { if (!hasAssignedLeadsData.current || loadInFlight.current || assignedLeadsRefreshInFlight.current || submittingRef.current) return; assignedLeadsRefreshInFlight.current = true; try { setAssignedLeads(await loadCoordinatorAssignedLeads()); } finally { assignedLeadsRefreshInFlight.current = false; nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000; } }, []);
   useEffect(() => { void load(); const todayTimer = setInterval(() => { if (Date.now() >= nextRefreshAt.current) void refreshPendingMeetings(); }, 1000); const verifiedTimer = setInterval(() => void refreshVerifiedMeetings(), 5 * 60_000); const taskTimer = setInterval(() => void refreshTaskMeetings(), 60 * 60_000); const assignedTimer = setInterval(() => void refreshAssignedLeads(), 30 * 60_000); return () => { clearInterval(todayTimer); clearInterval(verifiedTimer); clearInterval(taskTimer); clearInterval(assignedTimer); dataGeneration.current += 1; }; }, [load, refreshAssignedLeads, refreshPendingMeetings, refreshTaskMeetings, refreshVerifiedMeetings]);
-  useEffect(() => { const update = () => { const next = tab === 'today' ? nextRefreshAt.current : tab === 'responses' ? nextVerifiedRefreshAt.current : tab === 'tasks' ? nextTaskRefreshAt.current : tab === 'assignedLeads' ? nextAssignedLeadsRefreshAt.current : null; setRefreshSeconds(next === null ? null : Math.max(0, Math.ceil((next - Date.now()) / 1000))); }; update(); const timer = setInterval(update, 1000); return () => clearInterval(timer); }, [tab]);
+  useEffect(() => {
+    if (tab === 'tasks' && !hasTaskData.current && tabLoading !== 'tasks') {
+      setTabLoading('tasks');
+      void Promise.all([meetingService.getAllMeetingRecords(), hasAssignedLeadsData.current ? Promise.resolve(assignedLeads) : loadCoordinatorAssignedLeads()])
+        .then(([taskMeetings, leads]) => { setMeetings(taskMeetings); if (!hasAssignedLeadsData.current) { setAssignedLeads(leads); hasAssignedLeadsData.current = true; } hasTaskData.current = true; })
+        .catch((e: unknown) => setRefreshError(e instanceof Error ? e.message : 'Sales person tasks could not be loaded.'))
+        .finally(() => setTabLoading(null));
+    }
+    if (tab === 'assignedLeads' && !hasAssignedLeadsData.current && tabLoading !== 'assignedLeads') {
+      setTabLoading('assignedLeads');
+      void loadCoordinatorAssignedLeads()
+        .then((leads) => { setAssignedLeads(leads); hasAssignedLeadsData.current = true; })
+        .catch((e: unknown) => setRefreshError(e instanceof Error ? e.message : 'Assigned leads could not be loaded.'))
+        .finally(() => setTabLoading(null));
+    }
+  }, [assignedLeads, tab, tabLoading]);
 
   const taskStatus = (m: MeetingResponse): 'TODAY' | 'PENDING' | 'OTHER' => {
     const taskDate = String(m.nextMeetingDate ?? m.meetingDate ?? '').slice(0, 10);
@@ -350,6 +374,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     });
     return filterMeetingRecords(matchingTasks, taskColumnFilters);
   }, [statusFilter, tab, taskColumnFilters, taskRecords, taskSearch]);
+  const pagedTasks = useMemo(() => filteredTasks.slice(taskPage * PAGE_SIZE, (taskPage + 1) * PAGE_SIZE), [filteredTasks, taskPage]);
   const visibleTodayMeetings = useMemo(() => filterMeetingRecords(pending, todayColumnFilters), [pending, todayColumnFilters]);
   const visibleVerifiedMeetings = useMemo(() => filterMeetingRecords(verified.filter((meeting) => matchesSearch(meeting.clientName, responseSearch) || matchesSearch(meeting.mobileNumber, responseSearch)), responseColumnFilters), [responseColumnFilters, responseSearch, verified]);
   const visibleAssignedLeads = useMemo(() => assignedLeads.filter((lead) => (
@@ -358,6 +383,11 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     && (!assignedSalesPersonFilter || lead.assignedEmployeeName === assignedSalesPersonFilter)
     && matchesAssignedDate(lead.assignedAt, assignedDateRange)
   )), [assignedDateRange, assignedLeads, assignedSalesPersonFilter, assignedSearch, coordinatorFilter]);
+  const pagedAssignedLeads = useMemo(() => visibleAssignedLeads.slice(assignedLeadsPage * PAGE_SIZE, (assignedLeadsPage + 1) * PAGE_SIZE), [assignedLeadsPage, visibleAssignedLeads]);
+  useEffect(() => { setTaskPage(0); }, [taskSearch, statusFilter, taskColumnFilters]);
+  useEffect(() => { setAssignedLeadsPage(0); }, [assignedSearch, coordinatorFilter, assignedSalesPersonFilter, assignedDateRange]);
+  useEffect(() => { setTaskPage((page) => Math.min(page, Math.max(0, Math.ceil(filteredTasks.length / PAGE_SIZE) - 1))); }, [filteredTasks.length]);
+  useEffect(() => { setAssignedLeadsPage((page) => Math.min(page, Math.max(0, Math.ceil(visibleAssignedLeads.length / PAGE_SIZE) - 1))); }, [visibleAssignedLeads.length]);
   const taskSalesPeople = useMemo(() => new Set(assignedLeads.map((lead) => lead.assignedEmployeeCode ?? lead.assignedEmployeeName).filter(Boolean)).size, [assignedLeads]);
   const assignLead = async () => {
     const values = Object.values(assignForm).map((value) => value.trim());
@@ -455,8 +485,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     finally { setHistoryLoading(false); }
   };
   const metricsBlock = <View style={styles.metrics}><Metric icon="clock-outline" value={pending.length} label="To review" tone="blue" /><Metric icon="account-outline" value={taskSalesPeople} label="Sales people" tone="orange" /></View>;
-  const refreshCountdownLabel = refreshSeconds === null ? 'Ready' : refreshSeconds >= 3600 ? `${Math.ceil(refreshSeconds / 3600)}h` : refreshSeconds >= 60 ? `${Math.ceil(refreshSeconds / 60)}m` : `${refreshSeconds}s`;
-  const syncBlock = <View style={[styles.syncControls, compact && styles.syncControlsCompact]}><Pressable disabled={refreshing || submitting} onPress={() => void load()} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable><View style={styles.autoRefreshBadge}><View style={styles.autoRefreshDot} /><Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : tab === 'assign' ? 'On-demand' : 'Auto-refresh'}</Text><View style={styles.countdownBadge}>{refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{refreshCountdownLabel}</Text>}</View></View></View>;
+  const syncBlock = <View style={[styles.syncControls, compact && styles.syncControlsCompact]}><Pressable disabled={refreshing || submitting} onPress={() => void load(true)} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable><AutoRefreshBadge tab={tab} refreshing={refreshing} submitting={submitting} nextRefreshAt={nextRefreshAt} nextVerifiedRefreshAt={nextVerifiedRefreshAt} nextTaskRefreshAt={nextTaskRefreshAt} nextAssignedLeadsRefreshAt={nextAssignedLeadsRefreshAt} /></View>;
   return <View style={[styles.page, compact && styles.pageCompact]}>
     <View style={styles.topSection}>
       <View style={[styles.workspaceHeader, compact && styles.workspaceHeaderCompact]}>{compact ? <><View style={styles.mobileHeaderTopRow}>{metricsBlock}{syncBlock}</View><View style={styles.mobileTabRow}>{TABS.slice(0, 3).map(renderTab)}</View><View style={styles.mobileTabRow}>{TABS.slice(3).map(renderTab)}</View></> : <>{metricsBlock}<View style={[styles.tabs, styles.workspaceTabs]}>{TABS.map(renderTab)}</View>{syncBlock}</>}</View>
@@ -475,15 +504,15 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         </View>
       </View>
     {!compact && !loading && !error && tab === 'today' ? <MeetingTableHeader hideMeetingDate records={pending} filters={todayColumnFilters} onFiltersChange={setTodayColumnFilters} /> : null}
-    {tab === 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator stickyHeaderIndices={[0]}><View style={styles.taskStickyHeader}>{!compact && !loading && !error ? <MeetingTableHeader taskOnly records={taskRecords} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}</View><View style={styles.taskFullPanel}>{permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}{loading ? <State loading message="Loading coordinator workspace..." /> : error ? <State message={error} /> : null}{!loading && !error ? <Cards taskOnly items={filteredTasks} empty="No meeting tasks match these filters." /> : null}</View></ScrollView> : null}
+    {tab === 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator stickyHeaderIndices={[0]}><View style={styles.taskStickyHeader}>{!compact && !loading && !error && tabLoading !== 'tasks' ? <MeetingTableHeader taskOnly records={taskRecords} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}</View><View style={styles.taskFullPanel}>{permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}{loading || tabLoading === 'tasks' ? <State loading message="Loading sales person tasks..." /> : error ? <State message={error} /> : null}{!loading && tabLoading !== 'tasks' && !error ? <><Cards taskOnly items={pagedTasks} empty="No meeting tasks match these filters." /><Pagination page={taskPage} total={filteredTasks.length} onPageChange={setTaskPage} /></> : null}</View></ScrollView> : null}
     {tab !== 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator={tab === 'responses'} stickyHeaderIndices={tab === 'responses' ? [0] : undefined}>
     <View style={tab === 'responses' ? styles.verifiedStickyHeader : undefined}>{!compact && !loading && !error && tab === 'responses' ? <MeetingTableHeader verified records={verified} filters={responseColumnFilters} onFiltersChange={setResponseColumnFilters} /> : null}</View>
     {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
-    {loading ? <State loading message="Loading coordinator workspace..." /> : error ? <State message={error} /> : null}
+    {loading ? <State loading message="Loading coordinator workspace..." /> : tabLoading === 'assignedLeads' ? <State loading message="Loading assigned leads..." /> : error ? <State message={error} /> : null}
     {!loading && !error && tab === 'today' ? <Cards hideMeetingDate items={visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
     {!loading && !error && tab === 'responses' ? <Cards items={visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="View Response" onOpen={setSelected} verified /> : null}
     {!loading && !error && tab === 'assign' ? <AssignLeadForm compact={compact} form={assignForm} setForm={setAssignForm} assigning={assigning} message={assignMessage} salesPersonNamesByCode={salesPersonNamesByCode} onSubmit={() => void assignLead()} /> : null}
-    {!loading && !error && tab === 'assignedLeads' ? <AssignedLeadCards leads={visibleAssignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} onOpen={openLeadHistory} /> : null}
+    {!loading && tabLoading !== 'assignedLeads' && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} onOpen={openLeadHistory} /><Pagination page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /></> : null}
     </ScrollView> : null}
     </View>
     <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View style={styles.modal}>
@@ -497,6 +526,20 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   </View>;
 }
 
+function AutoRefreshBadge({ tab, refreshing, submitting, nextRefreshAt, nextVerifiedRefreshAt, nextTaskRefreshAt, nextAssignedLeadsRefreshAt }: { tab: Tab; refreshing: boolean; submitting: boolean; nextRefreshAt: MutableRefObject<number>; nextVerifiedRefreshAt: MutableRefObject<number>; nextTaskRefreshAt: MutableRefObject<number>; nextAssignedLeadsRefreshAt: MutableRefObject<number> }) {
+  const [seconds, setSeconds] = useState<number | null>(null);
+  useEffect(() => { const update = () => { const next = tab === 'today' ? nextRefreshAt.current : tab === 'responses' ? nextVerifiedRefreshAt.current : tab === 'tasks' ? nextTaskRefreshAt.current : tab === 'assignedLeads' ? nextAssignedLeadsRefreshAt.current : null; setSeconds(next === null ? null : Math.max(0, Math.ceil((next - Date.now()) / 1000))); }; update(); const timer = setInterval(update, 1000); return () => clearInterval(timer); }, [nextAssignedLeadsRefreshAt, nextRefreshAt, nextTaskRefreshAt, nextVerifiedRefreshAt, tab]);
+  const label = seconds === null ? 'Ready' : seconds >= 3600 ? `${Math.ceil(seconds / 3600)}h` : seconds >= 60 ? `${Math.ceil(seconds / 60)}m` : `${seconds}s`;
+  return <View style={styles.autoRefreshBadge}><View style={styles.autoRefreshDot} /><Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : tab === 'assign' ? 'On-demand' : 'Auto-refresh'}</Text><View style={styles.countdownBadge}>{refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{label}</Text>}</View></View>;
+}
+function Pagination({ page, total, onPageChange }: { page: number; total: number; onPageChange: (page: number) => void }) {
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  if (totalPages <= 1) return null;
+  const safePage = Math.min(page, totalPages - 1);
+  const start = safePage * PAGE_SIZE + 1;
+  const end = Math.min(total, (safePage + 1) * PAGE_SIZE);
+  return <View style={styles.pagination}><Text style={styles.paginationText}>Showing {start}–{end} of {total}</Text><View style={styles.paginationControls}><Pressable disabled={safePage === 0} onPress={() => onPageChange(safePage - 1)} style={[styles.paginationButton, safePage === 0 && styles.disabled]}><Text style={styles.paginationButtonText}>Previous</Text></Pressable><Text style={styles.paginationText}>Page {safePage + 1} of {totalPages}</Text><Pressable disabled={safePage === totalPages - 1} onPress={() => onPageChange(safePage + 1)} style={[styles.paginationButton, safePage === totalPages - 1 && styles.disabled]}><Text style={styles.paginationButtonText}>Next</Text></Pressable></View></View>;
+}
 function Metric({ icon, value, label, tone }: { icon: string; value: number; label: string; tone: 'blue' | 'green' | 'orange' }) {
   const toneStyle = tone === 'green' ? styles.metricGreen : tone === 'orange' ? styles.metricOrange : styles.metricBlue;
   const accentStyle = tone === 'green' ? styles.metricAccentGreen : tone === 'orange' ? styles.metricAccentOrange : styles.metricAccentBlue;
@@ -859,6 +902,11 @@ const styles = StyleSheet.create({
   assignedExportButton: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: '#15803D', borderWidth: 2, borderColor: '#DCFCE7', shadowColor: '#14532D', shadowOpacity: 0.28, shadowRadius: 6, shadowOffset: { width: 0, height: 3 }, elevation: 3 },
   assignedClearButton: { height: 30, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 9, borderRadius: 8, borderWidth: 1, borderColor: '#FCA5A5', backgroundColor: '#FFF1F2' },
   assignedClearText: { color: '#DC2626', fontSize: 8, fontWeight: '900' },
+  pagination: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 1, borderTopColor: '#E2E8F0', backgroundColor: '#F8FAFF' },
+  paginationControls: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  paginationText: { color: '#52627C', fontSize: 10, fontWeight: '800' },
+  paginationButton: { minWidth: 68, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: '#BFD0FF', borderRadius: 8, backgroundColor: '#FFFFFF' },
+  paginationButtonText: { color: '#3156C8', fontSize: 10, fontWeight: '900' },
   exportButtonText: { color: '#FFFFFF', fontSize: 9, fontWeight: '900' },
   leadStatusColumn: { flex: 1.26 },
   leadStatusValue: { marginLeft: -5 },
