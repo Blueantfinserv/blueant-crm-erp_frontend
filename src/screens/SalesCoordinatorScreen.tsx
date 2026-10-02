@@ -160,10 +160,17 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [meetings, setMeetings] = useState<MeetingResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [refreshSeconds, setRefreshSeconds] = useState(10);
+  const [refreshSeconds, setRefreshSeconds] = useState<number | null>(10);
   const nextRefreshAt = useRef(Date.now() + 10_000);
+  const nextVerifiedRefreshAt = useRef(Date.now() + 5 * 60_000);
+  const nextTaskRefreshAt = useRef(Date.now() + 60 * 60_000);
+  const nextAssignedLeadsRefreshAt = useRef(Date.now() + 30 * 60_000);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const loadInFlight = useRef(false);
+  const pendingRefreshInFlight = useRef(false);
+  const verifiedRefreshInFlight = useRef(false);
+  const taskRefreshInFlight = useRef(false);
+  const assignedLeadsRefreshInFlight = useRef(false);
   const dataGeneration = useRef(0);
   const hasLoaded = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -268,19 +275,18 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     finally {
       loadInFlight.current = false; setLoading(false); setRefreshing(false);
       nextRefreshAt.current = Date.now() + 10_000;
+      nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000;
+      nextTaskRefreshAt.current = Date.now() + 60 * 60_000;
+      nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000;
       setRefreshSeconds(10);
     }
   }, []);
-  useEffect(() => {
-    void load();
-    const timer = setInterval(() => {
-      if (loadInFlight.current || submittingRef.current) return;
-      const seconds = Math.max(0, Math.ceil((nextRefreshAt.current - Date.now()) / 1000));
-      setRefreshSeconds(seconds);
-      if (seconds === 0) void load();
-    }, 1000);
-    return () => { clearInterval(timer); dataGeneration.current += 1; };
-  }, [load]);
+  const refreshPendingMeetings = useCallback(async () => { if (loadInFlight.current || pendingRefreshInFlight.current || submittingRef.current) return; pendingRefreshInFlight.current = true; try { setPending(await meetingService.getVerificationMeetings('PENDING')); } finally { pendingRefreshInFlight.current = false; nextRefreshAt.current = Date.now() + 10_000; } }, []);
+  const refreshVerifiedMeetings = useCallback(async () => { if (loadInFlight.current || verifiedRefreshInFlight.current || submittingRef.current) return; verifiedRefreshInFlight.current = true; try { setVerified(await meetingService.getVerificationMeetings('VERIFIED')); } finally { verifiedRefreshInFlight.current = false; nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000; } }, []);
+  const refreshTaskMeetings = useCallback(async () => { if (loadInFlight.current || taskRefreshInFlight.current || submittingRef.current) return; taskRefreshInFlight.current = true; try { setMeetings(await meetingService.getAllMeetingRecords()); } finally { taskRefreshInFlight.current = false; nextTaskRefreshAt.current = Date.now() + 60 * 60_000; } }, []);
+  const refreshAssignedLeads = useCallback(async () => { if (loadInFlight.current || assignedLeadsRefreshInFlight.current || submittingRef.current) return; assignedLeadsRefreshInFlight.current = true; try { setAssignedLeads(await loadCoordinatorAssignedLeads()); } finally { assignedLeadsRefreshInFlight.current = false; nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000; } }, []);
+  useEffect(() => { void load(); const todayTimer = setInterval(() => { if (Date.now() >= nextRefreshAt.current) void refreshPendingMeetings(); }, 1000); const verifiedTimer = setInterval(() => void refreshVerifiedMeetings(), 5 * 60_000); const taskTimer = setInterval(() => void refreshTaskMeetings(), 60 * 60_000); const assignedTimer = setInterval(() => void refreshAssignedLeads(), 30 * 60_000); return () => { clearInterval(todayTimer); clearInterval(verifiedTimer); clearInterval(taskTimer); clearInterval(assignedTimer); dataGeneration.current += 1; }; }, [load, refreshAssignedLeads, refreshPendingMeetings, refreshTaskMeetings, refreshVerifiedMeetings]);
+  useEffect(() => { const update = () => { const next = tab === 'today' ? nextRefreshAt.current : tab === 'responses' ? nextVerifiedRefreshAt.current : tab === 'tasks' ? nextTaskRefreshAt.current : tab === 'assignedLeads' ? nextAssignedLeadsRefreshAt.current : null; setRefreshSeconds(next === null ? null : Math.max(0, Math.ceil((next - Date.now()) / 1000))); }; update(); const timer = setInterval(update, 1000); return () => clearInterval(timer); }, [tab]);
 
   const taskStatus = (m: MeetingResponse): 'TODAY' | 'PENDING' | 'OTHER' => {
     const taskDate = String(m.nextMeetingDate ?? m.meetingDate ?? '').slice(0, 10);
@@ -288,7 +294,9 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     if (m.meetingTitle === 'Lead') return !taskDate || taskDate < localToday() ? 'PENDING' : 'OTHER';
     return taskDate && taskDate < localToday() ? 'PENDING' : 'OTHER';
   };
-  const taskMeetings = useMemo(() => meetings.filter((meeting) => {
+  const taskMeetings = useMemo(() => {
+    if (tab !== 'tasks') return [];
+    return meetings.filter((meeting) => {
     if (String(meeting.meetingStatus ?? '').toUpperCase() === 'COMPLETED') return false;
     const assignedLead = assignedLeads.find((lead) => (
       (meeting.leadId !== undefined && lead.leadId === meeting.leadId)
@@ -296,8 +304,10 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     ));
     return !EXCLUDED_TASK_LEAD_STATUSES.has(String(meeting.leadStatus ?? '').toUpperCase())
       && !EXCLUDED_TASK_LEAD_STATUSES.has(String(assignedLead?.leadStatus ?? '').toUpperCase());
-  }), [assignedLeads, meetings]);
+    });
+  }, [assignedLeads, meetings, tab]);
   const taskLeads = useMemo<MeetingResponse[]>(() => {
+    if (tab !== 'tasks') return [];
     const meetingLeadKeys = new Set(taskMeetings.flatMap((meeting) => [
       meeting.leadId !== undefined ? `id:${meeting.leadId}` : '',
       meeting.leadCode ? `code:${meeting.leadCode}` : '',
@@ -329,16 +339,17 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
           leadStatus: lead.leadStatus as MeetingResponse['leadStatus'],
         };
       });
-  }, [assignedLeads, meetings, pending, taskMeetings, verified]);
-  const taskRecords = useMemo(() => [...taskLeads, ...taskMeetings], [taskLeads, taskMeetings]);
+  }, [assignedLeads, meetings, pending, tab, taskMeetings, verified]);
+  const taskRecords = useMemo(() => tab === 'tasks' ? [...taskLeads, ...taskMeetings] : [], [tab, taskLeads, taskMeetings]);
   const filteredTasks = useMemo(() => {
+    if (tab !== 'tasks') return [];
     const query = taskSearch.trim().toLowerCase();
     const matchingTasks = taskRecords.filter((m) => {
       const searchMatch = !query || String(m.clientName ?? '').toLowerCase().includes(query) || String(m.mobileNumber ?? '').toLowerCase().includes(query);
       return searchMatch && (statusFilter === 'ALL' || taskStatus(m) === statusFilter);
     });
     return filterMeetingRecords(matchingTasks, taskColumnFilters);
-  }, [statusFilter, taskColumnFilters, taskRecords, taskSearch]);
+  }, [statusFilter, tab, taskColumnFilters, taskRecords, taskSearch]);
   const visibleTodayMeetings = useMemo(() => filterMeetingRecords(pending, todayColumnFilters), [pending, todayColumnFilters]);
   const visibleVerifiedMeetings = useMemo(() => filterMeetingRecords(verified.filter((meeting) => matchesSearch(meeting.clientName, responseSearch) || matchesSearch(meeting.mobileNumber, responseSearch)), responseColumnFilters), [responseColumnFilters, responseSearch, verified]);
   const visibleAssignedLeads = useMemo(() => assignedLeads.filter((lead) => (
@@ -347,7 +358,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     && (!assignedSalesPersonFilter || lead.assignedEmployeeName === assignedSalesPersonFilter)
     && matchesAssignedDate(lead.assignedAt, assignedDateRange)
   )), [assignedDateRange, assignedLeads, assignedSalesPersonFilter, assignedSearch, coordinatorFilter]);
-  const taskSalesPeople = useMemo(() => new Set(taskRecords.map((record) => record.employeeCode ?? record.employeeName).filter(Boolean)).size, [taskRecords]);
+  const taskSalesPeople = useMemo(() => new Set(assignedLeads.map((lead) => lead.assignedEmployeeCode ?? lead.assignedEmployeeName).filter(Boolean)).size, [assignedLeads]);
   const assignLead = async () => {
     const values = Object.values(assignForm).map((value) => value.trim());
     if (values.some((value) => !value)) { setAssignMessage({ type: 'error', text: 'Please complete all fields, including the employee code.' }); return; }
@@ -376,7 +387,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   };
 
   const openVerify = (meeting: MeetingResponse) => {
-    setForm(createMeetingVerificationForm(meeting, [...verified, ...meetings]));
+    setForm(createMeetingVerificationForm(meeting, verified));
     setSubmitError(null); setSelected(meeting);
   };
   const verify = async () => {
@@ -444,7 +455,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     finally { setHistoryLoading(false); }
   };
   const metricsBlock = <View style={styles.metrics}><Metric icon="clock-outline" value={pending.length} label="To review" tone="blue" /><Metric icon="account-outline" value={taskSalesPeople} label="Sales people" tone="orange" /></View>;
-  const syncBlock = <View style={[styles.syncControls, compact && styles.syncControlsCompact]}><Pressable disabled={refreshing || submitting} onPress={() => void load()} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable><View style={styles.autoRefreshBadge}><View style={styles.autoRefreshDot} /><Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : 'Auto-refresh'}</Text><View style={styles.countdownBadge}>{refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{refreshSeconds}s</Text>}</View></View></View>;
+  const refreshCountdownLabel = refreshSeconds === null ? 'Ready' : refreshSeconds >= 3600 ? `${Math.ceil(refreshSeconds / 3600)}h` : refreshSeconds >= 60 ? `${Math.ceil(refreshSeconds / 60)}m` : `${refreshSeconds}s`;
+  const syncBlock = <View style={[styles.syncControls, compact && styles.syncControlsCompact]}><Pressable disabled={refreshing || submitting} onPress={() => void load()} style={({ pressed }) => [styles.syncButton, (refreshing || submitting) && styles.disabled, pressed && styles.pressed]}><Icon source="refresh" size={17} color="#3156C8" /><Text style={styles.refreshText}>Sync data</Text></Pressable><View style={styles.autoRefreshBadge}><View style={styles.autoRefreshDot} /><Text style={styles.autoRefreshLabel}>{refreshing ? 'Syncing' : submitting ? 'Paused' : tab === 'assign' ? 'On-demand' : 'Auto-refresh'}</Text><View style={styles.countdownBadge}>{refreshing ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Text style={styles.countdownText}>{refreshCountdownLabel}</Text>}</View></View></View>;
   return <View style={[styles.page, compact && styles.pageCompact]}>
     <View style={styles.topSection}>
       <View style={[styles.workspaceHeader, compact && styles.workspaceHeaderCompact]}>{compact ? <><View style={styles.mobileHeaderTopRow}>{metricsBlock}{syncBlock}</View><View style={styles.mobileTabRow}>{TABS.slice(0, 3).map(renderTab)}</View><View style={styles.mobileTabRow}>{TABS.slice(3).map(renderTab)}</View></> : <>{metricsBlock}<View style={[styles.tabs, styles.workspaceTabs]}>{TABS.map(renderTab)}</View>{syncBlock}</>}</View>
@@ -462,13 +474,13 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
           {tab === 'assignedLeads' ? <View style={[styles.assignedHeaderActions, compact && styles.assignedHeaderActionsCompact]}><HeaderLeadFilters leads={assignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} setDateRange={setAssignedDateRange} search={assignedSearch} setSearch={setAssignedSearch} />{assignedSearch || coordinatorFilter || assignedSalesPersonFilter || assignedDateRange.from || assignedDateRange.to ? <Pressable accessibilityLabel="Clear assigned lead filters" onPress={() => { setAssignedSearch(''); setCoordinatorFilter(''); setAssignedSalesPersonFilter(''); setAssignedDateRange({ from: '', to: '' }); }} style={styles.assignedClearButton}><Text style={styles.assignedClearText}>Clear</Text></Pressable> : null}</View> : null}
         </View>
       </View>
-    {!compact && !loading && !error && tab === 'today' ? <MeetingTableHeader records={pending} filters={todayColumnFilters} onFiltersChange={setTodayColumnFilters} /> : null}
+    {!compact && !loading && !error && tab === 'today' ? <MeetingTableHeader hideMeetingDate records={pending} filters={todayColumnFilters} onFiltersChange={setTodayColumnFilters} /> : null}
     {tab === 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator stickyHeaderIndices={[0]}><View style={styles.taskStickyHeader}>{!compact && !loading && !error ? <MeetingTableHeader taskOnly records={taskRecords} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}</View><View style={styles.taskFullPanel}>{permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}{loading ? <State loading message="Loading coordinator workspace..." /> : error ? <State message={error} /> : null}{!loading && !error ? <Cards taskOnly items={filteredTasks} empty="No meeting tasks match these filters." /> : null}</View></ScrollView> : null}
     {tab !== 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator={tab === 'responses'} stickyHeaderIndices={tab === 'responses' ? [0] : undefined}>
     <View style={tab === 'responses' ? styles.verifiedStickyHeader : undefined}>{!compact && !loading && !error && tab === 'responses' ? <MeetingTableHeader verified records={verified} filters={responseColumnFilters} onFiltersChange={setResponseColumnFilters} /> : null}</View>
     {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
     {loading ? <State loading message="Loading coordinator workspace..." /> : error ? <State message={error} /> : null}
-    {!loading && !error && tab === 'today' ? <Cards items={visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
+    {!loading && !error && tab === 'today' ? <Cards hideMeetingDate items={visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
     {!loading && !error && tab === 'responses' ? <Cards items={visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="View Response" onOpen={setSelected} verified /> : null}
     {!loading && !error && tab === 'assign' ? <AssignLeadForm compact={compact} form={assignForm} setForm={setAssignForm} assigning={assigning} message={assignMessage} salesPersonNamesByCode={salesPersonNamesByCode} onSubmit={() => void assignLead()} /> : null}
     {!loading && !error && tab === 'assignedLeads' ? <AssignedLeadCards leads={visibleAssignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} onOpen={openLeadHistory} /> : null}
@@ -602,12 +614,12 @@ function InlineCalendar({ value, onSelect }: { value: string; onSelect: (value: 
   const iso = (day: number) => `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   return <View style={styles.inlineCalendar}><View style={styles.calendarHeader}><Pressable onPress={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}><Icon source="chevron-left" size={18} color="#3156C8" /></Pressable><Text style={styles.calendarMonth}>{month.toLocaleString('en-US', { month: 'long', year: 'numeric' })}</Text><Pressable onPress={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}><Icon source="chevron-right" size={18} color="#3156C8" /></Pressable></View><View style={styles.calendarGrid}>{['M','T','W','T','F','S','S'].map((day, index) => <Text key={`${day}${index}`} style={styles.calendarWeekday}>{day}</Text>)}{empty.map((_, index) => <View key={`empty${index}`} style={styles.calendarDay} />)}{days.map((day) => <Pressable key={day} onPress={() => onSelect(iso(day))} style={[styles.calendarDay, value === iso(day) && styles.calendarDaySelected]}><Text style={[styles.calendarDayText, value === iso(day) && styles.calendarDayTextSelected]}>{day}</Text></Pressable>)}</View></View>;
 }
-function MeetingTableHeader({ verified = false, taskOnly = false, records, filters, onFiltersChange }: { verified?: boolean; taskOnly?: boolean; records: readonly MeetingResponse[]; filters: MeetingColumnFilter; onFiltersChange: React.Dispatch<React.SetStateAction<MeetingColumnFilter>> }) {
+function MeetingTableHeader({ verified = false, taskOnly = false, hideMeetingDate = false, records, filters, onFiltersChange }: { verified?: boolean; taskOnly?: boolean; hideMeetingDate?: boolean; records: readonly MeetingResponse[]; filters: MeetingColumnFilter; onFiltersChange: React.Dispatch<React.SetStateAction<MeetingColumnFilter>> }) {
   const [openFilter, setOpenFilter] = useState<keyof MeetingColumnFilter | null>(null);
   const [draftChoices, setDraftChoices] = useState<string[]>([]);
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [dateTarget, setDateTarget] = useState<'from' | 'to' | null>(null);
-  const columns = taskOnly ? FILTER_COLUMNS.filter((column) => ['clientName', 'mobileNumber', 'meetingTitle', 'employeeName', 'meetingDate'].includes(column.key)) : verified ? [...FILTER_COLUMNS, { key: 'verifiedBy' as const, label: 'VERIFIED BY' }] : FILTER_COLUMNS;
+  const columns = (taskOnly ? FILTER_COLUMNS.filter((column) => ['clientName', 'mobileNumber', 'meetingTitle', 'employeeName', 'meetingDate'].includes(column.key)) : verified ? [...FILTER_COLUMNS, { key: 'verifiedBy' as const, label: 'VERIFIED BY' }] : FILTER_COLUMNS).filter((column) => !hideMeetingDate || column.key !== 'meetingDate');
   const dropdownKeys: (keyof MeetingColumnFilter)[] = taskOnly ? ['employeeName'] : verified
     ? ['employeeName', 'verifiedBy', 'meetingTitle', 'leadStatus', 'meetingDate']
     : ['employeeName', 'meetingTitle', 'leadStatus'];
@@ -624,7 +636,7 @@ function MeetingTableHeader({ verified = false, taskOnly = false, records, filte
 }
 
 const baseFields = (m: MeetingResponse) => [['Client Name', m.clientName], ['Mobile Number', maskedMobile(m.mobileNumber)], ['Sales Person', m.employeeName], ['Employee Code', m.employeeCode], ['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Meeting Time', timeText(m.meetingTime)], ['Meeting Mode', m.meetingMode], ['Location', m.meetingLocation ?? m.location ?? m.address]] as const;
-function Cards({ items, filters = {}, empty, action, onOpen, verified = false, taskOnly = false }: { items: readonly MeetingResponse[]; filters?: MeetingColumnFilter; empty: string; action?: string; onOpen?: (m: MeetingResponse) => void; verified?: boolean; taskOnly?: boolean }) {
+function Cards({ items, filters = {}, empty, action, onOpen, verified = false, taskOnly = false, hideMeetingDate = false }: { items: readonly MeetingResponse[]; filters?: MeetingColumnFilter; empty: string; action?: string; onOpen?: (m: MeetingResponse) => void; verified?: boolean; taskOnly?: boolean; hideMeetingDate?: boolean }) {
   const compact = useWindowDimensions().width < 760;
   const visibleItems = filterMeetingRecords(items, filters);
   if (!visibleItems.length) return <State message={Object.values(filters).some(Boolean) ? 'No meetings match these filters.' : empty} />;
@@ -643,7 +655,7 @@ function Cards({ items, filters = {}, empty, action, onOpen, verified = false, t
     ['NEXT PLAN DATE', (m: MeetingResponse) => m.nextMeetingDate],
     ['JOINED', (m: MeetingResponse) => m.aloneWith],
     ...(verified ? [['VERIFIED BY', (m: MeetingResponse) => m.verifiedBy] as const] : []),
-  ]) as readonly [string, (m: MeetingResponse) => unknown][];
+  ]).filter(([label]) => !hideMeetingDate || label !== 'MEETING DATE') as unknown as readonly [string, (m: MeetingResponse) => unknown][];
   return <View style={styles.desktopTable}>{visibleItems.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.listRow, styles.desktopRow, i % 2 === 1 && styles.listRowAlternate]}><View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>{columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn, label === 'LEAD STATUS' && styles.leadStatusColumn]}><Text numberOfLines={1} style={[styles.cellMain, label === 'LEAD STATUS' && styles.status, label === 'LEAD STATUS' && styles.leadStatusValue, label === 'LEAD STATUS' && m.leadStatus === 'CONVERTED_CLIENT' && styles.statusVerified, label === 'JOINED' && styles.joinedBadge]}>{label === 'LEAD STATUS' ? show(value(m)).replace(/_/g, ' ') : show(value(m))}</Text></View>)}{onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : taskOnly ? null : <View style={styles.desktopActionColumn} />}</View>)}</View>;
 }
 function Details({ meeting: m, visitOnly = false }: { meeting: MeetingResponse; visitOnly?: boolean }) {
