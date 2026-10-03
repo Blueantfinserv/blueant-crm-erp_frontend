@@ -71,7 +71,6 @@ export type MeetingFormSubmission = {
   leadStatus?: 'Work In Progress' | 'Converted as Client' | 'Client Not Interested' | 'Remove This Client' | 'Already Blueant Client';
   aloneWith?: AloneWith; nextPlanDate: string; remarks: string;
   latitude?: number; longitude?: number; address?: string; accuracy?: number | null;
-  cardImage?: import('../api/document').UploadDocumentAsset | null;
   visitingCard?: string;
 };
 

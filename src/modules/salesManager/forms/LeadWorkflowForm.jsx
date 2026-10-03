@@ -42,35 +42,6 @@ const getFollowupDateBounds = () => {
   return { today, latestDate };
 };
 
-const getClientSideAddress = async (latitude, longitude) => {
-  const query = new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-    localityLanguage: "en",
-  });
-  const response = await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?${query.toString()}`);
-  if (!response.ok) throw new Error("Reverse geocoding failed");
-  const place = await response.json();
-  const localityEntries = [
-    ...(place.localityInfo?.informative ?? []),
-    ...(place.localityInfo?.administrative ?? []),
-  ];
-  const specificLocalities = localityEntries
-    .filter((entry) => {
-      const name = String(entry?.name ?? "");
-      const description = String(entry?.description ?? "");
-      return /sector|block|phase|ward|colony|industrial area|neighbou?rhood|suburb|quarter|locality/i.test(`${name} ${description}`);
-    })
-    .map((entry) => entry.name)
-    .filter(Boolean)
-    .slice(0, 2);
-
-  return [...specificLocalities, place.locality, place.localityName, place.city, place.principalSubdivision, place.postcode, place.countryName]
-    .filter(Boolean)
-    .filter((value, index, values) => values.indexOf(value) === index)
-    .join(", ");
-};
-
 export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
   const isNewLead = type === "new-lead";
   const submittingRef = useRef(false);
@@ -167,7 +138,7 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
 
       const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
       const { latitude, longitude } = position.coords;
-      let address = "Address could not be resolved";
+      let address = "";
       try {
         const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
         if (place) {
@@ -187,14 +158,6 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
         }
       } catch {
         // The native reverse geocoder is not available on web and can occasionally fail on devices.
-      }
-      if (address === "Address could not be resolved") {
-        try {
-          const clientSideAddress = await getClientSideAddress(latitude, longitude);
-          if (clientSideAddress) address = clientSideAddress;
-        } catch {
-          // Coordinates remain available if both address providers are unavailable.
-        }
       }
       update("liveLocation", { latitude, longitude, address, accuracy: position.coords.accuracy });
     } catch {

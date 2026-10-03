@@ -36,7 +36,6 @@ import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/S
 import { leadService } from './src/services/LeadService';
 import { leadSearchService } from './src/services/LeadSearchService';
 import { meetingService } from './src/services/MeetingService';
-import { documentApi } from './src/api/document';
 import { meetingApi } from './src/api/meeting';
 import type { CreateLeadRequest } from './src/types/lead';
 import type {
@@ -780,10 +779,7 @@ function AppShell() {
                           if (!meetingCode) {
                             throw new Error('No active meeting is available for this prospect. Please refresh and try again.');
                           }
-                          const visitingCard = form.cardImage
-                            ? await documentApi.upload(form.cardImage)
-                            : undefined;
-                          const submission = toMeetingWorkflow({ ...form, meetingCode, visitingCard });
+                          const submission = toMeetingWorkflow({ ...form, meetingCode });
                           await meetingService.submitWorkflow(submission.meetingCode, submission.workflow);
                           if (form.leadStatus === 'Converted as Client' || form.leadStatus === 'Already Blueant Client') {
                             const leadIdentity = {
