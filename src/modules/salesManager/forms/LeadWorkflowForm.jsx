@@ -34,16 +34,17 @@ const getLocalDate = (now = new Date()) => {
   return new Date(now.getTime() - offset).toISOString().slice(0, 10);
 };
 
-const getFollowupDateBounds = () => {
+const getFollowupDateBounds = (isRelationshipManager) => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const latestDate = new Date(today);
-  latestDate.setDate(latestDate.getDate() + 24);
+  latestDate.setDate(latestDate.getDate() + (isRelationshipManager ? 30 : 24));
   return { today, latestDate };
 };
 
-export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
+export default function LeadWorkflowForm({ type, lead, role, onClose, onSubmit }) {
   const isNewLead = type === "new-lead";
+  const isRelationshipManager = role === "RELATIONSHIP_MANAGER";
   const submittingRef = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const [submissionError, setSubmissionError] = useState("");
@@ -112,12 +113,12 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
       const followUpRequired = form.meetingStatus === "Visited but Not Met"
         || (conducted && form.leadStatus === "Work In Progress");
       if (followUpRequired) {
-        const { today, latestDate } = getFollowupDateBounds();
+        const { today, latestDate } = getFollowupDateBounds(isRelationshipManager);
         const nextPlanDate = new Date(`${form.nextPlanDate}T00:00:00`);
         if (!form.nextPlanDate) {
           nextErrors.nextPlanDate = "Next plan date is required.";
         } else if (Number.isNaN(nextPlanDate.getTime()) || nextPlanDate < today || nextPlanDate > latestDate) {
-          nextErrors.nextPlanDate = "Choose a follow-up date from today through 24 days from today.";
+          nextErrors.nextPlanDate = `Choose a follow-up date from today through ${isRelationshipManager ? 30 : 24} days from today.`;
         }
       }
     }
@@ -429,7 +430,11 @@ export default function LeadWorkflowForm({ type, lead, onClose, onSubmit }) {
 
               {showNextFollowUp ? (
                 <Field label="Next Follow Up" required error={errors.nextPlanDate}>
-                  <FollowUpOptions value={form.nextPlanDate} onSelect={(value) => update("nextPlanDate", value)} />
+                  <FollowUpOptions
+                    value={form.nextPlanDate}
+                    isRelationshipManager={isRelationshipManager}
+                    onSelect={(value) => update("nextPlanDate", value)}
+                  />
                 </Field>
               ) : null}
 
@@ -486,9 +491,12 @@ const FOLLOW_UP_OPTIONS = [
   ["After 15 days", 15],
 ];
 
-const getFollowUpOptions = () => {
-  const { today } = getFollowupDateBounds();
-  return FOLLOW_UP_OPTIONS.map(([label, days]) => {
+const getFollowUpOptions = (isRelationshipManager) => {
+  const { today } = getFollowupDateBounds(isRelationshipManager);
+  const options = isRelationshipManager
+    ? [...FOLLOW_UP_OPTIONS, ["After 30 days", 30]]
+    : FOLLOW_UP_OPTIONS;
+  return options.map(([label, days]) => {
     const date = new Date(today);
     date.setDate(date.getDate() + days);
     const displayDate = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(date);
@@ -504,8 +512,8 @@ const FOLLOW_UP_TONES = [
   { text: "#BF7836", background: "#FFFBF6", icon: "#FFF0E1" },
 ];
 
-function FollowUpOptions({ value, onSelect }) {
-  const options = getFollowUpOptions();
+function FollowUpOptions({ value, isRelationshipManager, onSelect }) {
+  const options = getFollowUpOptions(isRelationshipManager);
   return (
     <View style={{ gap: 6 }}>
       {value && !options.some((option) => option.value === value) ? (

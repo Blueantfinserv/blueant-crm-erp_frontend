@@ -222,13 +222,14 @@ function AppShell() {
   };
 
   useEffect(() => {
-    const assignedUserId = backendRole === 'EMPLOYEE' && typeof auth.user?.id === 'number'
+    const isIndividualSalesWorkspace = isSalesWorkspaceExperience(getRoleExperience(backendRole));
+    const assignedUserId = isIndividualSalesWorkspace && typeof auth.user?.id === 'number'
       ? auth.user.id
       : null;
-    const employeeCode = backendRole === 'EMPLOYEE'
+    const employeeCode = isIndividualSalesWorkspace
       ? auth.user?.employeeId?.trim() || null
       : null;
-    leadSearchService.setAssignedUserScope(assignedUserId);
+    leadSearchService.setAssignedUserScope(assignedUserId, employeeCode);
     meetingService.setEmployeeScope(employeeCode);
     leadService.reset();
     leadSearchService.reset();
@@ -763,9 +764,10 @@ function AppShell() {
             <Pressable style={styles.newLeadModal} onPress={() => {}}>
               {leadForm ? (
                 <LeadWorkflowForm
-                  key={`${leadForm.type}-${leadForm.lead?.id ?? 'new'}`}
+                  key={`${leadForm.type}-${leadForm.lead?.id ?? 'new'}-${backendRole ?? 'unknown'}`}
                   type={leadForm.type}
                   lead={leadForm.lead}
+                  role={backendRole}
                   onClose={() => setLeadForm(null)}
                   onSubmit={leadForm.type === 'new-lead'
                     ? async (request: CreateLeadRequest) => {

@@ -100,7 +100,25 @@ const PROFESSION_LABELS: Record<string, string> = {
   NOT_DISCLOSED: 'Not Disclosed',
 };
 const PROFESSION_OPTIONS = Object.keys(PROFESSION_LABELS);
-const SALES_PERSON_CODES = ['RK1507', 'AS0108', 'AK0107', 'RG1108', 'HP0605', 'AKS0108', 'SM2403', 'GK0902', 'AS1909', 'US2601'] as const;
+// Static display fallbacks for the PC assignment dropdown. Backend-loaded names still take precedence.
+const SALES_PERSONS = [
+  { code: 'RK1507', name: 'Rakesh Kumar' },
+  { code: 'AS0108', name: 'Abhijeet Singh' },
+  { code: 'AK0107', name: 'Atul Kumar' },
+  { code: 'RG1108', name: 'Rajat Gupta' },
+  { code: 'HP0605', name: 'Harsh Pilania' },
+  { code: 'AKS0108', name: 'Amit Kumar Singh' },
+  { code: 'SM2403', name: 'Sunny Mathur' },
+  { code: 'GK0902', name: 'Garv Kumar' },
+  { code: 'AS1909', name: 'Abhishek Singh' },
+  { code: 'US2601', name: 'Umakant Sharma' },
+  // Temporary assignment target for exercising the shared RM prospect workflow.
+  { code: 'AP0101', name: 'Avesh Prajapati', role: 'RELATIONSHIP_MANAGER' },
+] as const;
+const SALES_PERSON_CODES = SALES_PERSONS.map((employee) => employee.code);
+const employeeRoleLabels = (employeeCode?: string) => employeeCode?.trim() === 'AP0101'
+  ? { person: 'Relationship Manager', id: 'Relationship Manager ID' }
+  : { person: 'Sales Person', id: 'Sales Person ID' };
 const show = (v: unknown) => v === undefined || v === null || v === '' ? '—' : String(v);
 const maskedMobile = (value: unknown) => {
   const text = String(value ?? '');
@@ -205,7 +223,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const [historyLoadingProgress, setHistoryLoadingProgress] = useState(10);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const salesPersonNamesByCode = useMemo(() => {
-    const values = new Map<string, string>();
+    const values = new Map<string, string>(SALES_PERSONS.map((employee) => [employee.code, employee.name]));
     meetings.forEach((meeting) => {
       if (meeting.employeeCode?.trim() && meeting.employeeName?.trim()) values.set(meeting.employeeCode.trim(), meeting.employeeName.trim());
     });
@@ -459,8 +477,10 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     try {
       await meetingService.verifyMeeting(selected.meetingCode, payload);
       setPending((items) => items.filter((m) => m.meetingCode !== selected.meetingCode));
-      setVerified(await meetingService.getVerificationMeetings('VERIFIED'));
       setSelected(null);
+      void meetingService.getVerificationMeetings('VERIFIED')
+        .then(setVerified)
+        .catch(() => undefined);
     } catch (e) { setSubmitError(e instanceof Error ? e.message : 'Meeting verification failed.'); }
     finally { submittingRef.current = false; setSubmitting(false); }
   };
@@ -713,9 +733,10 @@ function Details({ meeting: m, visitOnly = false }: { meeting: MeetingResponse; 
   const overviewFields = visitOnly
     ? [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate]] as const
     : [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate], ['Lead Status', m.leadStatus?.replace(/_/g, ' ')]] as const;
+  const employeeLabels = employeeRoleLabels(m.employeeCode);
   const contactFields = visitOnly
-    ? [['Mobile Number', maskedMobile(m.mobileNumber)], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : [])] as const
-    : [['Mobile Number', maskedMobile(m.mobileNumber)], ['Sales Person', m.employeeName], ['Sales Person ID', m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
+    ? [['Mobile Number', maskedMobile(m.mobileNumber)], [employeeLabels.person, m.employeeName], [employeeLabels.id, m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : [])] as const
+    : [['Mobile Number', maskedMobile(m.mobileNumber)], [employeeLabels.person, m.employeeName], [employeeLabels.id, m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
   return <View style={styles.detailsWrap}>
     <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
     <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>

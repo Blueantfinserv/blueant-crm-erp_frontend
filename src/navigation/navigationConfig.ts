@@ -72,6 +72,15 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
       { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
   },
+  RELATIONSHIP_MANAGER: {
+    role: 'RELATIONSHIP_MANAGER',
+    title: 'Relationship Manager Dashboard',
+    subtitle: 'Prospect flow, client relationships, and sales activity.',
+    menuItems: [
+      ...commonItems,
+      { key: 'leads', label: 'Prospects', route: 'leads' },
+    ],
+  },
   SALES_COORDINATOR: {
     role: 'SALES_COORDINATOR',
     title: 'Sales Coordinator Dashboard',

@@ -18,7 +18,8 @@ const roleExperienceMap: Record<AuthRole, FrontendExperience> = {
   SALES_COORDINATOR: 'SALES_COORDINATOR',
   PC_COORDINATOR: 'SALES_COORDINATOR',
   TEAM_LEADER: 'TEAM_LEADER',
-  RELATIONSHIP_MANAGER: 'UNAVAILABLE',
+  // Relationship Managers use the same prospect workflow as Sales Managers.
+  RELATIONSHIP_MANAGER: 'SALES_MANAGER',
   EMPLOYEE: 'SALES_EXECUTIVE',
   LEADER: 'LEGACY_LEADER',
 };

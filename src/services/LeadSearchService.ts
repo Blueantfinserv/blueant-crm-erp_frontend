@@ -21,6 +21,7 @@ export class LeadSearchService {
   private listeners = new Set<Listener>();
   private hiddenTaskLeadKeys = new Set<string>();
   private assignedUserId: number | null = null;
+  private assignedEmployeeCode: string | null = null;
   private requestGeneration = 0;
 
   private getLeadKeys(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
@@ -62,6 +63,7 @@ export class LeadSearchService {
   async loadLeads() {
     const generation = this.requestGeneration;
     const assignedUserId = this.assignedUserId;
+    const assignedEmployeeCode = this.assignedEmployeeCode;
     this.setState({ isLoading: true, error: null });
     try {
       const request = {
@@ -91,9 +93,12 @@ export class LeadSearchService {
         return true;
       });
       if (generation !== this.requestGeneration) return;
-      const scopedLeads = assignedUserId === null
+      const scopedLeads = assignedUserId === null && assignedEmployeeCode === null
         ? leads
-        : leads.filter((lead) => lead.assignedUserId === assignedUserId);
+        : leads.filter((lead) => (
+          (assignedUserId !== null && lead.assignedUserId === assignedUserId)
+          || (assignedEmployeeCode !== null && lead.assignedEmployeeCode === assignedEmployeeCode)
+        ));
       this.setState({
         leads: scopedLeads.filter((lead) => !this.isHiddenTaskLead(lead)),
         timestamp: response.timestamp ?? null,
@@ -111,8 +116,9 @@ export class LeadSearchService {
     return this.state;
   }
 
-  setAssignedUserScope(assignedUserId: number | null) {
+  setAssignedUserScope(assignedUserId: number | null, assignedEmployeeCode: string | null = null) {
     this.assignedUserId = assignedUserId;
+    this.assignedEmployeeCode = assignedEmployeeCode;
   }
 
   reset() {
