@@ -55,13 +55,9 @@ const toLeadListItem = (lead: LeadResponse, eventDate = lead.assignmentDate ?? l
 };
 
 const toMeetingListItem = (meeting: MeetingResponse) => {
-  const conductedAt = meeting.workflowUpdatedAt
-    ?? meeting.updatedAt
-    ?? meeting.lastModifiedDate
-    ?? meeting.meetingDate;
-  const period = getPeriod(conductedAt);
+  const period = getPeriod(meeting.meetingDate);
   if (!period) return null;
-  const meetingDate = toCalendarDate(conductedAt);
+  const meetingDate = toCalendarDate(meeting.meetingDate);
   return {
     id: meeting.meetingCode ?? String(meeting.id),
     primaryText: meeting.clientName ?? 'Unnamed client',
@@ -70,7 +66,8 @@ const toMeetingListItem = (meeting: MeetingResponse) => {
       ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(meetingDate)
       : 'Date unavailable',
     period,
-    dateValue: conductedAt,
+    dateValue: meeting.meetingDate,
+    remarks: meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion ?? 'No remarks available.',
   };
 };
 
@@ -119,8 +116,8 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
           .filter((lead) => ['CONVERTED', 'ALREADY_CLIENT'].includes(String(lead.leadStatus ?? '').toUpperCase()))
           .map((lead) => toLeadListItem(lead, lead.audit?.updatedAt ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt)));
       } else {
-        setLiveLeadItems(meetings
-          .filter((meeting) => meeting.meetingConducted === 'CONDUCTED' || meeting.meetingStatus === 'COMPLETED')
+        setLiveLeadItems(meetingService.getVerifiedMeetings()
+          .filter((meeting) => meeting.verificationStatus === 'VERIFIED' || Boolean(meeting.verifiedBy))
           .map(toMeetingListItem)
           .filter((item) => item !== null));
       }
@@ -271,6 +268,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
                 <View style={[styles.recordCopy, isMobile && styles.mobileRecordCopy]}>
                   <Text style={styles.primaryText}>{item.primaryText}</Text>
                   <Text style={styles.secondaryText}>{item.secondaryText}</Text>
+                  {list.id === 'meeting-done-list' ? <Text numberOfLines={2} style={styles.remarksText}>Remarks: {item.remarks}</Text> : null}
                 </View>
                 <View style={[styles.dateBadge, isMobile && styles.mobileDateBadge, { backgroundColor: rowColor.soft }]}>
                   <Icon source="clock-outline" size={14} color={rowColor.accent} />
@@ -418,6 +416,7 @@ const styles = StyleSheet.create({
   mobileRecordCopy: { minWidth: 150 },
   primaryText: { color: theme.colors.text, fontSize: 12, lineHeight: 17, fontWeight: '800' },
   secondaryText: { color: theme.colors.muted, fontSize: 10, lineHeight: 14, fontWeight: '600' },
+  remarksText: { marginTop: 3, color: '#475569', fontSize: 9, lineHeight: 13, fontWeight: '600' },
   dateBadge: {
     maxWidth: 160, flexDirection: 'row', alignItems: 'center', gap: theme.spacing.xs,
     paddingHorizontal: theme.spacing.sm, paddingVertical: 6, borderRadius: theme.radius.sm,

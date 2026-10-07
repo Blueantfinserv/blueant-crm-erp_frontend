@@ -69,6 +69,7 @@ export interface DashboardListItem {
   id: string;
   primaryText: string;
   secondaryText: string;
+  remarks?: string;
   dateLabel: string;
   dateValue?: string;
   period: DashboardListPeriod;

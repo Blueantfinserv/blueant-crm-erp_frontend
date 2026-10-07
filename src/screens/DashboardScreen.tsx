@@ -132,9 +132,9 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
     const clientDates = leadState.leads
       .filter((lead) => ['CONVERTED', 'ALREADY_CLIENT'].includes(String(lead.leadStatus ?? '').toUpperCase()))
       .map((lead) => lead.audit?.updatedAt ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt);
-    const meetingDates = meetingState.meetings
-      .filter((meeting) => meeting.meetingConducted === 'CONDUCTED' || meeting.meetingStatus === 'COMPLETED')
-      .map((meeting) => meeting.workflowUpdatedAt ?? meeting.updatedAt ?? meeting.lastModifiedDate ?? meeting.meetingDate);
+    const meetingDates = meetingService.getVerifiedMeetings()
+      .filter((meeting) => meeting.verificationStatus === 'VERIFIED' || Boolean(meeting.verifiedBy))
+      .map((meeting) => meeting.meetingDate);
     const clients = countForPeriods(clientDates);
     const meetings = countForPeriods(meetingDates);
     return salesActivityData.map((card) => {
