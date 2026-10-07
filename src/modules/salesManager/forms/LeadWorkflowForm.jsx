@@ -53,7 +53,7 @@ export default function LeadWorkflowForm({ type, lead, role, onClose, onSubmit }
     meetingDate: getLocalDate(),
     leadStatus: "",
     joinedWith: "Alone",
-    nextPlanDate: lead?.nextPlanDate ?? "",
+    nextPlanDate: isNewLead ? "" : getFollowUpOptions().find((option) => option.label === "After 14 days")?.value ?? "",
     liveLocation: null,
     cardImage: null,
   });
@@ -75,7 +75,11 @@ export default function LeadWorkflowForm({ type, lead, role, onClose, onSubmit }
     : "Keep the client journey updated and moving forward";
 
   const update = (field, value) => {
-    setForm((current) => ({ ...current, [field]: value }));
+    setForm((current) => {
+      if (field !== "meetingStatus") return { ...current, [field]: value };
+      const defaultOption = getFollowUpOptions().find((option) => option.label === (value === "Visited but Not Met" ? "Tomorrow" : "After 14 days"));
+      return { ...current, meetingStatus: value, nextPlanDate: defaultOption?.value ?? current.nextPlanDate };
+    });
     setErrors((current) => ({ ...current, [field]: undefined }));
     setSubmissionError("");
   };
@@ -329,13 +333,13 @@ export default function LeadWorkflowForm({ type, lead, role, onClose, onSubmit }
 
               {meetingConducted ? <>
                 <Field label="Meeting Mode" required error={errors.meetingMode}>
-                  <Select value={form.meetingMode} options={MEETING_MODES} onChange={(value) => update("meetingMode", value)} />
+                  <CompactFormDropdown value={form.meetingMode} options={MEETING_MODES} placeholder="Select meeting mode" onSelect={(value) => update("meetingMode", value)} />
                 </Field>
                 <Field label="Meeting Date" required error={errors.meetingDate}>
                   <Input value={form.meetingDate} editable={false} selectTextOnFocus={false} style={styles.readOnlyInput} />
                 </Field>
                 <Field label="Prospect Status" required error={errors.leadStatus}>
-                  <Select value={form.leadStatus} options={LEAD_STATUSES} onChange={(value) => update("leadStatus", value)} />
+                  <CompactFormDropdown value={form.leadStatus} options={LEAD_STATUSES} placeholder="Select prospect status" onSelect={(value) => update("leadStatus", value)} />
                 </Field>
                 <Field label="Joined With" required error={errors.joinedWith}>
                   <ChoiceGroup value={form.joinedWith} options={JOINED_WITH_OPTIONS} onChange={(value) => update("joinedWith", value)} />
@@ -422,6 +426,7 @@ export default function LeadWorkflowForm({ type, lead, role, onClose, onSubmit }
                 <Field label="Next Follow Up" required error={errors.nextPlanDate}>
                   <FollowUpOptions
                     value={form.nextPlanDate}
+                    lockedToTomorrow={form.meetingStatus === "Visited but Not Met"}
                     onSelect={(value) => update("nextPlanDate", value)}
                   />
                 </Field>
@@ -476,7 +481,7 @@ const FOLLOW_UP_OPTIONS = [
   ["After 3 days", 3],
   ["After 5 days", 5],
   ["After 8 days", 8],
-  ["After 15 days", 15],
+  ["After 14 days", 14],
 ];
 
 const getFollowUpOptions = () => {
@@ -491,43 +496,30 @@ const getFollowUpOptions = () => {
   });
 };
 
-const FOLLOW_UP_TONES = [
-  { text: "#4E79CA", background: "#F7FAFF", icon: "#EBF2FF" },
-  { text: "#8262BF", background: "#FBF9FF", icon: "#F1EBFF" },
-  { text: "#309273", background: "#F6FDF9", icon: "#E7F7EF" },
-  { text: "#BF7836", background: "#FFFBF6", icon: "#FFF0E1" },
-];
+function FollowUpOptions({ value, lockedToTomorrow = false, onSelect }) {
+  const [open, setOpen] = useState(false);
+  const options = lockedToTomorrow
+    ? getFollowUpOptions().filter((option) => option.label === "Tomorrow")
+    : getFollowUpOptions();
+  const selected = options.find((option) => option.value === value) ?? options[0];
+  return <View style={styles.followUpDropdown}>
+    <Pressable disabled={lockedToTomorrow} accessibilityRole="button" accessibilityState={{ expanded: open, disabled: lockedToTomorrow }} onPress={() => setOpen((current) => !current)} style={({ pressed }) => [styles.followUpTrigger, lockedToTomorrow && styles.followUpLocked, pressed && styles.pressed]}>
+      <View style={styles.followUpSelection}><Text style={styles.followUpSelectionLabel}>{selected?.label}</Text><Text style={styles.followUpSelectionDate}>{selected?.detail}</Text></View>
+      {!lockedToTomorrow ? <View style={styles.followUpChevron}><Icon source={open ? "chevron-up" : "chevron-down"} size={20} color="#6D28D9" /></View> : null}
+    </Pressable>
+    {open ? <View style={styles.followUpMenu}>{options.map((option) => {
+      const active = option.value === value;
+      return <Pressable key={option.value} accessibilityRole="menuitem" onPress={() => { onSelect(option.value); setOpen(false); }} style={({ pressed }) => [styles.followUpOption, active && styles.followUpOptionSelected, pressed && styles.followUpOptionPressed]}><View style={[styles.followUpOptionDot, active && styles.followUpOptionDotSelected]}>{active ? <Icon source="check" size={13} color="#FFFFFF" /> : null}</View><View style={styles.followUpOptionCopy}><Text style={[styles.followUpOptionLabel, active && styles.followUpOptionLabelSelected]}>{option.label}</Text><Text style={styles.followUpOptionDate}>{option.detail}</Text></View></Pressable>;
+    })}</View> : null}
+  </View>;
+}
 
-function FollowUpOptions({ value, onSelect }) {
-  const options = getFollowUpOptions();
-  return (
-    <View style={{ gap: 6 }}>
-      {value && !options.some((option) => option.value === value) ? (
-        <Text style={styles.choiceText}>Current follow-up: {value}</Text>
-      ) : null}
-      <View style={styles.followUpList}>
-      {options.map((option, index) => {
-        const tone = FOLLOW_UP_TONES[index % FOLLOW_UP_TONES.length];
-        const selected = value === option.value;
-        return (
-        <Pressable
-          key={option.value}
-          accessibilityRole="radio"
-          accessibilityState={{ checked: value === option.value }}
-          onPress={() => onSelect(option.value)}
-          style={[styles.followUpRow, { backgroundColor: tone.background }, index > 0 && styles.followUpDivider, selected && styles.followUpSelected]}
-        >
-          <View style={[styles.followUpIcon, { backgroundColor: tone.icon }]}>
-            <Icon source={selected ? "check-circle-outline" : "calendar-blank-outline"} size={19} color={tone.text} />
-          </View>
-          <Text style={[styles.followUpLabel, { color: tone.text }]}>{option.label}</Text>
-          <Text style={[styles.followUpDate, { color: tone.text }]}>({option.detail})</Text>
-        </Pressable>
-        );
-      })}
-      </View>
-    </View>
-  );
+function CompactFormDropdown({ value, options, placeholder, onSelect }) {
+  const [open, setOpen] = useState(false);
+  return <View style={styles.compactDropdown}>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded: open }} onPress={() => setOpen((current) => !current)} style={({ pressed }) => [styles.compactDropdownTrigger, pressed && styles.pressed]}><Text numberOfLines={1} style={[styles.compactDropdownValue, !value && styles.compactDropdownPlaceholder]}>{value || placeholder}</Text><View style={styles.compactDropdownChevron}><Icon source={open ? "chevron-up" : "chevron-down"} size={18} color="#6D28D9" /></View></Pressable>
+    {open ? <View style={styles.compactDropdownMenu}>{options.map((option) => { const active = option === value; return <Pressable key={option} accessibilityRole="menuitem" onPress={() => { onSelect(option); setOpen(false); }} style={({ pressed }) => [styles.compactDropdownOption, active && styles.compactDropdownOptionSelected, pressed && styles.compactDropdownOptionPressed]}><Text style={[styles.compactDropdownOptionText, active && styles.compactDropdownOptionTextSelected]}>{option}</Text>{active ? <Icon source="check" size={16} color="#7C3AED" /> : null}</Pressable>; })}</View> : null}
+  </View>;
 }
 
 function Field({ label, required, error, last, children }) {
@@ -569,13 +561,34 @@ function ChoiceGroup({ value, options, onChange }) {
 }
 
 const styles = StyleSheet.create({
-  followUpList: { borderWidth: 1, borderColor: "#E5D7FF", borderRadius: 20, overflow: "hidden", backgroundColor: "#FFFFFF" },
-  followUpRow: { minHeight: 52, flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, paddingRight: 16, paddingLeft: 13, borderLeftWidth: 3, borderLeftColor: "transparent" },
-  followUpDivider: { borderTopWidth: 1, borderTopColor: "#EEE7F8" },
-  followUpSelected: { borderLeftColor: "#8B5CF6", backgroundColor: "#EEE8FC" },
-  followUpIcon: { width: 32, height: 32, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  followUpLabel: { flex: 1, minWidth: 0, fontSize: 13, fontWeight: "800" },
-  followUpDate: { flexShrink: 1, maxWidth: "48%", fontSize: 12, fontWeight: "800", textAlign: "right" },
+  followUpDropdown: { position: "relative" },
+  followUpTrigger: { minHeight: 48, flexDirection: "row", alignItems: "center", gap: 10, paddingLeft: 14, paddingRight: 10, borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 13, backgroundColor: "#FAF8FF" },
+  followUpLocked: { opacity: 0.72, borderColor: "#E2E8F0", backgroundColor: "#F1F5F9" },
+  followUpSelection: { minWidth: 0, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  followUpSelectionLabel: { color: "#4C1D95", fontSize: 12, lineHeight: 16, fontWeight: "900" },
+  followUpSelectionDate: { flexShrink: 1, color: "#6D28D9", fontSize: 9, lineHeight: 13, fontWeight: "700", textAlign: "right" },
+  followUpChevron: { width: 30, height: 30, alignItems: "center", justifyContent: "center", borderRadius: 9, backgroundColor: "#EDE9FE" },
+  followUpMenu: { marginTop: 7, overflow: "hidden", borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 13, backgroundColor: "#FFFFFF" },
+  followUpOption: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: 9, paddingHorizontal: 12, paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: "#F3E8FF", backgroundColor: "#FFFFFF" },
+  followUpOptionSelected: { backgroundColor: "#F5F3FF" },
+  followUpOptionPressed: { backgroundColor: "#EDE9FE" },
+  followUpOptionDot: { width: 18, height: 18, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#C4B5FD", borderRadius: 9, backgroundColor: "#FFFFFF" },
+  followUpOptionDotSelected: { borderColor: "#7C3AED", backgroundColor: "#7C3AED" },
+  followUpOptionCopy: { minWidth: 0, flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  followUpOptionLabel: { color: "#4C1D95", fontSize: 10, lineHeight: 13, fontWeight: "800" },
+  followUpOptionLabelSelected: { color: "#6D28D9", fontWeight: "900" },
+  followUpOptionDate: { flexShrink: 1, color: "#5B21B6", fontSize: 8, lineHeight: 11, fontWeight: "600", textAlign: "right" },
+  compactDropdown: { position: "relative" },
+  compactDropdownTrigger: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: 8, paddingLeft: 13, paddingRight: 8, borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 11, backgroundColor: "#FAF8FF" },
+  compactDropdownValue: { minWidth: 0, flex: 1, color: "#4C1D95", fontSize: 11, fontWeight: "800" },
+  compactDropdownPlaceholder: { color: "#8B7AA8", fontWeight: "700" },
+  compactDropdownChevron: { width: 28, height: 28, alignItems: "center", justifyContent: "center", borderRadius: 8, backgroundColor: "#EDE9FE" },
+  compactDropdownMenu: { marginTop: 5, overflow: "hidden", borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 11, backgroundColor: "#FFFFFF" },
+  compactDropdownOption: { minHeight: 35, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: "#F3E8FF" },
+  compactDropdownOptionSelected: { backgroundColor: "#F5F3FF" },
+  compactDropdownOptionPressed: { backgroundColor: "#EDE9FE" },
+  compactDropdownOptionText: { minWidth: 0, flex: 1, color: "#4C1D95", fontSize: 10, fontWeight: "700" },
+  compactDropdownOptionTextSelected: { color: "#6D28D9", fontWeight: "900" },
   flex: { flex: 1 },
   screen: { flex: 1, overflow: "hidden", backgroundColor: "#F8FAFC" },
   header: {
@@ -627,8 +640,8 @@ const styles = StyleSheet.create({
   optional: { color: "#94A3B8", fontWeight: "600" },
   input: {
     width: "100%", minHeight: 45, paddingHorizontal: 12, paddingVertical: 10,
-    borderWidth: 1, borderColor: "#E3E2EE", borderRadius: 13,
-    backgroundColor: "#FBFAFF", color: "#1E1B4B", fontSize: 14,
+    borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 13,
+    backgroundColor: "#FAF8FF", color: "#1E1B4B", fontSize: 14, outlineStyle: "none",
   },
   readOnlyInput: { color: "#64748B", backgroundColor: "#F1F5F9", borderColor: "#D8E0EB" },
   inputText: { color: "#0F172A", fontSize: 14 },
@@ -661,10 +674,10 @@ const styles = StyleSheet.create({
   calendarDay: { color: "#334155", fontSize: 9, fontWeight: "700" },
   calendarDayDisabled: { color: "#D6D3E3" },
   calendarDaySelected: { color: "#FFFFFF", fontWeight: "900" },
-  textarea: { minHeight: 86, textAlignVertical: "top" },
+  textarea: { minHeight: 86, textAlignVertical: "top", borderColor: "#C4B5FD" },
   followupInput: { marginTop: 9 },
-  select: { minHeight: 45, justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: "#E3E2EE", borderRadius: 13, backgroundColor: "#FBFAFF" },
-  picker: { minHeight: 45, color: "#0F172A" },
+  select: { minHeight: 45, justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 13, backgroundColor: "#FAF8FF" },
+  picker: { minHeight: 45, color: "#4C1D95" },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   choice: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: "#E3E2EE", borderRadius: 21, backgroundColor: "#FBFAFF" },
   choiceSelected: { borderColor: "#7C3AED", backgroundColor: "#F5F3FF", shadowColor: "#7C3AED", shadowOpacity: 0.12, shadowRadius: 7 },
