@@ -114,18 +114,25 @@ const SALES_PERSONS = [
   { code: 'US2601', name: 'Umakant Sharma' },
   // Temporary assignment target for exercising the shared RM prospect workflow.
   { code: 'AP0101', name: 'Avesh Prajapati', role: 'RELATIONSHIP_MANAGER' },
+  // Sales Coordinator test account; no display name was provided, so show its employee code only.
+  { code: 'DV0101', name: '', role: 'SALES_COORDINATOR' },
 ] as const;
 const SALES_PERSON_CODES = SALES_PERSONS.map((employee) => employee.code);
-const employeeRole = (roleValue?: string, employeeCode?: string): 'SM' | 'RM' => {
+const employeeRole = (roleValue?: string, employeeCode?: string): 'SM' | 'RM' | 'SC' => {
   const role = String(roleValue ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
   if (role === 'RELATIONSHIP_MANAGER' || role === 'RM') return 'RM';
+  if (role === 'SALES_COORDINATOR' || role === 'SC') return 'SC';
   if (role === 'SALES_MANAGER' || role === 'SM') return 'SM';
-  return employeeCode?.trim() === 'AP0101' ? 'RM' : 'SM';
+  if (employeeCode?.trim() === 'AP0101') return 'RM';
+  if (employeeCode?.trim() === 'DV0101') return 'SC';
+  return 'SM';
 };
 const meetingRole = (meeting: MeetingResponse) => employeeRole(meeting.employeeRole ?? meeting.assignedEmployeeRole, meeting.employeeCode);
 const leadRole = (lead: LeadResponse) => employeeRole(lead.assignedEmployeeRole, lead.assignedEmployeeCode);
 const employeeRoleLabels = (meeting: MeetingResponse) => meetingRole(meeting) === 'RM'
   ? { person: 'Relationship Manager', id: 'Relationship Manager ID' }
+  : meetingRole(meeting) === 'SC'
+    ? { person: 'Sales Coordinator', id: 'Sales Coordinator ID' }
   : { person: 'Sales Manager', id: 'Sales Manager ID' };
 const show = (v: unknown) => v === undefined || v === null || v === '' ? '—' : String(v);
 const maskedMobile = (value: unknown) => {
@@ -742,7 +749,7 @@ function Cards({ items, filters = {}, empty, action, onOpen, verified = false, t
     ['JOINED', (m: MeetingResponse) => m.aloneWith],
     ...(verified ? [['VERIFIED BY', (m: MeetingResponse) => m.verifiedBy] as const] : []),
   ]).filter(([label]) => !hideMeetingDate || label !== 'MEETING DATE') as unknown as readonly [string, (m: MeetingResponse) => unknown][];
-  return <View style={styles.desktopTable}>{visibleItems.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.listRow, styles.desktopRow, i % 2 === 1 && styles.listRowAlternate]}><View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>{columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn, label === 'LEAD STATUS' && styles.leadStatusColumn]}><Text numberOfLines={1} style={[styles.cellMain, label === 'LEAD STATUS' && styles.status, label === 'LEAD STATUS' && styles.leadStatusValue, label === 'LEAD STATUS' && m.leadStatus === 'CONVERTED_CLIENT' && styles.statusVerified, label === 'JOINED' && styles.joinedBadge, label === 'ROLE' && styles.roleBadge, label === 'ROLE' && meetingRole(m) === 'RM' && styles.roleBadgeRm]}>{label === 'LEAD STATUS' ? show(value(m)).replace(/_/g, ' ') : show(value(m))}</Text></View>)}{onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : taskOnly ? null : <View style={styles.desktopActionColumn} />}</View>)}</View>;
+  return <View style={styles.desktopTable}>{visibleItems.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.listRow, styles.desktopRow, i % 2 === 1 && styles.listRowAlternate]}><View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>{columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn, label === 'LEAD STATUS' && styles.leadStatusColumn]}><Text numberOfLines={1} style={[styles.cellMain, label === 'LEAD STATUS' && styles.status, label === 'LEAD STATUS' && styles.leadStatusValue, label === 'LEAD STATUS' && m.leadStatus === 'CONVERTED_CLIENT' && styles.statusVerified, label === 'JOINED' && styles.joinedBadge, label === 'ROLE' && styles.roleBadge, label === 'ROLE' && meetingRole(m) === 'RM' && styles.roleBadgeRm, label === 'ROLE' && meetingRole(m) === 'SC' && styles.roleBadgeSc]}>{label === 'LEAD STATUS' ? show(value(m)).replace(/_/g, ' ') : show(value(m))}</Text></View>)}{onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : taskOnly ? null : <View style={styles.desktopActionColumn} />}</View>)}</View>;
 }
 function Details({ meeting: m, visitOnly = false }: { meeting: MeetingResponse; visitOnly?: boolean }) {
   const meetingPlace = m.meetingLocation ?? m.location ?? m.address;
@@ -1002,6 +1009,7 @@ const styles = StyleSheet.create({
   joinedBadge: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, color: '#0F766E', backgroundColor: '#DFF5EF', fontSize: 8, fontWeight: '700' },
   roleBadge: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, color: '#1D4ED8', backgroundColor: '#DBEAFE', fontSize: 8, fontWeight: '900' },
   roleBadgeRm: { color: '#6D28D9', backgroundColor: '#EDE9FE' },
+  roleBadgeSc: { color: '#B45309', backgroundColor: '#FEF3C7' },
   syncControls: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, minHeight: 36, borderRadius: 8, borderWidth: 1, borderColor: '#A7DFD7', backgroundColor: '#ECFDF8' },
   syncControlsCompact: { minWidth: 0, flex: 1, justifyContent: 'space-between', gap: 3, paddingHorizontal: 6 },
   syncButton: { flexDirection: 'row', alignItems: 'center', gap: 5, minHeight: 36, paddingHorizontal: 4 },

@@ -15,7 +15,9 @@ const roleExperienceMap: Record<AuthRole, FrontendExperience> = {
   ADMIN: 'ADMIN',
   BUSINESS_HEAD: 'UNAVAILABLE',
   SALES_MANAGER: 'SALES_MANAGER',
-  SALES_COORDINATOR: 'SALES_COORDINATOR',
+  // Sales Coordinators use the shared individual sales workspace.
+  SALES_COORDINATOR: 'SALES_MANAGER',
+  // Process Coordinators retain the existing PC verification workspace.
   PC_COORDINATOR: 'SALES_COORDINATOR',
   TEAM_LEADER: 'TEAM_LEADER',
   // Relationship Managers use the same prospect workflow as Sales Managers.

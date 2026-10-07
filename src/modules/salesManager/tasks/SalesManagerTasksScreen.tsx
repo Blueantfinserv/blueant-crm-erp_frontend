@@ -804,12 +804,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
           ) : filteredTasks.length ? (
             <>
               <View style={styles.taskGrid}>
-                {filteredTasks.map((task, index) => (
+                {filteredTasks.map((task) => (
                   <SalesTaskCard
                     key={task.id}
                     task={task}
                     width={cardWidth}
-                    index={index}
                   highlightTaskLabel={allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode}
                     onUpdateMeeting={onUpdateMeeting}
                     onOpenDetails={onOpenLeadDetails}

@@ -7,21 +7,21 @@ import { SalesTask } from '../types/tasks';
 type Props = {
   task: SalesTask;
   width: `${number}%`;
-  index: number;
   onUpdateMeeting?: (task: SalesTask) => void;
   onOpenDetails?: (task: SalesTask) => void;
   highlightTaskLabel?: boolean;
 };
 
-const cardTones = [
-  { accent: '#2563EB', soft: '#EFF6FF', border: '#DBEAFE' },
-  { accent: '#8B5CF6', soft: '#F5F3FF', border: '#EDE9FE' },
-  { accent: '#F97316', soft: '#FFF7ED', border: '#FFEDD5' },
-  { accent: '#16A34A', soft: '#F0FDF4', border: '#DCFCE7' },
-] as const;
+const prospectTones = {
+  Pending: { accent: '#C2410C', soft: '#FFF0E8', border: '#FDBA9A' },
+  Today: { accent: '#EA580C', soft: '#FFF7ED', border: '#FED7AA' },
+  'Future 3 Days': { accent: '#D97706', soft: '#FFFBEB', border: '#FDE68A' },
+  Later: { accent: '#D97706', soft: '#FFFBEB', border: '#FDE68A' },
+  Unscheduled: { accent: '#B45309', soft: '#FFF8E8', border: '#FDE4A8' },
+} as const;
 
-export const SalesTaskCard = memo(function SalesTaskCard({ task, width, index, onUpdateMeeting, onOpenDetails, highlightTaskLabel = false }: Props) {
-  const tone = cardTones[index % cardTones.length];
+export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdateMeeting, onOpenDetails, highlightTaskLabel = false }: Props) {
+  const tone = prospectTones[task.schedule];
   const isRemovedLead = task.taskKind === 'LEAD'
     && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED');
   const isVerificationPending = task.verificationPending === true;
