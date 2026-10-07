@@ -125,6 +125,7 @@ export type LeadResponse = {
   assignedUserId?: number;
   assignedEmployeeCode?: string;
   assignedEmployeeName?: string;
+  assignedEmployeeRole?: string;
   assignedByEmployeeCode?: string;
   assignedByEmployeeName?: string;
   assignedAt?: string;
