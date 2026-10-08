@@ -7,6 +7,7 @@ import type { LeadResponse } from '../../../../types/lead';
 import type { MeetingResponse } from '../../../../types/meeting';
 import { leadSearchService } from '../../../../services/LeadSearchService';
 import { meetingService } from '../../../../services/MeetingService';
+import { clientCreatedService } from '../../../../services/ClientCreatedService';
 import { isRemovedLead } from '../../tasks/taskMeetingSelectors';
 
 type Props = {
@@ -71,6 +72,32 @@ const toMeetingListItem = (meeting: MeetingResponse) => {
   };
 };
 
+const isSameLead = (lead: LeadResponse, meeting: MeetingResponse) => (
+  (lead.leadId !== undefined && meeting.leadId === lead.leadId)
+  || (Boolean(lead.leadCode) && lead.leadCode === meeting.leadCode)
+);
+
+const getClientCreatedDate = (lead: LeadResponse) => {
+  const conversionMeeting = [
+    ...meetingService.getState().meetings,
+    ...meetingService.getVerifiedMeetings(),
+  ]
+    .filter((meeting) => isSameLead(lead, meeting))
+    .filter((meeting) => ['CONVERTED_CLIENT', 'ALREADY_CLIENT'].includes(meeting.leadStatus ?? ''))
+    .filter((meeting) => meeting.verificationStatus === 'VERIFIED' || Boolean(meeting.verifiedBy))
+    .sort((left, right) => String(right.workflowUpdatedAt ?? right.meetingVerificationDate ?? right.meetingDate ?? '').localeCompare(
+      String(left.workflowUpdatedAt ?? left.meetingVerificationDate ?? left.meetingDate ?? ''),
+    ))[0];
+
+  return conversionMeeting?.workflowUpdatedAt
+    ?? conversionMeeting?.meetingVerificationDate
+    ?? conversionMeeting?.meetingDate
+    ?? lead.audit?.updatedAt
+    ?? lead.assignmentDate
+    ?? lead.assignedDate
+    ?? lead.assignedAt;
+};
+
 const meetingPeriods: readonly { key: DashboardListPeriod; label: string; color: string }[] = [
   { key: 'today', label: 'Today', color: '#2563EB' },
   { key: 'thisWeek', label: 'This Week', color: '#8B5CF6' },
@@ -112,30 +139,40 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
           .filter((lead) => showRemovedLeads ? isRemovedLead(lead.leadStatus) : !isRemovedLead(lead.leadStatus))
           .map((lead) => toLeadListItem(lead)));
       } else if (list.id === 'client-created-list') {
-        setLiveLeadItems(leads
-          .filter((lead) => ['CONVERTED', 'ALREADY_CLIENT'].includes(String(lead.leadStatus ?? '').toUpperCase()))
-          .map((lead) => toLeadListItem(lead, lead.audit?.updatedAt ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt)));
+        setLiveLeadItems(clientCreatedService.getState().leads
+          .map((lead) => toLeadListItem(lead, getClientCreatedDate(lead))));
       } else {
         setLiveLeadItems(meetingService.getVerifiedMeetings()
           .filter((meeting) => meeting.verificationStatus === 'VERIFIED' || Boolean(meeting.verifiedBy))
           .map(toMeetingListItem)
           .filter((item) => item !== null));
       }
-      const stateError = list.id === 'meeting-done-list' ? meetingService.getState().error : leadSearchService.getState().error;
-      const stateLoading = list.id === 'meeting-done-list' ? meetingService.getState().isLoading : leadSearchService.getState().isLoading;
+      const stateError = list.id === 'meeting-done-list'
+        ? meetingService.getState().error
+        : list.id === 'client-created-list'
+          ? clientCreatedService.getState().error
+          : leadSearchService.getState().error;
+      const stateLoading = list.id === 'meeting-done-list'
+        ? meetingService.getState().isLoading
+        : list.id === 'client-created-list'
+          ? clientCreatedService.getState().isLoading
+          : leadSearchService.getState().isLoading;
       setLoadError(stateError);
       setLoading(stateLoading);
     };
     const unsubscribeLeads = leadSearchService.subscribe(refresh);
     const unsubscribeMeetings = meetingService.subscribe(refresh);
+    const unsubscribeCreatedClients = clientCreatedService.subscribe(refresh);
     refresh();
     if (list.id === 'meeting-done-list') {
       if (!meetingService.getState().timestamp) void meetingService.loadMeetings();
+    } else if (list.id === 'client-created-list') {
+      void Promise.all([clientCreatedService.loadClients(userId, employeeCode), meetingService.loadMeetings()]);
     } else if (!leadSearchService.getState().timestamp) {
       void leadSearchService.loadLeads();
     }
-    return () => { unsubscribeLeads(); unsubscribeMeetings(); };
-  }, [isLiveList, list.id, showRemovedLeads]);
+    return () => { unsubscribeLeads(); unsubscribeMeetings(); unsubscribeCreatedClients(); };
+  }, [employeeCode, isLiveList, list.id, showRemovedLeads, userId]);
   const visibleItems = useMemo(() => {
     if (!showPeriodSelector) return liveLeadItems;
     const today = new Date();

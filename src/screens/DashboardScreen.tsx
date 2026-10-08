@@ -91,6 +91,17 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
 
   const salesOverviewCards = useMemo(() => {
     const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
+    const meetingHistory = Array.from(
+      new Map(
+        [
+          ...meetingState.meetings,
+          ...meetingService.getPendingVerificationMeetings(),
+          ...meetingService.getVerifiedMeetings(),
+        ]
+          .map((meeting) => [meeting.meetingCode ?? String(meeting.id ?? ''), meeting] as const)
+          .filter(([meetingCode]) => Boolean(meetingCode)),
+      ).values(),
+    );
     const meetingLeadKeys = new Set(actionableMeetings.flatMap((meeting) => [
       meeting.leadId !== undefined ? `id:${meeting.leadId}` : '',
       meeting.leadCode ? `code:${meeting.leadCode}` : '',
@@ -98,11 +109,19 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
     const actionableLeads = leadState.leads
       .filter((lead) => !isHiddenCompletedLead(lead.leadStatus) && !isRemovedLead(lead.leadStatus))
       .filter((lead) => [lead.leadId !== undefined ? `id:${lead.leadId}` : '', lead.leadCode ? `code:${lead.leadCode}` : ''].filter(Boolean).every((key) => !meetingLeadKeys.has(key)));
-    const meetingTaskDate = (meeting: (typeof actionableMeetings)[number]) => meeting.nextMeetingDate ?? meeting.meetingDate;
-    const todayTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meetingTaskDate(meeting)) === 'Today').length
-      + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt, 'Today')).length;
-    const pendingTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meetingTaskDate(meeting)) === 'Pending').length
-      + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt, 'Pending')).length;
+    const getLeadTaskDate = (lead: (typeof actionableLeads)[number]) => meetingHistory
+      .filter((meeting) => Boolean(meeting.nextMeetingDate) && (
+        (lead.leadId !== undefined && meeting.leadId === lead.leadId)
+        || (Boolean(lead.leadCode) && lead.leadCode === meeting.leadCode)
+        || Boolean(lead.mobileNumber && meeting.mobileNumber && lead.mobileNumber.replace(/\D/g, '') === meeting.mobileNumber.replace(/\D/g, ''))
+      ))
+      .sort((left, right) => String(right.workflowUpdatedAt ?? right.updatedAt ?? right.lastModifiedDate ?? right.meetingDate ?? '').localeCompare(
+        String(left.workflowUpdatedAt ?? left.updatedAt ?? left.lastModifiedDate ?? left.meetingDate ?? ''),
+      ))[0]?.nextMeetingDate ?? lead.nextPlanDate ?? lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt;
+    const todayTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.meetingDate) === 'Today').length
+      + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(getLeadTaskDate(lead), 'Today')).length;
+    const pendingTasks = actionableMeetings.filter((meeting) => getTaskSchedule(meeting.meetingDate) === 'Pending').length
+      + actionableLeads.filter((lead) => matchesAssignmentTaskFilter(getLeadTaskDate(lead), 'Pending')).length;
     return todayOverviewData.map((card) => {
       if (card.id === 'todays-meetings') return { ...card, value: todayTasks };
       if (card.id === 'pending-meetings') return { ...card, value: pendingTasks };
