@@ -96,6 +96,15 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
     subtitle: 'PC Coordinator workspace.',
     menuItems: [...commonItems],
   },
+  CRM_ONBOARDING: {
+    role: 'CRM_ONBOARDING',
+    title: 'CRM Onboarding Dashboard',
+    subtitle: 'Review CRM-eligible leads and assign them to RM or SC.',
+    menuItems: [
+      ...commonItems,
+      { key: 'leads', label: 'CRM Eligible Leads', route: 'leads' },
+    ],
+  },
   EMPLOYEE: {
     role: 'EMPLOYEE',
     title: 'Employee Dashboard',

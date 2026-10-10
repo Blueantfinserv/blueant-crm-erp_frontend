@@ -14,7 +14,7 @@ export function MobileLogin(props: LoginScreenProps) {
   const footerFontSize = width < 375 ? 11 : 12;
 
   return (
-    <View style={styles.screen}>
+    <View nativeID="blueant-login" style={styles.screen}>
       <BackgroundCurves variant="mobile" />
 
       <View style={styles.top}>

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Easing, Modal, Pressable, SafeAreaView, StatusBar, StyleSheet } from 'react-native';
-import { PaperProvider } from 'react-native-paper';
+import { Animated, Easing, Modal, Platform, Pressable, SafeAreaView, StatusBar, StyleSheet } from 'react-native';
+import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { en, registerTranslation } from 'react-native-paper-dates';
 import { AuthProvider } from './src/context/AuthProvider';
 import { useAuth } from './src/context/AuthContext';
@@ -9,6 +9,7 @@ import { LoginScreen } from './src/screens/auth/LoginScreen';
 import { theme } from './src/theme/theme';
 import { DashboardScreen } from './src/screens/DashboardScreen';
 import { SalesCoordinatorScreen } from './src/screens/SalesCoordinatorScreen';
+import { CrmOnboardingScreen } from './src/screens/CrmOnboardingScreen';
 import { AssignedLeadsScreen } from './src/screens/AssignedLeadsScreen';
 import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
 import { AuthRole } from './src/types/auth';
@@ -44,6 +45,7 @@ import type {
   MeetingWorkflowRequest,
 } from './src/types/meeting';
 import { PwaInstallPrompt } from './src/components/PwaInstallPrompt';
+import { darkPalette, ThemeProvider, useAppTheme } from './src/theme/ThemeProvider';
 
 registerTranslation('en', en);
 
@@ -102,6 +104,8 @@ type ScreenState =
   | 'coming-soon'
   | NavigationRoute;
 
+type SalesTaskView = 'all-task' | 'task-to-do' | 'today-task' | 'pending-task' | 'future-3-days' | 'all-leads';
+
 const baseTopTabs: TopTabItem[] = [
   { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
   { key: 'reports', label: 'Reports', route: 'reports' },
@@ -125,6 +129,10 @@ const getTopTabsForExperience = (experience: FrontendExperience): TopTabItem[] =
     return [{ key: 'dashboard', label: 'Dashboard', route: 'dashboard' }];
   }
 
+  if (experience === 'CRM_ONBOARDING') {
+    return [{ key: 'dashboard', label: 'Dashboard', route: 'dashboard' }];
+  }
+
   if (isSalesWorkspaceExperience(experience)) {
     return [
       { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
@@ -136,7 +144,7 @@ const getTopTabsForExperience = (experience: FrontendExperience): TopTabItem[] =
 };
 
 const getModuleItemsForExperience = (experience: FrontendExperience): ModuleItem[] => {
-  if (experience === 'SALES_COORDINATOR' || isSalesWorkspaceExperience(experience)) {
+  if (experience === 'SALES_COORDINATOR' || experience === 'CRM_ONBOARDING' || isSalesWorkspaceExperience(experience)) {
     return [];
   }
 
@@ -145,7 +153,33 @@ const getModuleItemsForExperience = (experience: FrontendExperience): ModuleItem
 
 export default function App() {
   return (
-    <PaperProvider>
+    <ThemeProvider>
+      <ThemeAwarePaperProvider />
+    </ThemeProvider>
+  );
+}
+
+function ThemeAwarePaperProvider() {
+  const { isDark } = useAppTheme();
+  const paperTheme = isDark && Platform.OS !== 'web'
+    ? {
+        ...MD3DarkTheme,
+        colors: {
+          ...MD3DarkTheme.colors,
+          primary: '#60A5FA',
+          secondary: '#A78BFA',
+          surface: darkPalette.surface,
+          surfaceVariant: darkPalette.surfaceRaised,
+          background: darkPalette.page,
+          onSurface: darkPalette.bodyText,
+          onBackground: darkPalette.bodyText,
+          outline: darkPalette.border,
+        },
+      }
+    : MD3LightTheme;
+
+  return (
+    <PaperProvider theme={paperTheme}>
       <AuthProvider>
         <AppShell />
         <PwaInstallPrompt />
@@ -155,6 +189,7 @@ export default function App() {
 }
 
 function AppShell() {
+  const { isDark } = useAppTheme();
   const auth = useAuth();
   const backendRole = auth.user?.role;
   const experience = getRoleExperience(backendRole);
@@ -172,12 +207,7 @@ function AppShell() {
   } | null>(null);
   const [selectedSalesTask, setSelectedSalesTask] = useState<SalesTask | null>(null);
   const [salesTaskFilter, setSalesTaskFilter] = useState<'Today' | 'Pending' | 'Future 3 Days'>('Today');
-  const [isAllTaskMode, setIsAllTaskMode] = useState(false);
-  const [isTaskToDoMode, setIsTaskToDoMode] = useState(true);
-  const [isTodaysTaskMode, setIsTodaysTaskMode] = useState(false);
-  const [isPendingTaskMode, setIsPendingTaskMode] = useState(false);
-  const [isFuture3DaysTaskMode, setIsFuture3DaysTaskMode] = useState(false);
-  const [isAllLeadsMode, setIsAllLeadsMode] = useState(false);
+  const [salesTaskView, setSalesTaskView] = useState<SalesTaskView>('task-to-do');
   const [salesTaskScreenKey, setSalesTaskScreenKey] = useState(0);
   const screenHistory = useRef<ScreenState[]>([]);
   const fade = useRef(new Animated.Value(0)).current;
@@ -239,12 +269,7 @@ function AppShell() {
     setSelectedSalesTask(null);
     setLeadForm(null);
     if (isSalesWorkspaceExperience(getRoleExperience(backendRole))) {
-      setIsAllTaskMode(false);
-      setIsTaskToDoMode(true);
-      setIsTodaysTaskMode(false);
-      setIsPendingTaskMode(false);
-      setIsFuture3DaysTaskMode(false);
-      setIsAllLeadsMode(false);
+      setSalesTaskView('task-to-do');
       setSalesTaskScreenKey(0);
     }
   }, [authenticatedUserKey, backendRole]);
@@ -344,25 +369,16 @@ function AppShell() {
     ] as const;
     const onSalesPersonMenuSelect = (key: string) => {
       if (key === 'dashboard') {
-        setIsAllTaskMode(false);
-        setIsTaskToDoMode(false);
-        setIsTodaysTaskMode(false);
-        setIsPendingTaskMode(false);
-        setIsFuture3DaysTaskMode(false);
-        setIsAllLeadsMode(false);
         setActiveTab('dashboard');
         navigate('dashboard');
         return;
       }
+      const taskView = key as SalesTaskView;
+      if (!['all-task', 'task-to-do', 'today-task', 'pending-task', 'future-3-days', 'all-leads'].includes(taskView)) return;
       if (key === 'today-task') setSalesTaskFilter('Today');
       if (key === 'pending-task') setSalesTaskFilter('Pending');
       if (key === 'future-3-days') setSalesTaskFilter('Future 3 Days');
-      setIsAllTaskMode(key === 'all-task');
-      setIsTaskToDoMode(key === 'task-to-do');
-      setIsTodaysTaskMode(key === 'today-task');
-      setIsPendingTaskMode(key === 'pending-task');
-      setIsFuture3DaysTaskMode(key === 'future-3-days');
-      setIsAllLeadsMode(key === 'all-leads');
+      setSalesTaskView(taskView);
       setSalesTaskScreenKey((current) => current + 1);
       setActiveTab('all-tasks');
       navigate('leads');
@@ -422,6 +438,8 @@ function AppShell() {
           >
             {experience === 'SALES_COORDINATOR' ? (
               <SalesCoordinatorScreen permissions={auth.user?.permissions} />
+            ) : experience === 'CRM_ONBOARDING' ? (
+              <CrmOnboardingScreen />
             ) : activeModule === 'sales' ? (
               <DashboardScreen
                 role={roleNavigation.role}
@@ -437,12 +455,7 @@ function AppShell() {
                   navigate('dashboard-list');
                 }}
                 onOpenTaskFilter={(filter) => {
-                  setIsAllTaskMode(false);
-                  setIsTaskToDoMode(false);
-                  setIsTodaysTaskMode(filter === 'Today');
-                  setIsPendingTaskMode(filter === 'Pending');
-                  setIsFuture3DaysTaskMode(false);
-                  setIsAllLeadsMode(false);
+                  setSalesTaskView(filter === 'Today' ? 'today-task' : 'pending-task');
                   setSalesTaskFilter(filter);
                   setSalesTaskScreenKey((current) => current + 1);
                   navigate('leads');
@@ -593,16 +606,18 @@ function AppShell() {
               navigate('coming-soon');
             }}
           >
-            {isSalesWorkspaceExperience(experience) ? (
+            {experience === 'CRM_ONBOARDING' ? (
+              <CrmOnboardingScreen />
+            ) : isSalesWorkspaceExperience(experience) ? (
               <SalesManagerTasksScreen
                 key={salesTaskScreenKey}
                 initialTaskType={salesTaskFilter}
-                allTaskMode={isAllTaskMode}
-                taskToDoMode={isTaskToDoMode}
-                todaysTaskMode={isTodaysTaskMode}
-                pendingTaskMode={isPendingTaskMode}
-                future3DaysTaskMode={isFuture3DaysTaskMode}
-                allLeadsMode={isAllLeadsMode}
+                allTaskMode={salesTaskView === 'all-task'}
+                taskToDoMode={salesTaskView === 'task-to-do'}
+                todaysTaskMode={salesTaskView === 'today-task'}
+                pendingTaskMode={salesTaskView === 'pending-task'}
+                future3DaysTaskMode={salesTaskView === 'future-3-days'}
+                allLeadsMode={salesTaskView === 'all-leads'}
                 onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
                 onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
                 onOpenLeadDetails={(lead) => {
@@ -742,11 +757,11 @@ function AppShell() {
       default:
         return null;
     }
-  }, [activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, isAllLeadsMode, isAllTaskMode, isFuture3DaysTaskMode, isPendingTaskMode, isTaskToDoMode, isTodaysTaskMode, message, salesTaskFilter, salesTaskScreenKey, screen, selectedDashboardListId, selectedSalesTask]);
+  }, [activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, message, salesTaskFilter, salesTaskScreenKey, salesTaskView, screen, selectedDashboardListId, selectedSalesTask]);
 
   return (
-    <SafeAreaView style={styles.root}>
-      <StatusBar barStyle="light-content" backgroundColor={theme.colors.secondary} />
+    <SafeAreaView style={[styles.root, isDark && Platform.OS !== 'web' && styles.rootDark]}>
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} backgroundColor={isDark ? darkPalette.page : theme.colors.secondary} />
       <Animated.View style={[styles.animatedShell, { opacity: fade }]}>
         {content}
         <LegalDocsScreen
@@ -810,6 +825,9 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.colors.background,
+  },
+  rootDark: {
+    backgroundColor: darkPalette.page,
   },
   animatedShell: {
     flex: 1,

@@ -5,6 +5,7 @@ export const AUTH_ROLES = [
   'SALES_MANAGER',
   'SALES_COORDINATOR',
   'PC_COORDINATOR',
+  'CRM_ONBOARDING',
   'TEAM_LEADER',
   'RELATIONSHIP_MANAGER',
   'EMPLOYEE',
@@ -14,7 +15,7 @@ export const AUTH_ROLES = [
 export type AuthRole = (typeof AUTH_ROLES)[number];
 
 export const normalizeAuthRole = (value: string): AuthRole | null => {
-  const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, '_');
+  const normalized = value.trim().toUpperCase().replace(/[\s-]+/g, '_').replace(/^ROLE_/, '');
   return AUTH_ROLES.find((role) => role === normalized) ?? null;
 };
 
@@ -134,6 +135,25 @@ export type RefreshTokenResponseData = {
   expiresIn: number;
   refreshTokenExpiry?: string;
   sessionId?: string;
+};
+
+export type CurrentUserResponseData = {
+  userId: number;
+  employeeCode: string;
+  fullName: string;
+  email: string;
+  mobileNumber?: string | null;
+  profileImage?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  team?: string | null;
+  reportingManager?: string | null;
+  role: string;
+  permissions?: string[] | null;
+  status?: string | null;
+  firstLogin?: boolean;
+  accountLocked?: boolean;
+  enabled?: boolean | null;
 };
 
 export type LogoutRequest = {

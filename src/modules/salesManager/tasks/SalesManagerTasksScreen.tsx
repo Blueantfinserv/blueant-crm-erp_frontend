@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
+import { useAppTheme } from '../../../theme/ThemeProvider';
 import {
   TaskStageFilter,
   TaskTypeFilter,
@@ -237,6 +238,7 @@ type Props = {
 };
 
 export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: Props) {
+  const { isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const [search, setSearch] = useState('');
@@ -554,7 +556,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                   style={({ pressed }) => [styles.refreshAction, isRefreshing && styles.refreshActionDisabled, pressed && styles.pressed]}
                 >
                   {isRefreshing ? <ActivityIndicator size="small" color={theme.colors.primary} /> : <Icon source="refresh" size={16} color={theme.colors.primary} />}
-                  <Text style={styles.refreshActionText}>{isRefreshing ? 'Refreshing' : 'Refresh'}</Text>
+                  <Text style={[styles.refreshActionText, isDark && styles.darkModeWhiteSource]}>{isRefreshing ? 'Refreshing' : 'Refresh'}</Text>
                 </Pressable>
                 {SHOW_NEW_LEAD_ACTION ? (
                   <Pressable
@@ -572,7 +574,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
                   onPress={() => void Linking.openURL(SERVICE_REQUEST_FORM_URL)}
                   style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}
                 >
-                  <Text style={styles.primaryActionText}>Service Request</Text>
+                  <Text style={[styles.primaryActionText, isDark && styles.darkModeWhiteSource]}>Service Request</Text>
                 </Pressable>
               </View>
             </View>
@@ -786,7 +788,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         <View style={styles.body}>
           <View style={styles.bodyHeader}>
             <Text style={styles.bodyTitle}>Task Pipeline</Text>
-            <Text style={styles.bodyCount}>
+            <Text style={[styles.bodyCount, isDark && styles.darkModeWhiteSource]}>
               {filteredTasks.length ? `${filteredTasks.length} tasks` : '0 tasks'}
             </Text>
           </View>
@@ -857,6 +859,9 @@ const styles = StyleSheet.create({
   },
   bodyTitle: { color: theme.colors.text, fontSize: 14, lineHeight: 18, fontWeight: '900' },
   bodyCount: { color: theme.colors.muted, fontSize: 10, fontWeight: '800' },
+  // The web dark shell is color-inverted; black source text resolves to white
+  // on that surface while the original light-mode token stays untouched.
+  darkModeWhiteSource: { color: '#000000' },
   taskGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',

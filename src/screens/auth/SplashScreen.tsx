@@ -2,8 +2,10 @@ import { useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, Text, View } from 'react-native';
 import { Logo } from '../../components/Logo';
 import { theme } from '../../theme/theme';
+import { useAppTheme } from '../../theme/ThemeProvider';
 
 export function SplashScreen() {
+  const { isDark } = useAppTheme();
   const scale = useRef(new Animated.Value(0.9)).current;
   const opacity = useRef(new Animated.Value(0.35)).current;
 
@@ -23,7 +25,7 @@ export function SplashScreen() {
   }, [opacity, scale]);
 
   return (
-    <View style={styles.container}>
+    <View nativeID="blueant-splash" style={[styles.container, isDark && styles.containerDark]}>
       <Animated.View style={{ transform: [{ scale }], opacity }}>
         <Logo />
       </Animated.View>
@@ -42,6 +44,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 24,
+  },
+  containerDark: {
+    backgroundColor: '#0A1B3A',
   },
   copy: { color: 'rgba(255,255,255,0.82)', fontSize: 15, fontWeight: '500' },
   loaderTrack: { width: 140, height: 6, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.12)', overflow: 'hidden' },

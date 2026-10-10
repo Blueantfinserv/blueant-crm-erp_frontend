@@ -1,6 +1,8 @@
 import {
   AuthResponse,
+  AuthUser,
   ApiSuccessResponse,
+  CurrentUserResponseData,
   ForgotPasswordCredentials,
   LoginCredentials,
   LoginRequest,
@@ -94,6 +96,32 @@ const toAuthResponse = (response: ApiSuccessResponse<LoginResponseData>): AuthRe
   };
 };
 
+const toCurrentAuthUser = (data: CurrentUserResponseData): AuthUser => {
+  const role = normalizeAuthRole(data.role);
+  if (!role) {
+    throw new AuthApiError(`Unsupported account role: ${data.role}`, 'UNSUPPORTED_ROLE');
+  }
+  return {
+    id: data.userId,
+    employeeId: data.employeeCode,
+    fullName: data.fullName,
+    email: data.email,
+    role,
+    roleName: data.role,
+    permissions: data.permissions,
+    mobileNumber: data.mobileNumber,
+    profileImage: data.profileImage,
+    department: data.department,
+    designation: data.designation,
+    team: data.team,
+    reportingManager: data.reportingManager,
+    status: data.status,
+    firstLogin: data.firstLogin,
+    accountLocked: data.accountLocked,
+    enabled: data.enabled,
+  };
+};
+
 export class AuthApiError extends Error {
   code: string;
 
@@ -153,6 +181,14 @@ export const authApi = {
       body: JSON.stringify(body),
     });
     return response.data;
+  },
+
+  getCurrentUser: async (accessToken: string): Promise<AuthUser> => {
+    const response = await request<CurrentUserResponseData>('/auth/me', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return toCurrentAuthUser(response.data);
   },
 
   logout: async (refreshToken: string): Promise<{ success: boolean; message: string }> => {

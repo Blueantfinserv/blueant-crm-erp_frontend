@@ -19,7 +19,7 @@ export function TabletLogin(props: LoginScreenProps) {
   const mascotHeight = Math.min(220, Math.max(180, height * 0.31));
 
   return (
-    <View style={styles.screen}>
+    <View nativeID="blueant-login" style={styles.screen}>
       <BackgroundCurves variant="tablet" />
 
       <View style={styles.header}>

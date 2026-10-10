@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Path, Svg } from 'react-native-svg';
 import { shellColors } from '../constants/shellColors';
 import { theme } from '../theme/theme';
 import type { TopTabItem } from './navigationTypes';
 import type { AuthUser } from '../types/auth';
+import { useAppTheme } from '../theme/ThemeProvider';
 
 const brandAsset = require('../../assets/blueAnt.png');
 
@@ -33,6 +34,7 @@ export function TopNavigation({
   salesPersonMenu,
   onSalesPersonMenuSelect,
 }: Props) {
+  const { isDark, toggleMode } = useAppTheme();
   const { width } = useWindowDimensions();
   const isCompact = width < 768;
   const usesSalesPersonMenu = salesPersonMenu !== undefined;
@@ -91,12 +93,13 @@ export function TopNavigation({
       ) : null}
 
       <View style={[styles.brandBlock, isCompact && styles.brandBlockCompact]}>
-        <Image source={brandAsset} style={[styles.brandLogo, isCompact && styles.brandLogoCompact]} resizeMode="contain" />
+        <Image nativeID="blueant-app-logo" source={brandAsset} style={[styles.brandLogo, isCompact && styles.brandLogoCompact]} resizeMode="contain" />
         {!isCompact ? <Text style={styles.date}>{currentDate}</Text> : null}
       </View>
 
       {isCompact || usesSalesPersonMenu ? (
         <View style={styles.actions}>
+          <ThemeToggle isDark={isDark} onToggle={toggleMode} compact={isCompact} />
           <Pressable onPress={onNotificationsPress} style={[styles.iconButton, isCompact && styles.iconButtonCompact]}>
             <Text style={styles.icon}>🔔</Text>
           </Pressable>
@@ -128,6 +131,7 @@ export function TopNavigation({
 
       {!isCompact && !usesSalesPersonMenu ? (
         <View style={styles.actions}>
+          <ThemeToggle isDark={isDark} onToggle={toggleMode} />
           <Pressable onPress={onNotificationsPress} style={styles.iconButton}>
             <Text style={styles.icon}>🔔</Text>
           </Pressable>
@@ -143,7 +147,7 @@ export function TopNavigation({
       <Modal visible={openMenu !== null} transparent animationType="fade" onRequestClose={closeMenu}>
         <View style={styles.modalBackdrop}>
           <Pressable accessibilityLabel="Close menu" onPress={closeMenu} style={StyleSheet.absoluteFill} />
-          <View style={[styles.dropdown, isCompact && styles.dropdownCompact]}>
+          <View nativeID="blueant-navigation-menu" style={[styles.dropdown, isCompact && styles.dropdownCompact]}>
             {openMenu === 'navigation' ? (
               <>
                 {(salesPersonMenu ?? tabs).map((item) => {
@@ -198,7 +202,7 @@ export function TopNavigation({
 
       <Modal visible={profileVisible} transparent animationType="fade" onRequestClose={() => setProfileVisible(false)}>
         <Pressable style={styles.profileModalBackdrop} onPress={() => setProfileVisible(false)}>
-          <Pressable style={[styles.profileModalCard, isCompact && styles.profileModalCardCompact]} onPress={(event) => event.stopPropagation()}>
+          <Pressable nativeID="blueant-profile-card" style={[styles.profileModalCard, isCompact && styles.profileModalCardCompact]} onPress={(event) => event.stopPropagation()}>
             <View style={styles.profileHeader}>
               {user?.profileImage ? (
                 <Image source={{ uri: user.profileImage }} style={styles.profileImage} />
@@ -227,6 +231,28 @@ export function TopNavigation({
         </Pressable>
       </Modal>
     </View>
+  );
+}
+
+function ThemeToggle({ isDark, onToggle, compact = false }: { isDark: boolean; onToggle: () => void; compact?: boolean }) {
+  const position = useRef(new Animated.Value(isDark ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.timing(position, { toValue: isDark ? 1 : 0, duration: 180, useNativeDriver: true }).start();
+  }, [isDark, position]);
+
+  const travelDistance = compact ? 16 : 20;
+  return (
+    <Pressable
+      accessibilityRole="switch"
+      accessibilityLabel="Dark mode"
+      accessibilityState={{ checked: isDark }}
+      onPress={onToggle}
+      style={[styles.themeToggle, compact && styles.themeToggleCompact, isDark && styles.themeToggleDark]}
+    >
+      <Text style={[styles.themeToggleSymbol, styles.themeToggleSun]}>☀</Text>
+      <Text style={[styles.themeToggleSymbol, styles.themeToggleMoon]}>☾</Text>
+      <Animated.View style={[styles.themeToggleThumb, { transform: [{ translateX: position.interpolate({ inputRange: [0, 1], outputRange: [0, travelDistance] }) }] }]} />
+    </Pressable>
   );
 }
 
@@ -363,6 +389,52 @@ const styles = StyleSheet.create({
   },
   dropdownLabelActive: {
     color: theme.colors.primary,
+  },
+  themeToggle: {
+    width: 48,
+    height: 28,
+    borderRadius: 999,
+    paddingHorizontal: 4,
+    backgroundColor: '#DDE8FF',
+    borderWidth: 1,
+    borderColor: '#B9CDFC',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  themeToggleCompact: {
+    width: 42,
+    height: 26,
+  },
+  themeToggleDark: {
+    backgroundColor: '#203A63',
+    borderColor: '#4F8CFF',
+  },
+  themeToggleSymbol: {
+    position: 'absolute',
+    fontSize: 12,
+    fontWeight: '800',
+    lineHeight: 15,
+  },
+  themeToggleSun: {
+    left: 6,
+    color: '#E88A00',
+  },
+  themeToggleMoon: {
+    right: 6,
+    color: '#DCEBFF',
+  },
+  themeToggleThumb: {
+    position: 'absolute',
+    left: 3,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    shadowColor: '#1E3A8A',
+    shadowOpacity: 0.18,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
   dropdownLabelDisabled: {
     color: theme.colors.subtle,

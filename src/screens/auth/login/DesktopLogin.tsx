@@ -21,7 +21,7 @@ export function DesktopLogin(props: LoginScreenProps) {
   const titleSize = isUltraWide ? 68 : isLargeDesktop ? 44 : isWideDesktop ? 40 : 38;
 
   return (
-    <View style={[styles.screen, isLargeDesktop && styles.screenLarge]}>
+    <View nativeID="blueant-login" style={[styles.screen, isLargeDesktop && styles.screenLarge]}>
       <BackgroundCurves variant="desktop" />
       <View style={styles.header}>
         <LogoRow width={logoWidth} height={logoHeight} />

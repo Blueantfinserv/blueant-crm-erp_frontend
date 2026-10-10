@@ -1,9 +1,10 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Path, Svg } from 'react-native-svg';
 import { shellColors } from '../constants/shellColors';
 import { theme } from '../theme/theme';
 import { ModuleMenu } from './ModuleMenu';
 import type { ModuleItem, ModuleKey } from './navigationTypes';
+import { darkPalette, useAppTheme } from '../theme/ThemeProvider';
 
 type Props = {
   modules: ModuleItem[];
@@ -14,8 +15,9 @@ type Props = {
 };
 
 export function Sidebar({ modules, activeModule, onModulePress, collapsed, onToggleCollapse }: Props) {
+  const { isDark } = useAppTheme();
   return (
-    <View style={[styles.shell, collapsed && styles.shellCollapsed]}>
+    <View style={[styles.shell, collapsed && styles.shellCollapsed, isDark && Platform.OS !== 'web' && styles.shellDark]}>
       <View style={styles.headerRow}>
         {!collapsed ? <Text style={styles.title}>Modules</Text> : <View style={styles.titleSpacer} />}
         <Pressable onPress={onToggleCollapse} style={styles.toggleButton}>
@@ -74,6 +76,10 @@ const styles = StyleSheet.create({
   shellCollapsed: {
     width: 64,
     paddingHorizontal: 10,
+  },
+  shellDark: {
+    backgroundColor: darkPalette.surface,
+    borderRightColor: darkPalette.border,
   },
   headerRow: {
     flexDirection: 'row',

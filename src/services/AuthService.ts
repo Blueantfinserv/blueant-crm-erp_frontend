@@ -182,10 +182,6 @@ export class AuthService {
       const response = await authApi.refreshToken(refreshToken);
       if (generation !== this.operationGeneration) return;
       const rememberMe = await SecureStorageService.getRememberMe();
-      const user = this.state.user ?? await SecureStorageService.getUserData();
-      if (!user) {
-        throw new AuthApiError('Stored user session is unavailable.', 'SESSION_UNAVAILABLE');
-      }
       const tokens: AuthTokens = {
         accessToken: response.accessToken,
         refreshToken: response.refreshToken,
@@ -194,6 +190,9 @@ export class AuthService {
         refreshTokenExpiry: response.refreshTokenExpiry,
         sessionId: response.sessionId,
       };
+      // A stored profile can become stale when an employee's role or permissions change.
+      // Always resolve the current identity from the freshly refreshed access token.
+      const user = await authApi.getCurrentUser(tokens.accessToken);
       await SecureStorageService.saveToken(tokens, user, rememberMe);
       if (generation !== this.operationGeneration) {
         await SecureStorageService.removeToken();

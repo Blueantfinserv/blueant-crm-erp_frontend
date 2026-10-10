@@ -10,6 +10,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
@@ -240,7 +241,7 @@ export default function LeadWorkflowForm({ type, lead, role, onClose, onSubmit }
     || (meetingConducted && form.leadStatus === "Work In Progress");
 
   return (
-    <View style={styles.screen}>
+    <View nativeID="blueant-sales-meeting-form" style={styles.screen}>
       <LinearGradient
         colors={["#172554", "#3730A3", "#7C3AED"]}
         start={{ x: 0, y: 0 }}
@@ -548,12 +549,14 @@ function Select({ value, options, onChange }) {
 }
 
 function ChoiceGroup({ value, options, onChange }) {
+  const { width } = useWindowDimensions();
+  const compact = width < 520;
   return (
-    <View style={styles.choices}>
+    <View style={[styles.choices, compact && styles.choicesCompact]}>
       {options.map((option) => (
-        <Pressable key={option} onPress={() => onChange(option)} style={[styles.choice, value === option && styles.choiceSelected]}>
+        <Pressable key={option} onPress={() => onChange(option)} style={[styles.choice, compact && styles.choiceCompact, value === option && styles.choiceSelected]}>
           <View style={[styles.radio, value === option && styles.radioSelected]} />
-          <Text style={[styles.choiceText, value === option && styles.choiceTextSelected]}>{option}</Text>
+          <Text numberOfLines={1} style={[styles.choiceText, compact && styles.choiceTextCompact, value === option && styles.choiceTextSelected]}>{option}</Text>
         </Pressable>
       ))}
     </View>
@@ -679,11 +682,14 @@ const styles = StyleSheet.create({
   select: { minHeight: 45, justifyContent: "center", overflow: "hidden", borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 13, backgroundColor: "#FAF8FF" },
   picker: { minHeight: 45, color: "#4C1D95" },
   choices: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  choicesCompact: { flexWrap: "nowrap", gap: 6 },
   choice: { minHeight: 42, flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: "#E3E2EE", borderRadius: 21, backgroundColor: "#FBFAFF" },
+  choiceCompact: { minWidth: 0, flex: 1, gap: 6, paddingHorizontal: 8 },
   choiceSelected: { borderColor: "#7C3AED", backgroundColor: "#F5F3FF", shadowColor: "#7C3AED", shadowOpacity: 0.12, shadowRadius: 7 },
   radio: { width: 13, height: 13, borderWidth: 2, borderColor: "#94A3B8", borderRadius: 7 },
   radioSelected: { borderWidth: 4, borderColor: "#7C3AED" },
   choiceText: { color: "#475569", fontSize: 12, fontWeight: "700" },
+  choiceTextCompact: { flexShrink: 1, fontSize: 10 },
   choiceTextSelected: { color: "#5B21B6" },
   autofillCard: { flexDirection: "row", gap: 12, marginBottom: 20, padding: 16, borderWidth: 1, borderColor: "#DDD6FE", borderRadius: 15, backgroundColor: "#F5F3FF" },
   autofillItem: { minWidth: 0, flex: 1 },
