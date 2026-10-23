@@ -8,8 +8,6 @@ export const AUTH_ROLES = [
   'CRM_ONBOARDING',
   'TEAM_LEADER',
   'RELATIONSHIP_MANAGER',
-  'EMPLOYEE',
-  'LEADER',
 ] as const;
 
 export type AuthRole = (typeof AUTH_ROLES)[number];

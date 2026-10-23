@@ -1,6 +1,6 @@
 import { AuthRole } from '../types/auth';
 
-export type NavigationRoute = 'dashboard' | 'reports' | 'users-roles' | 'team-mapping' | 'leads' | 'assigned-tasks' | 'lead-details' | 'add-followup' | 'coming-soon';
+export type NavigationRoute = 'dashboard' | 'reports' | 'users-roles' | 'team-mapping' | 'leads' | 'client-work-follow' | 'assigned-tasks' | 'lead-details' | 'add-followup' | 'coming-soon';
 
 export type NavigationItem = {
   key: string;
@@ -39,16 +39,6 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
     menuItems: [
       ...commonItems,
       { key: 'users-roles', label: 'Users & Roles', route: 'users-roles' },
-      { key: 'team-mapping', label: 'Team Mapping', route: 'team-mapping' },
-      { key: 'leads', label: 'Prospects', route: 'leads' },
-    ],
-  },
-  LEADER: {
-    role: 'LEADER',
-    title: 'Leader Dashboard',
-    subtitle: 'Team execution, pipeline visibility, and activity management.',
-    menuItems: [
-      ...commonItems,
       { key: 'team-mapping', label: 'Team Mapping', route: 'team-mapping' },
       { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
@@ -103,15 +93,6 @@ const roleNavigationConfig: Partial<Record<AuthRole, RoleNavigationConfig>> = {
     menuItems: [
       ...commonItems,
       { key: 'leads', label: 'CRM Eligible Leads', route: 'leads' },
-    ],
-  },
-  EMPLOYEE: {
-    role: 'EMPLOYEE',
-    title: 'Employee Dashboard',
-    subtitle: 'Your assigned work and daily activity overview.',
-    menuItems: [
-      ...commonItems,
-      { key: 'leads', label: 'Prospects', route: 'leads' },
     ],
   },
 };

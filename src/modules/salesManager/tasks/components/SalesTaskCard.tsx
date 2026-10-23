@@ -21,10 +21,16 @@ const prospectTones = {
 } as const;
 
 export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdateMeeting, onOpenDetails, highlightTaskLabel = false }: Props) {
-  const tone = prospectTones[task.schedule];
+  const tone = task.taskKind === 'CLIENT' ? { accent: '#0F766E', soft: '#ECFDF5', border: '#5EEAD4' } : prospectTones[task.schedule];
   const isRemovedLead = task.taskKind === 'LEAD'
     && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED');
   const isVerificationPending = task.verificationPending === true;
+  const recordedMeetingCount = task.clientMeetingCount ?? 0;
+  const clientMeetingSummary = recordedMeetingCount > 0
+    ? `${recordedMeetingCount} meeting${recordedMeetingCount === 1 ? '' : 's'} recorded`
+    : task.meetingNumber
+      ? `Meeting ${task.meetingNumber} scheduled`
+      : 'No meetings recorded';
   const whatsappNumber = task.phone.replace(/\D/g, '');
   const dialerNumber = task.phone.replace(/[^\d+]/g, '');
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${task.coordinates.latitude},${task.coordinates.longitude}`;
@@ -46,6 +52,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
     >
       <View style={styles.header}>
         <View style={styles.identity}>
+          <View style={[styles.kindMarker, task.taskKind === 'CLIENT' && styles.clientKindMarker]}><Text style={[styles.kindMarkerText, task.taskKind === 'CLIENT' && styles.clientKindMarkerText]}>{task.taskKind === 'CLIENT' ? 'C' : 'P'}</Text></View>
           <Text numberOfLines={1} style={styles.name}>{task.name}</Text>
           <View style={styles.contactActions}>
             {task.hasLocationPin ? (
@@ -93,7 +100,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
         </View>
         <View style={[styles.stageBadge, highlightTaskLabel && styles.highlightedStageBadge, { backgroundColor: tone.soft, borderColor: tone.accent }]}>
           <Text style={[styles.stageText, highlightTaskLabel && styles.highlightedStageText, { color: tone.accent }]}>
-            {task.taskKind === 'LEAD' ? 'Prospect' : task.taskLabel}
+            {task.taskKind === 'LEAD' && !task.meetingCode ? 'PROSPECT' : task.taskLabel}
           </Text>
         </View>
       </View>
@@ -104,6 +111,15 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
           <Text numberOfLines={1} style={styles.location}>{task.locationText || 'Location unavailable'}</Text>
         </View>
       </View>
+
+      {task.taskKind === 'CLIENT' ? (
+        <View style={styles.clientMeetingSummary}>
+          <Icon source="calendar-check-outline" size={13} color={tone.accent} />
+          <Text style={[styles.clientMeetingSummaryText, { color: tone.accent }]}>
+            {clientMeetingSummary}
+          </Text>
+        </View>
+      ) : null}
 
       {isVerificationPending ? (
         <View style={styles.verificationPendingBadge}>
@@ -182,6 +198,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: theme.spacing.sm,
   },
+  kindMarker: { width: 24, height: 24, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#FFF0E8' },
+  clientKindMarker: { backgroundColor: '#ECFDF5' },
+  kindMarkerText: { color: '#C2410C', fontSize: 11, fontWeight: '900' },
+  clientKindMarkerText: { color: '#0F766E' },
   name: { minWidth: 0, flex: 1, color: theme.colors.text, fontSize: 13, lineHeight: 18, fontWeight: '900' },
   contactActions: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   contactButton: {
@@ -215,6 +235,8 @@ const styles = StyleSheet.create({
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   locationCopy: { minWidth: 0, flex: 1 },
   location: { minWidth: 0, flex: 1, color: theme.colors.muted, fontSize: 10, fontWeight: '700' },
+  clientMeetingSummary: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999, backgroundColor: '#F0FDFA' },
+  clientMeetingSummaryText: { fontSize: 8, lineHeight: 10, fontWeight: '900' },
   verificationPendingBadge: {
     alignSelf: 'flex-start',
     flexDirection: 'row',

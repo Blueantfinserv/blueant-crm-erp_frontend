@@ -17,7 +17,7 @@ export type MeetingResponse = MeetingSummary & {
   mobileNumber?: string; employeeCode?: string; employeeName?: string; meetingMode?: MeetingMode;
   employeeRole?: string; assignedEmployeeRole?: string;
   meetingLocation?: string; status?: string; address?: string; discussion?: string;
-  remarks?: string; meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED';
+  remarks?: string; meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED'; businessGenerated?: string;
   meetingRemarks?: string;
   leadStatus?: MeetingLeadStatus; latitude?: number; longitude?: number; locationAccuracy?: number;
   lastModifiedDate?: string; createdDate?: string; workflowUpdatedAt?: string; googleMapsUrl?: string;
@@ -25,6 +25,9 @@ export type MeetingResponse = MeetingSummary & {
   meetingVerificationDate?: string; verifiedBy?: string; verificationRemarks?: string;
   meetingTiming?: string; ageGroup?: string; existingSip?: string; profession?: string;
   professionDetail?: string; bestTimeForMeeting?: string; meetingWith?: string;
+  clinicAddress?: string; speciality?: string; email?: string; alternateMobileNumber?: string;
+  /** Identifies records loaded from the separate Client Meeting Verification API. */
+  isClientMeeting?: boolean;
 };
 
 export type MeetingDetail = MeetingResponse & { leadId?: number; assignedEmployeeId?: number; agenda?: string };

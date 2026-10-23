@@ -4,7 +4,9 @@ import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import { meetingService } from '../../../services/MeetingService';
 import { meetingApi } from '../../../api/meeting';
+import { clientMeetingApi } from '../../../api/clientMeeting';
 import type { MeetingResponse, MeetingSummary } from '../../../types/meeting';
+import type { ClientMeetingResponse, ClientProfileResponse } from '../../../types/crm';
 import type { SalesTask } from './types/tasks';
 
 const formatLeadSource = (leadSource?: string) => {
@@ -29,6 +31,62 @@ const infoFields = (lead: SalesTask) => [
   { label: 'Prospect Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
 ] as const;
 
+const clientInfoFields = (client: SalesTask, profile: ClientProfileResponse | null) => [
+  { label: 'Client Code', value: profile?.clientCode ?? client.clientCode ?? 'Not provided', icon: 'identifier' },
+  { label: 'Mobile Number', value: (profile?.mobileNumber ?? client.phone) || 'Not provided', icon: 'phone-outline' },
+  { label: 'Alternate Mobile', value: profile?.alternateMobileNumber ?? 'Not provided', icon: 'phone-plus-outline' },
+  { label: 'Email', value: profile?.email ?? client.email ?? 'Not provided', icon: 'email-outline' },
+  { label: 'Speciality', value: profile?.speciality ?? 'Not provided', icon: 'stethoscope' },
+  { label: 'Clinic Address', value: profile?.clinicAddress ?? client.clinicAddress ?? 'Not provided', icon: 'hospital-building' },
+  { label: 'Best Time to Meet', value: profile?.bestTimeToMeet ?? 'Not provided', icon: 'calendar-clock-outline' },
+  { label: 'Client Status', value: profile?.clientStatus ?? 'Not provided', icon: 'account-check-outline' },
+] as const;
+
+const displayProfileValue = (value: string | number | boolean | string[] | undefined) => {
+  if (Array.isArray(value)) return value.length ? value.join(', ') : 'Not provided';
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  return value === undefined || value === '' ? 'Not provided' : String(value).replace(/_/g, ' ');
+};
+
+const maskedPan = (pan?: string) => pan?.trim() ? `${'•'.repeat(Math.max(0, pan.length - 4))}${pan.slice(-4)}` : 'Not provided';
+
+const clientProfileSections = (profile: ClientProfileResponse) => [
+  {
+    title: 'Personal & Address', icon: 'card-account-details-outline', fields: [
+      { label: 'PAN Number', value: maskedPan(profile.panNumber) }, { label: 'Date of Birth', value: displayProfileValue(profile.dateOfBirth) },
+      { label: 'Mother Name', value: displayProfileValue(profile.motherName) }, { label: 'Place of Birth', value: displayProfileValue(profile.placeOfBirth) },
+      { label: 'Occupation', value: displayProfileValue(profile.occupation) }, { label: 'Residential Address', value: displayProfileValue(profile.residentialAddress) },
+      { label: 'Correspondence Address', value: displayProfileValue(profile.correspondenceAddress) }, { label: 'Office Address', value: displayProfileValue(profile.officeAddress) },
+      { label: 'City / State / PIN', value: [profile.city, profile.state, profile.pinCode].filter(Boolean).join(' · ') || 'Not provided' },
+    ],
+  },
+  {
+    title: 'Source & Application', icon: 'file-document-edit-outline', fields: [
+      { label: 'Client Source', value: displayProfileValue(profile.clientSource) }, { label: 'Source Description', value: displayProfileValue(profile.sourceDescription) },
+      { label: 'Application Received', value: displayProfileValue(profile.applicationReceivedDate) }, { label: 'Application Mode', value: displayProfileValue(profile.applicationMode) },
+      { label: 'Client Report Date', value: displayProfileValue(profile.clientReportDate) },
+    ],
+  },
+  {
+    title: 'Investment & Payment', icon: 'chart-line', fields: [
+      { label: 'Investment Type', value: displayProfileValue(profile.investmentType) }, { label: 'Investment Types', value: displayProfileValue(profile.investmentTypes) },
+      { label: 'First Investment Amount', value: displayProfileValue(profile.firstInvestmentAmount) }, { label: 'Expected Max SIP', value: displayProfileValue(profile.expectedMaxSIP) },
+      { label: 'Investwell ID', value: displayProfileValue(profile.investwellId) }, { label: 'Payment Status', value: displayProfileValue(profile.paymentStatus) },
+      { label: 'Payment Amount', value: displayProfileValue(profile.paymentAmount) }, { label: 'Payment Date', value: displayProfileValue(profile.paymentDate) },
+      { label: 'Payment Reference', value: displayProfileValue(profile.paymentReference) },
+    ],
+  },
+  {
+    title: 'Family & Assignment', icon: 'account-group-outline', fields: [
+      { label: 'Family Name', value: displayProfileValue(profile.familyName) }, { label: 'Family Code', value: displayProfileValue(profile.familyCode) },
+      { label: 'Family Head', value: displayProfileValue(profile.familyHeadName) }, { label: 'Family Details', value: displayProfileValue(profile.familyDetails) },
+      { label: 'Relationship to Head', value: displayProfileValue(profile.relationshipToHead) }, { label: 'Family Head', value: displayProfileValue(profile.isFamilyHead) },
+      { label: 'Assigned RM / SC', value: displayProfileValue(profile.assignedSalesPersonName) }, { label: 'Employee Code', value: displayProfileValue(profile.assignedSalesPersonCode) },
+      { label: 'Assigned On', value: displayProfileValue(profile.assignmentDate ?? profile.assignedAt) }, { label: 'Created By', value: displayProfileValue(profile.createdBy ?? profile.assignedBy) },
+    ],
+  },
+] as const;
+
 const verificationFields = (meeting: MeetingResponse) => [
   { label: 'Meeting Time', value: meeting.meetingTiming, icon: 'clock-outline' },
   { label: 'Age Group', value: meeting.ageGroup, icon: 'account-clock-outline' },
@@ -50,20 +108,25 @@ const displayVerificationValue = (value?: string) => {
     .join(' ');
 };
 
-const meetingTimeText = (time?: MeetingSummary['meetingTime']) => time?.hour === undefined
-  ? ''
-  : [time.hour, time.minute ?? 0].map((value) => String(value).padStart(2, '0')).join(':');
+const meetingTimeText = (time?: MeetingSummary['meetingTime'] | string) => {
+  if (typeof time === 'string') return time.trim();
+  return time?.hour === undefined ? '' : [time.hour, time.minute ?? 0].map((value) => String(value).padStart(2, '0')).join(':');
+};
 
 export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 600;
   const isVerificationPending = lead.verificationPending === true;
+  const isClient = lead.taskKind === 'CLIENT';
   const [verifiedMeeting, setVerifiedMeeting] = useState<MeetingResponse | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(true);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [meetingHistory, setMeetingHistory] = useState<MeetingResponse[]>([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [clientProfile, setClientProfile] = useState<ClientProfileResponse | null>(null);
+  const [clientProfileLoading, setClientProfileLoading] = useState(false);
+  const [clientProfileError, setClientProfileError] = useState<string | null>(null);
   const phone = lead.phone.replace(/[^\d+]/g, '');
   const whatsapp = lead.phone.replace(/\D/g, '');
   const hasCoordinates = Boolean(lead.hasLocationPin)
@@ -75,6 +138,10 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
 
   useEffect(() => {
+    if (isClient) {
+      setVerifiedMeeting(null); setVerificationLoading(false); setVerificationError(null);
+      return;
+    }
     let active = true;
     const loadVerification = async () => {
       setVerificationLoading(true);
@@ -106,9 +173,43 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
     return () => {
       active = false;
     };
-  }, [lead.leadCode, lead.leadId, lead.meetingCode]);
+  }, [isClient, lead.leadCode, lead.leadId, lead.meetingCode]);
 
   useEffect(() => {
+    if (!isClient || !lead.clientCode) {
+      setClientProfile(null); setClientProfileLoading(false); setClientProfileError(null); return;
+    }
+    let active = true;
+    const loadProfile = async () => {
+      setClientProfileLoading(true); setClientProfileError(null);
+      try {
+        const profile = await clientMeetingApi.getProfile(lead.clientCode!);
+        if (active) setClientProfile(profile);
+      } catch (error) {
+        if (active) { setClientProfile(null); setClientProfileError(error instanceof Error ? error.message : 'Client details could not be loaded.'); }
+      } finally { if (active) setClientProfileLoading(false); }
+    };
+    void loadProfile();
+    return () => { active = false; };
+  }, [isClient, lead.clientCode]);
+
+  useEffect(() => {
+    if (isClient) {
+      if (!lead.clientCode) { setMeetingHistory([]); setHistoryError(null); setHistoryLoading(false); return; }
+      let active = true;
+      const loadClientHistory = async () => {
+        setHistoryLoading(true); setHistoryError(null);
+        try {
+          const history = await clientMeetingApi.getByClientCode(lead.clientCode!);
+          const sorted = [...history].sort((a, b) => String(b.meetingDate ?? '').localeCompare(String(a.meetingDate ?? '')));
+          if (active) setMeetingHistory(sorted as unknown as MeetingResponse[]);
+        } catch (error) {
+          if (active) { setMeetingHistory([]); setHistoryError(error instanceof Error ? error.message : 'Client meeting history could not be loaded.'); }
+        } finally { if (active) setHistoryLoading(false); }
+      };
+      void loadClientHistory();
+      return () => { active = false; };
+    }
     const leadIdentifier = lead.uniqueLeadId ?? (lead.leadId !== undefined ? String(lead.leadId) : '');
     if (!leadIdentifier) {
       setMeetingHistory([]); setHistoryError(null); setHistoryLoading(false); return;
@@ -136,7 +237,9 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
     };
     void loadHistory();
     return () => { active = false; };
-  }, [lead.leadId, lead.uniqueLeadId]);
+  }, [isClient, lead.clientCode, lead.leadId, lead.uniqueLeadId]);
+
+  const displayedInfoFields = isClient ? clientInfoFields(lead, clientProfile) : infoFields(lead);
 
   return (
     <View style={styles.screen}>
@@ -153,7 +256,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 <Icon source="account-outline" size={22} color="#FFFFFF" />
               </View>
               <View style={styles.heroCopy}>
-                <Text style={styles.eyebrow}>PROSPECT DETAILS</Text>
+                <Text style={styles.eyebrow}>{isClient ? 'CLIENT DETAILS' : 'PROSPECT DETAILS'}</Text>
                 <Text numberOfLines={1} style={styles.title}>{lead.name}</Text>
               </View>
             </View>
@@ -198,14 +301,18 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
       <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
         <View style={styles.grid}>
           <View style={[styles.panel, styles.infoPanel, isMobile && styles.mobilePanel]}>
-            <SectionHeading icon="account-details-outline" title="Prospect Information" subtitle="Key contact and meeting details" />
+            <SectionHeading icon="account-details-outline" title={isClient ? 'Client Information' : 'Prospect Information'} subtitle={isClient ? 'Contact, clinic and account details' : 'Key contact and meeting details'} />
+            {clientProfileLoading ? <View style={styles.inlineState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.inlineStateText}>Loading client details...</Text></View> : null}
+            {clientProfileError ? <View style={styles.inlineState}><Icon source="alert-circle-outline" size={16} color="#DC2626" /><Text style={[styles.inlineStateText, styles.verificationError]}>{clientProfileError}</Text></View> : null}
             <View style={[styles.infoGrid, isMobile && styles.mobileInfoGrid]}>
-              {infoFields(lead).map((field) => (
+              {displayedInfoFields.map((field) => (
                 <View
                   key={field.label}
                   style={[
                     styles.infoItem,
+                    field.label === 'Clinic Address' && styles.infoAddressItem,
                     isMobile && styles.mobileInfoItem,
+                    isMobile && field.label === 'Clinic Address' && styles.mobileInfoAddressItem,
                     isMobile && field.label === 'Email' && styles.mobileEmailItem,
                   ]}
                 >
@@ -214,12 +321,40 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                   </View>
                   <View style={styles.infoCopy}>
                     <Text style={styles.infoLabel}>{field.label}</Text>
-                    <Text numberOfLines={1} ellipsizeMode="tail" style={styles.infoValue}>{field.value}</Text>
+                    <Text
+                      numberOfLines={field.label === 'Clinic Address' ? undefined : 1}
+                      ellipsizeMode={field.label === 'Clinic Address' ? undefined : 'tail'}
+                      style={[styles.infoValue, field.label === 'Clinic Address' && styles.infoAddressValue]}
+                    >
+                      {field.value}
+                    </Text>
                   </View>
                 </View>
               ))}
             </View>
-            <View style={styles.verificationSection}>
+            {isClient && clientProfile ? <View style={styles.clientProfileDetails}>
+              {clientProfileSections(clientProfile).map((section) => <View key={section.title} style={styles.clientProfileSection}>
+                <View style={styles.clientProfileHeading}><Icon source={section.icon} size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>{section.title}</Text></View>
+                <View style={styles.clientProfileGrid}>{section.fields.map((field, index) => <View key={`${field.label}-${index}`} style={styles.clientProfileItem}><Text style={styles.clientProfileLabel}>{field.label}</Text><Text numberOfLines={field.label.includes('Address') ? undefined : 2} style={styles.clientProfileValue}>{field.value}</Text></View>)}</View>
+              </View>)}
+              <View style={styles.clientProfileSection}>
+                <View style={styles.clientProfileHeading}><Icon source="account-heart-outline" size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>Nominee Details</Text></View>
+                {clientProfile.nominees?.length ? <View style={styles.clientProfileGrid}>{clientProfile.nominees.flatMap((nominee, nomineeIndex) => [
+                  { label: `Nominee ${nomineeIndex + 1}`, value: displayProfileValue(nominee.nomineeName) }, { label: 'Relationship', value: displayProfileValue(nominee.relationship) },
+                  { label: 'Date of Birth', value: displayProfileValue(nominee.dateOfBirth) }, { label: 'Contact Number', value: displayProfileValue(nominee.contactNumber) },
+                  { label: 'Minor', value: displayProfileValue(nominee.isMinor) }, { label: 'Guardian', value: displayProfileValue(nominee.guardianName) },
+                ]).map((field, index) => <View key={`${field.label}-${index}`} style={styles.clientProfileItem}><Text style={styles.clientProfileLabel}>{field.label}</Text><Text numberOfLines={2} style={styles.clientProfileValue}>{field.value}</Text></View>)}</View> : <Text style={styles.clientProfileEmpty}>No nominee details recorded.</Text>}
+              </View>
+              <View style={styles.clientProfileSection}>
+                <View style={styles.clientProfileHeading}><Icon source="file-check-outline" size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>Documents</Text></View>
+                {clientProfile.documents?.length ? <View style={styles.clientProfileGrid}>{clientProfile.documents.flatMap((document, documentIndex) => [
+                  { label: `Document ${documentIndex + 1}`, value: displayProfileValue(document.documentName) }, { label: 'Document Type', value: displayProfileValue(document.documentType) },
+                  { label: 'Received', value: displayProfileValue(document.received) }, { label: 'Received Date', value: displayProfileValue(document.receivedDate) },
+                  { label: 'Verification', value: displayProfileValue(document.verificationStatus) }, { label: 'Reference', value: displayProfileValue(document.documentReference) },
+                ]).map((field, index) => <View key={`${field.label}-${index}`} style={styles.clientProfileItem}><Text style={styles.clientProfileLabel}>{field.label}</Text><Text numberOfLines={2} style={styles.clientProfileValue}>{field.value}</Text></View>)}</View> : <Text style={styles.clientProfileEmpty}>No document details recorded.</Text>}
+              </View>
+            </View> : null}
+            {!isClient ? <View style={styles.verificationSection}>
               <View style={styles.verificationHeading}>
                 <View style={styles.verificationHeadingIcon}>
                   <Icon source="check-decagram-outline" size={17} color="#047857" />
@@ -263,7 +398,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                   <Text style={styles.verificationStateText}>This prospect does not have a verified meeting response yet.</Text>
                 </View>
               )}
-            </View>
+            </View> : null}
           </View>
 
           <View style={styles.rightColumn}>
@@ -318,7 +453,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
 
         <View style={[styles.panel, isMobile && styles.mobilePanel]}>
           <SectionHeading icon="history" title="Meeting History" subtitle={historyLoading ? 'Loading meeting history...' : `${meetingHistory.length} meeting${meetingHistory.length === 1 ? '' : 's'} recorded`} />
-          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(meeting.meetingTime) ? ` · ${meetingTimeText(meeting.meetingTime)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{meeting.nextMeetingDate ? <Text style={styles.historyNext}>Next plan: {meeting.nextMeetingDate}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this prospect.</Text></View>}
+          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const clientMeeting = meeting as unknown as ClientMeetingResponse; const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; const time = isClient ? clientMeeting.meetingTime : meeting.meetingTime; const nextPlan = isClient ? clientMeeting.nextPlanDate : meeting.nextMeetingDate; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{isClient ? `Client Meeting${clientMeeting.meetingNumber ? ` ${clientMeeting.meetingNumber}` : ''}` : meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{isClient ? clientMeeting.meetingConducted ?? clientMeeting.meetingStatus ?? 'SCHEDULED' : meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(time) ? ` · ${meetingTimeText(time)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{nextPlan ? <Text style={styles.historyNext}>Next plan: {nextPlan}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this {isClient ? 'client' : 'prospect'}.</Text></View>}
         </View>
       </ScrollView>
     </View>
@@ -392,13 +527,25 @@ const styles = StyleSheet.create({
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   mobileInfoGrid: { gap: 7 },
   infoItem: { minWidth: 180, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 11, borderRadius: 12, backgroundColor: '#F8F9FD' },
+  infoAddressItem: { flexBasis: '47%', alignItems: 'flex-start' },
   mobileInfoItem: { minWidth: 0, flexBasis: '47%', flexGrow: 1, gap: 6, paddingHorizontal: 7, paddingVertical: 8, borderRadius: 10 },
+  mobileInfoAddressItem: { flexBasis: '100%' },
   mobileEmailItem: { flexBasis: '100%' },
+  clientProfileDetails: { gap: 12, marginTop: 4, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#EEF0F5' },
+  clientProfileSection: { gap: 9, padding: 11, borderWidth: 1, borderColor: '#D9F2EC', borderRadius: 12, backgroundColor: '#FAFFFD' },
+  clientProfileHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  clientProfileTitle: { color: '#115E59', fontSize: 11, fontWeight: '900' },
+  clientProfileGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  clientProfileItem: { minWidth: 145, flexBasis: '30%', flexGrow: 1, padding: 8, borderRadius: 9, backgroundColor: '#F1FAF7' },
+  clientProfileLabel: { color: '#64748B', fontSize: 7, fontWeight: '900', textTransform: 'uppercase' },
+  clientProfileValue: { marginTop: 3, color: '#334155', fontSize: 9, lineHeight: 13, fontWeight: '800' },
+  clientProfileEmpty: { color: '#64748B', fontSize: 9, fontWeight: '700' },
   infoIcon: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#EEEAFD' },
   mobileInfoIcon: { width: 25, height: 25, borderRadius: 8 },
   infoCopy: { minWidth: 0, flex: 1 },
   infoLabel: { color: '#94A3B8', fontSize: 8, fontWeight: '800', textTransform: 'uppercase' },
   infoValue: { marginTop: 2, color: '#334155', fontSize: 11, fontWeight: '900' },
+  infoAddressValue: { lineHeight: 16 },
   verificationSection: { marginTop: 4, paddingTop: 15, borderTopWidth: 1, borderTopColor: '#EEF0F5' },
   verificationHeading: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 12 },
   verificationHeadingIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#ECFDF5' },
@@ -415,6 +562,8 @@ const styles = StyleSheet.create({
   verificationLabel: { color: '#94A3B8', fontSize: 7, fontWeight: '900', letterSpacing: 0.35, textTransform: 'uppercase' },
   verificationValue: { marginTop: 3, color: '#27324A', fontSize: 10, lineHeight: 14, fontWeight: '900' },
   verificationState: { minHeight: 76, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderWidth: 1, borderColor: '#E7EAF0', borderRadius: 12, backgroundColor: '#F8FAFC' },
+  inlineState: { flexDirection: 'row', alignItems: 'center', gap: 7, padding: 8, borderRadius: 9, backgroundColor: '#F8FAFC' },
+  inlineStateText: { color: '#64748B', fontSize: 9, fontWeight: '700' },
   verificationStateText: { color: '#64748B', fontSize: 10, fontWeight: '700', textAlign: 'center' },
   verificationError: { color: '#B91C1C' },
   historyState: { minHeight: 70, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderWidth: 1, borderColor: '#E7EAF0', borderRadius: 12, backgroundColor: '#F8FAFC' },

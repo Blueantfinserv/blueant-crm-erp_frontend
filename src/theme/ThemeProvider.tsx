@@ -130,6 +130,21 @@ function WebDarkModeStyles({ enabled }: { enabled: boolean }) {
         mix-blend-mode: screen;
         opacity: .94;
       }
+      /* The modal's inverted dark surface can mute the light-mode source
+         colours used by its dense detail grids. Use a black source colour so
+         the parent inversion renders every text label and value in crisp
+         high-contrast white. */
+      html[data-blueant-theme="dark"] #blueant-workflow-modal * {
+        color: #000000 !important;
+      }
+      /* The blue screen overlay is composited after the modal conversion, so
+         simply using a black source colour resolves to pale blue. Counter the
+         modal conversion on text nodes: their supplied white then remains
+         white after both the filter and overlay have been composited. */
+      html[data-blueant-theme="dark"] #blueant-workflow-modal [style*="color"] {
+        color: #FFFFFF !important;
+        filter: brightness(1.020408) saturate(1.219512) hue-rotate(180deg) invert(1) !important;
+      }
       html[data-blueant-theme="dark"] #blueant-workflow-modal img {
         filter: invert(1) hue-rotate(180deg);
       }

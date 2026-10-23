@@ -31,6 +31,8 @@ import { DashboardListScreen } from './src/modules/salesManager/dashboard/compon
 import { dashboardListsData } from './src/modules/salesManager/dashboard/mock/dashboardListsData';
 import type { DashboardListCard } from './src/modules/salesManager/dashboard/types/dashboard';
 import { SalesManagerTasksScreen } from './src/modules/salesManager/tasks/SalesManagerTasksScreen';
+import { ClientWorkFollowScreen } from './src/screens/ClientWorkFollowScreen';
+import { ClientMeetingScheduleForm } from './src/components/ClientMeetingScheduleForm';
 import LeadWorkflowForm from './src/modules/salesManager/forms/LeadWorkflowForm';
 import { getTaskLeadIdentifier, type SalesTask } from './src/modules/salesManager/tasks/types/tasks';
 import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/SalesManagerLeadDetailScreen';
@@ -206,6 +208,7 @@ function AppShell() {
     lead?: SalesTask;
   } | null>(null);
   const [selectedSalesTask, setSelectedSalesTask] = useState<SalesTask | null>(null);
+  const [clientMeetingTask, setClientMeetingTask] = useState<SalesTask | null>(null);
   const [salesTaskFilter, setSalesTaskFilter] = useState<'Today' | 'Pending' | 'Future 3 Days'>('Today');
   const [salesTaskView, setSalesTaskView] = useState<SalesTaskView>('task-to-do');
   const [salesTaskScreenKey, setSalesTaskScreenKey] = useState(0);
@@ -217,6 +220,14 @@ function AppShell() {
 
   const openTaskWorkflowForm = async (task: SalesTask) => {
     setMessage(null);
+    if (task.taskKind === 'CLIENT') {
+      if (task.verificationPending) {
+        setMessage('Verification is pending for this client. The update form will be available after Process Coordinator verification.');
+        return;
+      }
+      setClientMeetingTask(task);
+      return;
+    }
     if (task.verificationPending) {
       setMessage('Verification is pending for this prospect. The update form will be available after Process Coordinator verification.');
       return;
@@ -364,13 +375,18 @@ function AppShell() {
       { key: 'pending-task', label: 'Pending Task' },
       { key: 'future-3-days', label: 'Future 3 Days' },
       { key: 'all-leads', label: 'All Prospects' },
-      { key: 'all-clients', label: 'All Clients', disabled: true },
+      ...(backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR' ? [{ key: 'all-clients', label: 'All Clients' }] : []),
       { key: 'profile', label: 'My Profile' },
     ] as const;
     const onSalesPersonMenuSelect = (key: string) => {
       if (key === 'dashboard') {
         setActiveTab('dashboard');
         navigate('dashboard');
+        return;
+      }
+      if (key === 'all-clients') {
+        setActiveTab('all-tasks');
+        navigate('client-work-follow');
         return;
       }
       const taskView = key as SalesTaskView;
@@ -630,6 +646,24 @@ function AppShell() {
             )}
           </ErpShell>
         );
+      case 'client-work-follow':
+        return (
+          <ErpShell
+            currentDate={currentDate}
+            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
+            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
+            contentScrollable={false}
+            tabs={topTabs}
+            activeTab={activeTab}
+            onLogout={handleLogout}
+            onTabPress={(tab) => { setActiveTab(tab.key); navigate(tab.route); }}
+            modules={moduleItems}
+            activeModule={activeModule}
+            onModulePress={(module) => { setActiveModule(module.key); navigate('dashboard'); }}
+          >
+            <ClientWorkFollowScreen />
+          </ErpShell>
+        );
       case 'assigned-tasks':
         return (
           <ErpShell
@@ -816,6 +850,13 @@ function AppShell() {
             </Pressable>
           </Pressable>
         </Modal>
+        <Modal transparent visible={Boolean(clientMeetingTask)} animationType="fade" onRequestClose={() => setClientMeetingTask(null)}>
+          <Pressable style={styles.newLeadBackdrop} onPress={() => setClientMeetingTask(null)}>
+            <Pressable style={styles.clientMeetingModal} onPress={() => {}}>
+              {clientMeetingTask ? <ClientMeetingScheduleForm client={clientMeetingTask} onClose={() => setClientMeetingTask(null)} onSuccess={() => { setClientMeetingTask(null); setSalesTaskScreenKey((current) => current + 1); }} /> : null}
+            </Pressable>
+          </Pressable>
+        </Modal>
       </Animated.View>
     </SafeAreaView>
   );
@@ -855,4 +896,5 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 16 },
     elevation: 20,
   },
+  clientMeetingModal: { width: '100%', maxWidth: 470, height: '92%', maxHeight: 900, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.42)', borderRadius: 20, backgroundColor: '#F8FAFC', shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 34, shadowOffset: { width: 0, height: 16 }, elevation: 20 },
 });

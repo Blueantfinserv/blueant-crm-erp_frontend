@@ -4,7 +4,9 @@ export type TaskScheduleFilter = 'Today' | 'Pending' | 'Future 3 Days' | 'Later'
 
 export interface SalesTask {
   id: string;
-  taskKind: 'LEAD' | 'MEETING';
+  taskKind: 'LEAD' | 'MEETING' | 'CLIENT';
+  clientCode?: string;
+  clientMeetingCount?: number;
   uniqueLeadId?: string;
   meetingCode?: string;
   meetingNumber?: number;

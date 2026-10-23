@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Image, Modal, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Path, Svg } from 'react-native-svg';
+import { Icon } from 'react-native-paper';
 import { shellColors } from '../constants/shellColors';
 import { theme } from '../theme/theme';
 import type { TopTabItem } from './navigationTypes';
@@ -249,9 +250,9 @@ function ThemeToggle({ isDark, onToggle, compact = false }: { isDark: boolean; o
       onPress={onToggle}
       style={[styles.themeToggle, compact && styles.themeToggleCompact, isDark && styles.themeToggleDark]}
     >
-      <Text style={[styles.themeToggleSymbol, styles.themeToggleSun]}>☀</Text>
-      <Text style={[styles.themeToggleSymbol, styles.themeToggleMoon]}>☾</Text>
-      <Animated.View style={[styles.themeToggleThumb, { transform: [{ translateX: position.interpolate({ inputRange: [0, 1], outputRange: [0, travelDistance] }) }] }]} />
+      <Animated.View style={[styles.themeToggleThumb, { transform: [{ translateX: position.interpolate({ inputRange: [0, 1], outputRange: [0, travelDistance] }) }] }]}>
+        <Icon source={isDark ? 'weather-night' : 'white-balance-sunny'} size={13} color={isDark ? '#000000' : '#D97706'} />
+      </Animated.View>
     </Pressable>
   );
 }
@@ -409,20 +410,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#203A63',
     borderColor: '#4F8CFF',
   },
-  themeToggleSymbol: {
-    position: 'absolute',
-    fontSize: 12,
-    fontWeight: '800',
-    lineHeight: 15,
-  },
-  themeToggleSun: {
-    left: 6,
-    color: '#E88A00',
-  },
-  themeToggleMoon: {
-    right: 6,
-    color: '#DCEBFF',
-  },
   themeToggleThumb: {
     position: 'absolute',
     left: 3,
@@ -430,6 +417,8 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 10,
     backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
     shadowColor: '#1E3A8A',
     shadowOpacity: 0.18,
     shadowRadius: 4,

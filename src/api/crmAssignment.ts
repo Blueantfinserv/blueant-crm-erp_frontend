@@ -1,16 +1,19 @@
 import { SecureStorageService } from '../services/SecureStorageService';
 import { requestWithSessionRefresh } from './authenticatedRequest';
-import type { CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleLeadPage } from '../types/crm';
+import type { ClientRegistrationRequest, ClientRegistrationResponse, CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleLeadPage } from '../types/crm';
 
 // CRM endpoints are served by the same production API that issues and refreshes
 // the authenticated user token. Keeping one base URL prevents cross-deployment
 // authorization mismatches.
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
 
-type ApiResponse<T> = { success?: boolean; message?: string; data?: T };
+type ApiResponse<T> = { success?: boolean; message?: string; data?: T; details?: Record<string, unknown> };
 type RoleSummary = { id?: number; roleCode?: string; roleName?: string; status?: string };
 type UserSummary = { id?: number; employeeCode?: string; fullName?: string; roleName?: string; status?: string };
 type UserPage = { content?: UserSummary[]; totalPages?: number };
+export type ClientDocumentUploadResponse = { documentReference?: string; fileName?: string; fileType?: string; fileSize?: number; documentType?: string; uploadStatus?: string };
+export type ClientDocumentType = 'PAN_CARD' | 'AADHAAR_CARD' | 'PASSPORT' | 'CHEQUE' | 'SIGNATURE' | 'OTHER';
+type UploadableDocument = { uri: string; name: string; mimeType?: string | null; file?: File };
 
 export class CrmAssignmentApiError extends Error {
   constructor(message: string, public readonly code: string) {
@@ -30,7 +33,7 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
       ...init,
       headers: {
         Accept: 'application/json',
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.body && !(typeof FormData !== 'undefined' && init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         Authorization: `Bearer ${accessToken}`,
         ...init.headers,
       },
@@ -40,7 +43,10 @@ const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   }
   const payload = await response.json().catch(() => null) as ApiResponse<T> | null;
   if (!response.ok || payload?.success !== true || payload.data === undefined) {
-    throw new CrmAssignmentApiError(payload?.message ?? `CRM request failed (${response.status}).`, String(response.status));
+    const details = payload?.details && typeof payload.details === 'object'
+      ? Object.entries(payload.details).map(([field, message]) => `${field}: ${Array.isArray(message) ? message.join(', ') : String(message)}`).join(' · ')
+      : '';
+    throw new CrmAssignmentApiError(details || payload?.message || `CRM request failed (${response.status}).`, String(response.status));
   }
   return payload.data;
 };
@@ -57,6 +63,10 @@ const loadRoleTargets = async (role: 'RELATIONSHIP_MANAGER' | 'SALES_COORDINATOR
 };
 
 export const crmAssignmentApi = {
+  registerClient: (payload: ClientRegistrationRequest) => request<ClientRegistrationResponse>('/v1/clients/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
   createPhysicalLead: (payload: CrmPhysicalLeadRequest) => request<CrmPhysicalLeadResponse>('/v1/Leads_assign', {
     method: 'POST',
     body: JSON.stringify(payload),
@@ -77,4 +87,12 @@ export const crmAssignmentApi = {
     method: 'POST',
     body: JSON.stringify({ salesPersonEmployeeCode }),
   }),
+  uploadClientDocument: async (document: UploadableDocument, documentType: ClientDocumentType) => {
+    const body = new FormData();
+    // On web Expo returns the actual File object. Sending only its URI serializes
+    // as text in browsers and the backend never receives a multipart binary.
+    if (document.file) body.append('file', document.file, document.name);
+    else body.append('file', { uri: document.uri, name: document.name, type: document.mimeType || 'application/octet-stream' } as never);
+    return request<ClientDocumentUploadResponse>(`/v1/clients/documents/upload?documentType=${encodeURIComponent(documentType)}`, { method: 'POST', body });
+  },
 };

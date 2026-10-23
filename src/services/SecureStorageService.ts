@@ -72,6 +72,25 @@ const DEVICE_ID_KEY = 'blueant.deviceId';
 const createDeviceId = () => `blueant-${Platform.OS}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
 export const SecureStorageService = {
+  setPersistentItem: async (key: string, value: string) => {
+    if (isWeb) {
+      setWebItem('localStorage', key, value);
+      return;
+    }
+    await setItem(key, value);
+  },
+  getPersistentItem: async (key: string) => isWeb
+    ? getWebItem('localStorage', key)
+    : await getItem(key),
+  removePersistentItem: async (key: string) => {
+    // SecureStore is not implemented for web. Persistent browser values are
+    // intentionally stored in localStorage, so clear them from the same place.
+    if (isWeb) {
+      removeWebItem('localStorage', key);
+      return;
+    }
+    await removeItem(key);
+  },
   getOrCreateDeviceId: async () => {
     const storedDeviceId = isWeb
       ? getWebItem('localStorage', DEVICE_ID_KEY)

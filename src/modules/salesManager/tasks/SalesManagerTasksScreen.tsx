@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
@@ -16,6 +16,9 @@ import type { LeadResponse, LeadSearchState } from '../../../types/lead';
 import { meetingService } from '../../../services/MeetingService';
 import type { MeetingQueueState, MeetingResponse } from '../../../types/meeting';
 import { getActionableTaskMeetings, getTaskSchedule, isHiddenCompletedLead, isRemovedLead } from './taskMeetingSelectors';
+import { clientWorkFollowApi } from '../../../api/clientWorkFollow';
+import { clientMeetingApi } from '../../../api/clientMeeting';
+import type { ClientWorkFollowResponse } from '../../../types/crm';
 
 const parseBackendCalendarDate = (value?: string | null) => {
   const match = value?.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -111,6 +114,19 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number, meetingNextPlanDa
     schedule: getTaskSchedule(nextPlanDate),
     email: lead.email,
     leadSource: lead.leadSource,
+  };
+};
+
+const mapClientToSalesTask = (client: ClientWorkFollowResponse, index: number): SalesTask => {
+  const activeDate = client.activeMeetingDate;
+  const scheduledAt = activeDate ?? client.assignmentDate;
+  return {
+    id: client.clientCode ?? String(client.clientId ?? `client-${index}`), taskKind: 'CLIENT', clientCode: client.clientCode, meetingCode: client.activeMeetingCode,
+    assignedAt: client.assignmentDate, scheduledAt, name: client.clientName ?? 'Unnamed client', phone: client.mobileNumber ?? '',
+    locationText: client.location ?? 'Location unavailable', clinicAddress: client.clinicAddress, coordinates: { latitude: 0, longitude: 0 },
+    hasLocationPin: false, taskLabel: client.activeMeetingCode ? `MEETING ${client.activeMeetingNumber ?? ''}`.trim() : 'CLIENT', remarks: client.activeMeetingCode ? `Active meeting: ${client.activeMeetingCode}` : 'No meeting scheduled.',
+    lastUpdated: formatTimestamp(client.assignmentDate), nextFollowUpDate: formatDate(activeDate), nextPlanDate: activeDate,
+    schedule: getTaskSchedule(scheduledAt), email: client.email, clientMeetingCount: client.totalMeetings ?? 0,
   };
 };
 
@@ -253,6 +269,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [leadState, setLeadState] = useState<LeadSearchState>(() => leadSearchService.getState());
   const [meetingState, setMeetingState] = useState<MeetingQueueState>(() => meetingService.getState());
+  const [clientTasks, setClientTasks] = useState<SalesTask[]>([]);
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
   const tasks = useMemo(
     () => {
@@ -360,9 +377,9 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
             verificationPending: hasPendingVerification(lead.leadId, lead.leadCode, lead.mobileNumber),
           };
         });
-      return [...leadTasks, ...meetingTasks];
+      return [...leadTasks, ...meetingTasks, ...clientTasks];
     },
-    [leadState.leads, meetingState.meetings],
+    [clientTasks, leadState.leads, meetingState.meetings],
   );
   const allLeadTasks = useMemo(
     () => leadState.leads
@@ -387,6 +404,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
   const allTaskFilterOptions = useMemo(() => [
     'All Task',
     'Leads',
+    'Clients',
     ...meetingFilterOptions.filter((option) => option !== 'All Meetings'),
   ], [meetingFilterOptions]);
   useEffect(() => {
@@ -395,11 +413,51 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
     return unsubscribe;
   }, []);
 
+  const loadClientTasks = useCallback(async () => {
+    try {
+      const first = await clientWorkFollowApi.getQueue({ page: 0, size: 100 });
+      const rest = await Promise.all(Array.from({ length: Math.max(0, (first.totalPages ?? 1) - 1) }, (_, index) => clientWorkFollowApi.getQueue({ page: index + 1, size: 100 })));
+      const clients = [...(first.content ?? []), ...rest.flatMap((page) => page.content ?? [])];
+      const clientMeetings = await Promise.all(clients.map(async (client) => {
+          const clientCode = client.clientCode?.trim();
+          if (!clientCode) return { clientCode: '', meetings: [] };
+          const meetings = await clientMeetingApi.getByClientCode(clientCode).catch(() => []);
+          return { clientCode, meetings };
+        }));
+      const meetingsByClientCode = new Map(clientMeetings.map(({ clientCode, meetings }) => [clientCode, meetings]));
+      const pendingClientCodes = new Set(clientMeetings
+        .filter(({ meetings }) => meetings.some((meeting) => meeting.verificationStatus === 'PENDING' || meeting.verifiedByPc === false))
+        .map(({ clientCode }) => clientCode));
+      setClientTasks(
+        clients
+          .map(mapClientToSalesTask)
+          .map((task) => {
+            const latestMeeting = [...(meetingsByClientCode.get(task.clientCode ?? '') ?? [])]
+              .sort((a, b) => String(b.meetingDate ?? '').localeCompare(String(a.meetingDate ?? '')))[0];
+            const nextPlanDate = latestMeeting?.nextPlanDate ?? task.nextPlanDate;
+            return {
+              ...task,
+              meetingNumber: latestMeeting?.meetingNumber ?? task.meetingNumber,
+              remarks: latestMeeting?.remarks?.trim() || task.remarks,
+              lastUpdated: formatTimestamp(latestMeeting?.meetingDate ?? task.assignedAt),
+              nextPlanDate,
+              nextFollowUpDate: formatDate(nextPlanDate),
+              scheduledAt: nextPlanDate ?? task.scheduledAt,
+              schedule: getTaskSchedule(nextPlanDate),
+              verificationPending: Boolean(task.clientCode && pendingClientCodes.has(task.clientCode)),
+            };
+          }),
+      );
+    } catch { setClientTasks([]); }
+  }, []);
+
+  useEffect(() => { void loadClientTasks(); }, [loadClientTasks]);
+
   const refreshTasks = async () => {
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      await Promise.all([leadSearchService.loadLeads(), meetingService.loadMeetings()]);
+      await Promise.all([leadSearchService.loadLeads(), meetingService.loadMeetings(), loadClientTasks()]);
     } finally {
       setIsRefreshing(false);
     }
@@ -444,7 +502,7 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
       return matchesSearch;
     });
     const countableTasks = searchedTasks.filter((task) => {
-      const matchesTaskType = task.taskKind === 'LEAD'
+      const matchesTaskType = task.taskKind === 'LEAD' || task.taskKind === 'CLIENT'
         ? matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, taskType)
         : taskType === 'All Tasks' || task.schedule === taskType;
       return matchesTaskType;
@@ -488,12 +546,14 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         const matchesAllTaskFilter = allTaskFilter === 'All Task'
           || (allTaskFilter === 'Leads'
             ? task.taskKind === 'LEAD'
+            : allTaskFilter === 'Clients'
+              ? task.taskKind === 'CLIENT'
             : task.taskKind === 'MEETING' && task.meetingTitle === allTaskFilter);
         return matchesSearch && matchesAllTaskFilter;
       }
       if (allLeadsMode) return matchesSearch;
       if (taskToDoMode) {
-        const matchesTaskToDo = task.taskKind === 'LEAD'
+        const matchesTaskToDo = task.taskKind === 'LEAD' || task.taskKind === 'CLIENT'
           ? !isRemovedLead(task.leadStatus) && (
             matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, 'Today') || matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, 'Pending')
           )
@@ -501,13 +561,13 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         return matchesSearch && matchesTaskToDo;
       }
       if (todaysTaskMode) {
-        const matchesTodaysTask = task.taskKind === 'LEAD'
+        const matchesTodaysTask = task.taskKind === 'LEAD' || task.taskKind === 'CLIENT'
           ? matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, 'Today')
           : task.schedule === 'Today';
         return matchesSearch && matchesTodaysTask;
       }
       if (pendingTaskMode) {
-        const matchesPendingTask = task.taskKind === 'LEAD'
+        const matchesPendingTask = task.taskKind === 'LEAD' || task.taskKind === 'CLIENT'
           ? matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, 'Pending')
           : task.schedule === 'Pending';
         return matchesSearch && matchesPendingTask;
@@ -516,10 +576,11 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
         const offset = futureDayFilter === 'Tomorrow' ? 1 : futureDayFilter === 'Day After Tomorrow' ? 2 : 3;
         return matchesSearch && calendarDateFromValue(task.scheduledAt) === calendarDateOffset(offset);
       }
-      const matchesTaskType = task.taskKind === 'LEAD'
+      const matchesTaskType = task.taskKind === 'LEAD' || task.taskKind === 'CLIENT'
         ? matchesAssignmentTaskFilter(task.nextPlanDate ?? task.assignedAt, taskType)
         : taskType === 'All Tasks' || task.schedule === taskType;
       const matchesStage = (taskStage === 'Leads' && task.taskKind === 'LEAD')
+        || (taskStage === 'Clients' && task.taskKind === 'CLIENT')
         || (taskStage === 'Meetings' && task.taskKind === 'MEETING');
       const removedLead = isRemovedLead(task.leadStatus);
       const matchesLead = taskStage !== 'Leads'

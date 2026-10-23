@@ -6,9 +6,7 @@ export type FrontendExperience =
   | 'SALES_MANAGER'
   | 'SALES_COORDINATOR'
   | 'CRM_ONBOARDING'
-  | 'SALES_EXECUTIVE'
   | 'TEAM_LEADER'
-  | 'LEGACY_LEADER'
   | 'UNAVAILABLE';
 
 const roleExperienceMap: Record<AuthRole, FrontendExperience> = {
@@ -24,13 +22,10 @@ const roleExperienceMap: Record<AuthRole, FrontendExperience> = {
   TEAM_LEADER: 'TEAM_LEADER',
   // Relationship Managers use the same prospect workflow as Sales Managers.
   RELATIONSHIP_MANAGER: 'SALES_MANAGER',
-  EMPLOYEE: 'SALES_EXECUTIVE',
-  LEADER: 'LEGACY_LEADER',
 };
 
 export const getRoleExperience = (role: AuthRole | null | undefined): FrontendExperience =>
   role ? roleExperienceMap[role] : 'UNAVAILABLE';
 
 export const isSalesWorkspaceExperience = (experience: FrontendExperience) =>
-  experience === 'SALES_MANAGER' ||
-  experience === 'SALES_EXECUTIVE';
+  experience === 'SALES_MANAGER';
