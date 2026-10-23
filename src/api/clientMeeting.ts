@@ -47,6 +47,9 @@ export const clientMeetingApi = {
   getPendingVerification(page = 0, size = 100): Promise<ClientMeetingVerificationPage> {
     return get<ClientMeetingVerificationPage>(`/v1/client-meetings/verification/pending?page=${page}&size=${size}`);
   },
+  getVerifiedVerification(page = 0, size = 100): Promise<ClientMeetingVerificationPage> {
+    return get<ClientMeetingVerificationPage>(`/v1/client-meetings/verification/verified?page=${page}&size=${size}`);
+  },
   getMeeting(meetingCode: string): Promise<ClientMeetingResponse> {
     return get<ClientMeetingResponse>(`/v1/client-meetings/${encodeURIComponent(meetingCode)}`);
   },

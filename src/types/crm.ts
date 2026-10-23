@@ -244,6 +244,9 @@ export type ClientMeetingResponse = {
   personName?: string;
   position?: string;
   businessGenerated?: string;
+  blueantAppUsed?: string;
+  investmentType?: string;
+  investmentAmount?: number;
   remarks?: string;
   nextPlanDate?: string;
   latitude?: number;

@@ -10,12 +10,48 @@ import { meetingService } from '../services/MeetingService';
 import { meetingApi } from '../api/meeting';
 import type { MeetingResponse, MeetingVerificationRequest } from '../types/meeting';
 import { clientMeetingApi } from '../api/clientMeeting';
+import { SecureStorageService } from '../services/SecureStorageService';
 import type { ClientProfileResponse } from '../types/crm';
 import { theme } from '../theme/theme';
 import { useAppTheme } from '../theme/ThemeProvider';
 import { createMeetingVerificationForm } from './meetingVerificationForm';
 
 type Tab = 'today' | 'responses' | 'tasks' | 'assign' | 'assignedLeads';
+const VERIFIED_CLIENT_MEETINGS_STORAGE_PREFIX = 'blueant.pc.verifiedClientMeetings';
+const VERIFIED_CLIENT_MEETINGS_GLOBAL_KEY = `${VERIFIED_CLIENT_MEETINGS_STORAGE_PREFIX}.all`;
+const parseStoredVerifiedClientMeetings = (value: string | null): MeetingResponse[] => {
+  try {
+    const parsed = value ? JSON.parse(value) : [];
+    return Array.isArray(parsed) ? parsed.filter((item): item is MeetingResponse => Boolean(item && typeof item === 'object' && item.isClientMeeting && item.meetingCode)) : [];
+  } catch { return []; }
+};
+const mergeVerifiedMeetings = (...groups: readonly MeetingResponse[][]): MeetingResponse[] => Array.from(groups.flat().reduce((records, meeting) => {
+  const key = meeting.meetingCode ?? `${meeting.id ?? ''}:${meeting.clientName ?? ''}:${meeting.meetingDate ?? ''}`;
+  const existing = records.get(key);
+  // A verification response can intentionally contain only PC answers. Do not
+  // let its absent profile values erase already-loaded client information.
+  const merged = { ...(existing ?? {}) } as MeetingResponse;
+  Object.entries(meeting).forEach(([field, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      (merged as Record<string, unknown>)[field] = value;
+    }
+  });
+  records.set(key, merged);
+  return records;
+}, new Map<string, MeetingResponse>()).values());
+const verifiedClientStorageKeys = (employeeId?: string) => Array.from(new Set([
+  VERIFIED_CLIENT_MEETINGS_GLOBAL_KEY,
+  `${VERIFIED_CLIENT_MEETINGS_STORAGE_PREFIX}.${employeeId ?? 'current'}`,
+  `${VERIFIED_CLIENT_MEETINGS_STORAGE_PREFIX}.current`,
+]));
+const loadStoredVerifiedClientMeetings = async (employeeId?: string): Promise<MeetingResponse[]> => {
+  const values = await Promise.all(verifiedClientStorageKeys(employeeId).map((key) => SecureStorageService.getPersistentItem(key)));
+  return mergeVerifiedMeetings(...values.map(parseStoredVerifiedClientMeetings));
+};
+const saveStoredVerifiedClientMeetings = async (records: MeetingResponse[], employeeId?: string) => {
+  const serialized = JSON.stringify(records);
+  await Promise.all(verifiedClientStorageKeys(employeeId).map((key) => SecureStorageService.setPersistentItem(key, serialized)));
+};
 type VerificationField = NonNullable<keyof MeetingVerificationRequest>;
 type VerificationForm = Record<Exclude<VerificationField, 'aloneWith'>, string>;
 type ClientVerificationForm = {
@@ -55,7 +91,7 @@ const assignedSalesPersonForMobile = async (mobileNumber: string) => {
   return (await leadApi.getLeadDetails(uniqueLeadId)).data?.assignedEmployeeName?.trim() || null;
 };
 const POSITION_OPTIONS = ['Team leader', 'Admin', 'Super Admin', 'Sales Manager', 'RM'];
-const CLIENT_POSITION_OPTIONS = ['SUPER_ADMIN', 'ADMIN', 'TL', 'SM', 'RM'] as const;
+const CLIENT_POSITION_OPTIONS = ['SUPER ADMIN', 'ADMIN', 'TL', 'SM', 'RM'] as const;
 const FIELDS: readonly { key: keyof VerificationForm; label: string; placeholder: string }[] = [
   { key: 'meetingDate', label: 'Meeting Date', placeholder: 'Choose meeting date' },
   { key: 'meetingTiming', label: 'Meeting Time', placeholder: 'HH:mm:ss' },
@@ -128,6 +164,17 @@ const SALES_PERSONS = [
   { code: 'US2601', name: 'Umakant Sharma' },
 ] as const;
 const SALES_PERSON_CODES = SALES_PERSONS.map((employee) => employee.code);
+// The lead search response contains historical coordinator names, which makes
+// the Assigned Leads filters show cross-team sales people. Keep the confirmed
+// current PC team ownership explicit until the backend returns that mapping.
+const COORDINATOR_SALES_TEAM: Readonly<Record<string, readonly string[]>> = {
+  'Aarti Kumari': ['Rakesh Kumar', 'Atul Kumar', 'Rajat Gupta'],
+  'Samridhi Saini': ['Gary Kumar', 'Garv Kumar', 'Umakant Sharma', 'Abhishek Singh', 'Sunny Mathur'],
+};
+const belongsToCoordinatorTeam = (coordinator: string, salesPerson: string | undefined) => {
+  const team = COORDINATOR_SALES_TEAM[coordinator];
+  return !coordinator || !team || Boolean(salesPerson && team.includes(salesPerson));
+};
 const employeeRole = (roleValue?: string, employeeCode?: string): 'SM' | 'RM' | 'SC' => {
   const role = String(roleValue ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
   if (role === 'RELATIONSHIP_MANAGER' || role === 'RM') return 'RM';
@@ -188,6 +235,9 @@ const clientMeetingAsCoordinatorRecord = (meeting: Awaited<ReturnType<typeof cli
   personName: meeting.personName,
   position: meeting.position,
   businessGenerated: meeting.businessGenerated,
+  blueantAppUsed: meeting.blueantAppUsed,
+  investmentType: meeting.investmentType,
+  investmentAmount: meeting.investmentAmount,
   remarks: meeting.remarks,
   latitude: meeting.latitude,
   longitude: meeting.longitude,
@@ -208,6 +258,18 @@ const loadPendingClientMeetings = async (): Promise<MeetingResponse[]> => {
   const records = await Promise.all(codes.map((meetingCode) => clientMeetingApi.getMeeting(meetingCode)));
   const profiles = await Promise.all(records.map((meeting) => meeting.clientCode ? clientMeetingApi.getProfile(meeting.clientCode).catch(() => null) : Promise.resolve(null)));
   return records.map((meeting, index) => clientMeetingAsCoordinatorRecord(meeting, profiles[index]));
+};
+const loadVerifiedClientMeetings = async (): Promise<MeetingResponse[]> => {
+  const firstPage = await clientMeetingApi.getVerifiedVerification();
+  const remainingPages = await Promise.all(
+    Array.from({ length: Math.max(0, (firstPage.totalPages ?? 1) - 1) }, (_, index) => clientMeetingApi.getVerifiedVerification(index + 1)),
+  );
+  const codes = [firstPage, ...remainingPages].flatMap((page) => page.content ?? [])
+    .map((item) => item.meetingCode?.trim())
+    .filter((code): code is string => Boolean(code));
+  const records = await Promise.all(codes.map((meetingCode) => clientMeetingApi.getMeeting(meetingCode)));
+  const profiles = await Promise.all(records.map((meeting) => meeting.clientCode ? clientMeetingApi.getProfile(meeting.clientCode).catch(() => null) : Promise.resolve(null)));
+  return records.map((meeting, index) => ({ ...clientMeetingAsCoordinatorRecord(meeting, profiles[index]), verificationStatus: 'VERIFIED' as const }));
 };
 const matchesSearch = (value: unknown, query: string) => !query.trim() || String(value ?? '').toLowerCase().includes(query.trim().toLowerCase());
 const leadCardTone = (lead: LeadResponse) => [...String(lead.assignedByEmployeeCode ?? lead.assignedByEmployeeName ?? '')].reduce((total, character) => total + character.charCodeAt(0), 0) % 4;
@@ -241,7 +303,12 @@ const loadCoordinatorAssignedLeads = async () => {
     const response = await leadSearchApi.search({ page, size: 100, sortBy: 'assignedAt', sortDirection: 'DESC' });
     leads.push(...(response.data?.content ?? []));
   }
-  return leads.map((lead) => ({ ...lead, assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt })).filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator);
+  // Coordinator ownership is determined by the backend assignment flow. Do
+  // not include direct/historical assignments here: doing so makes one sales
+  // person appear under coordinators who do not own that assignment.
+  return leads
+    .map((lead) => ({ ...lead, assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt }))
+    .filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator);
 };
 
 export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly string[] | null }) {
@@ -364,14 +431,17 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     if (!hasLoaded.current) { setLoadingProgress(10); setLoading(true); }
     setRefreshing(true);
     try {
-      const [leadPending, clientPending, v, deferred] = await Promise.all([
+      const [leadPending, clientPending, leadVerified, clientVerified, deferred] = await Promise.all([
         meetingService.getVerificationMeetings('PENDING').then((result) => { setLoadingProgress(40); return result; }),
         loadPendingClientMeetings().catch(() => []),
         meetingService.getVerificationMeetings('VERIFIED').then((result) => { setLoadingProgress(70); return result; }),
+        loadVerifiedClientMeetings().catch(() => []),
         includeDeferredData ? Promise.all([meetingService.getAllMeetingRecords(), loadCoordinatorAssignedLeads()]).then((result) => { setLoadingProgress(90); return result; }) : Promise.resolve(null),
       ]);
       if (generation !== dataGeneration.current) return;
-      setLoadingProgress(100); setPending([...leadPending, ...clientPending]); setVerified(v);
+      const currentUser = await SecureStorageService.getUserData();
+      const locallyVerifiedClients = await loadStoredVerifiedClientMeetings(currentUser?.employeeId);
+      setLoadingProgress(100); setPending([...leadPending, ...clientPending]); setVerified(mergeVerifiedMeetings(leadVerified, clientVerified, locallyVerifiedClients));
       if (deferred) { setMeetings(deferred[0]); setAssignedLeads(deferred[1]); hasTaskData.current = true; hasAssignedLeadsData.current = true; }
       hasLoaded.current = true;
       setError(null); setRefreshError(null);
@@ -390,7 +460,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     }
   }, []);
   const refreshPendingMeetings = useCallback(async () => { if (loadInFlight.current || pendingRefreshInFlight.current || submittingRef.current) return; pendingRefreshInFlight.current = true; try { const [leadPending, clientPending] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), loadPendingClientMeetings().catch(() => [])]); setPending([...leadPending, ...clientPending]); } finally { pendingRefreshInFlight.current = false; nextRefreshAt.current = Date.now() + 10_000; } }, []);
-  const refreshVerifiedMeetings = useCallback(async () => { if (loadInFlight.current || verifiedRefreshInFlight.current || submittingRef.current) return; verifiedRefreshInFlight.current = true; try { setVerified(await meetingService.getVerificationMeetings('VERIFIED')); } finally { verifiedRefreshInFlight.current = false; nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000; } }, []);
+  const refreshVerifiedMeetings = useCallback(async () => { if (loadInFlight.current || verifiedRefreshInFlight.current || submittingRef.current) return; verifiedRefreshInFlight.current = true; try { const [leadVerified, clientVerified, currentUser] = await Promise.all([meetingService.getVerificationMeetings('VERIFIED'), loadVerifiedClientMeetings().catch(() => []), SecureStorageService.getUserData()]); const locallyVerifiedClients = await loadStoredVerifiedClientMeetings(currentUser?.employeeId); setVerified(mergeVerifiedMeetings(leadVerified, clientVerified, locallyVerifiedClients)); } finally { verifiedRefreshInFlight.current = false; nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000; } }, []);
   const refreshTaskMeetings = useCallback(async () => { if (!hasTaskData.current || loadInFlight.current || taskRefreshInFlight.current || submittingRef.current) return; taskRefreshInFlight.current = true; try { setMeetings(await meetingService.getAllMeetingRecords()); } finally { taskRefreshInFlight.current = false; nextTaskRefreshAt.current = Date.now() + 60 * 60_000; } }, []);
   const refreshAssignedLeads = useCallback(async () => { if (!hasAssignedLeadsData.current || loadInFlight.current || assignedLeadsRefreshInFlight.current || submittingRef.current) return; assignedLeadsRefreshInFlight.current = true; try { setAssignedLeads(await loadCoordinatorAssignedLeads()); } finally { assignedLeadsRefreshInFlight.current = false; nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000; } }, []);
   useEffect(() => { void load(); const todayTimer = setInterval(() => { if (Date.now() >= nextRefreshAt.current) void refreshPendingMeetings(); }, 1000); const verifiedTimer = setInterval(() => void refreshVerifiedMeetings(), 5 * 60_000); const taskTimer = setInterval(() => void refreshTaskMeetings(), 60 * 60_000); const assignedTimer = setInterval(() => void refreshAssignedLeads(), 30 * 60_000); return () => { clearInterval(todayTimer); clearInterval(verifiedTimer); clearInterval(taskTimer); clearInterval(assignedTimer); dataGeneration.current += 1; }; }, [load, refreshAssignedLeads, refreshPendingMeetings, refreshTaskMeetings, refreshVerifiedMeetings]);
@@ -482,6 +552,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
   const visibleAssignedLeads = useMemo(() => assignedLeads.filter((lead) => (
     (matchesSearch(lead.clientName, assignedSearch) || matchesSearch(lead.mobileNumber, assignedSearch))
     && (!coordinatorFilter || lead.assignedByEmployeeName === coordinatorFilter)
+    && belongsToCoordinatorTeam(coordinatorFilter, lead.assignedEmployeeName)
     && (!assignedSalesPersonFilter || lead.assignedEmployeeName === assignedSalesPersonFilter)
     && matchesAssignedDate(lead.assignedAt, assignedDateRange)
   )), [assignedDateRange, assignedLeads, assignedSalesPersonFilter, assignedSearch, coordinatorFilter]);
@@ -531,6 +602,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       if (!date) { setSubmitError('Please choose the meeting date.'); return; }
       if (!isNotConducted && !clientForm.meetingTime) { setSubmitError('Please choose the meeting time.'); return; }
       if (!isNotConducted && !clientForm.blueantAppUsed) { setSubmitError('Please select whether the BlueAnt app was used.'); return; }
+      if (!isNotConducted && clientForm.aloneWith === 'SOMEONE' && (!clientForm.personName.trim() || !clientForm.position)) { setSubmitError('Please enter the person name and select their designation.'); return; }
       if (!isNotConducted && !clientForm.businessGenerated) { setSubmitError('Please select whether business was generated.'); return; }
       if (!isNotConducted && clientForm.businessGenerated === 'YES' && !clientForm.investmentTypes.length) { setSubmitError('Please select at least one investment type.'); return; }
       if (!isNotConducted && clientForm.investmentTypes.includes('REFERENCE') && !clientForm.referenceFor) { setSubmitError('Please select what the reference is for.'); return; }
@@ -553,19 +625,47 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
           newMeetingDate: clientForm.newMeetingDate,
           meetingTime: clientForm.meetingTime, blueantAppUsed: clientForm.blueantAppUsed.trim() || undefined,
           aloneWith: clientForm.aloneWith,
+          ...(clientForm.aloneWith === 'SOMEONE' ? { personName: clientForm.personName.trim(), position: clientForm.position.replace(/_/g, ' ') } : {}),
           businessGenerated: clientForm.businessGenerated || undefined, investmentType: clientForm.businessGenerated === 'YES' ? ({ SIP: 'New SIP', LUMPSUM: 'Lumpsum', BROKERCHANGE: 'New Broker Change' }[clientForm.investmentTypes[0] ?? ''] || undefined) : undefined,
           investmentAmount: clientForm.businessGenerated === 'YES' ? Number((clientForm.investmentTypes.includes('SIP') ? clientForm.sipAmount : clientForm.investmentTypes.includes('LUMPSUM') ? clientForm.lumpsumAmount : clientForm.investmentTypes.includes('BROKERCHANGE') ? clientForm.brokerChangeAmount : clientForm.investmentTypes.includes('SERVICE REQUEST') ? clientForm.serviceRequestAmount : clientForm.referenceAmount) || 0) || undefined : undefined,
-          remarks: clientForm.remarks.trim() || undefined,
+          remarks: [clientForm.remarks.trim(), investmentNotes].filter(Boolean).join('\n') || undefined,
         });
         const verifiedClientRecord: MeetingResponse = {
           ...clientMeetingAsCoordinatorRecord(verifiedClientMeeting),
+          // The verification endpoint returns the PC answers but may omit the
+          // original client/profile fields. Keep the values that were already
+          // loaded for the pending client meeting so the verified list and
+          // response modal remain useful after submission.
+          clientName: verifiedClientMeeting.clientName ?? selected.clientName,
+          mobileNumber: verifiedClientMeeting.mobileNumber ?? selected.mobileNumber,
+          alternateMobileNumber: selected.alternateMobileNumber,
+          email: selected.email,
+          speciality: selected.speciality,
+          location: selected.location,
+          clinicAddress: selected.clinicAddress,
+          employeeCode: verifiedClientMeeting.assignedEmployeeCode ?? selected.employeeCode,
+          employeeName: verifiedClientMeeting.assignedEmployeeName ?? selected.employeeName,
+          employeeRole: selected.employeeRole,
+          meetingMode: (verifiedClientMeeting.meetingMode ?? selected.meetingMode) as MeetingResponse['meetingMode'],
+          nextMeetingDate: verifiedClientMeeting.nextPlanDate ?? selected.nextMeetingDate,
+          meetingDate: clientForm.newMeetingDate,
+          meetingTime: clientMeetingTime(clientForm.meetingTime),
+          aloneWith: clientForm.aloneWith,
+          personName: clientForm.aloneWith === 'SOMEONE' ? clientForm.personName.trim() : undefined,
+          position: clientForm.aloneWith === 'SOMEONE' ? clientForm.position.replace(/_/g, ' ') : undefined,
+          blueantAppUsed: clientForm.blueantAppUsed,
+          businessGenerated: clientForm.businessGenerated,
+          investmentType: clientForm.investmentTypes.join(', '),
+          investmentAmount: Number((clientForm.investmentTypes.includes('SIP') ? clientForm.sipAmount : clientForm.investmentTypes.includes('LUMPSUM') ? clientForm.lumpsumAmount : clientForm.investmentTypes.includes('BROKERCHANGE') ? clientForm.brokerChangeAmount : clientForm.investmentTypes.includes('SERVICE REQUEST') ? clientForm.serviceRequestAmount : clientForm.referenceAmount) || 0) || undefined,
+          remarks: [clientForm.remarks.trim(), investmentNotes].filter(Boolean).join('\n') || undefined,
           verificationStatus: 'VERIFIED',
         };
         setPending((items) => items.filter((meeting) => meeting.meetingCode !== selected.meetingCode));
-        setVerified((items) => [
-          verifiedClientRecord,
-          ...items.filter((meeting) => meeting.meetingCode !== selected.meetingCode),
-        ]);
+        const currentUser = await SecureStorageService.getUserData();
+        const locallyVerifiedClients = await loadStoredVerifiedClientMeetings(currentUser?.employeeId);
+        const nextLocallyVerifiedClients = mergeVerifiedMeetings([verifiedClientRecord], locallyVerifiedClients);
+        await saveStoredVerifiedClientMeetings(nextLocallyVerifiedClients, currentUser?.employeeId);
+        setVerified((items) => mergeVerifiedMeetings([verifiedClientRecord], items));
         setSelected(null);
       } catch (e) { setSubmitError(e instanceof Error ? e.message : 'Client meeting verification failed.'); }
       finally { submittingRef.current = false; setSubmitting(false); }
@@ -671,7 +771,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
       <ScrollView contentContainerStyle={styles.modalBody}>
         {selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} /> : null}
-        {tab === 'responses' && selected ? <VerificationDetails meeting={selected} /> : selected?.isClientMeeting ? <ClientVerificationFields meeting={selected} form={clientForm} setForm={setClientForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} /> : selected ? <View style={[styles.formSection, verificationStyles.section]}>
+        {tab === 'responses' && selected ? selected.isClientMeeting ? <ClientVerificationDetails meeting={selected} /> : <VerificationDetails meeting={selected} /> : selected?.isClientMeeting ? <ClientVerificationFields meeting={selected} form={clientForm} setForm={setClientForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} /> : selected ? <View style={[styles.formSection, verificationStyles.section]}>
           <Text style={styles.sectionTitle}>{isNotConductedMeeting(selected) ? 'Verify Location Visit' : 'PC Additional Information'}</Text>
           <Text style={styles.help}>{isNotConductedMeeting(selected) ? 'Confirm only the date and time of this visited-but-not-met record.' : 'Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.'}</Text>
           <View style={styles.formGrid}>{(isNotConductedMeeting(selected) ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>
@@ -713,15 +813,22 @@ function TaskToolbar({ search, onSearch, status, onStatus, header = false }: { s
 }
 
 function ClientVerificationFields({ meeting, form, setForm, submitError, submitting, onSubmit }: { meeting: MeetingResponse; form: ClientVerificationForm; setForm: React.Dispatch<React.SetStateAction<ClientVerificationForm>>; submitError: string | null; submitting: boolean; onSubmit: () => void }) {
+  const { isDark } = useAppTheme();
   const notConducted = isNotConductedMeeting(meeting);
+  const pickerOptionColor = isDark ? '#FFFFFF' : '#000000';
+  const isInvestmentEmpty = !notConducted && form.businessGenerated === 'YES' && !form.investmentTypes.length;
   const [datePickerKey, setDatePickerKey] = useState<'newMeetingDate' | 'meetingDate' | 'nextFollowupDate' | null>(null);
   const update = <K extends keyof ClientVerificationForm>(key: K, value: ClientVerificationForm[K]) => setForm((current) => ({ ...current, [key]: value }));
-  const field = (label: string, key: Exclude<keyof ClientVerificationForm, 'investmentTypes'>, placeholder: string, multiline = false) => <View key={key} style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>{label}</Text><TextInput value={form[key]} onChangeText={(value) => update(key, value)} placeholder={placeholder} placeholderTextColor="#94A3B8" multiline={multiline} style={[styles.input, verificationStyles.input, multiline && verificationStyles.textarea]} /></View>;
+  const field = (label: string, key: Exclude<keyof ClientVerificationForm, 'investmentTypes'>, placeholder: string, multiline = false) => <View key={key} style={[styles.field, verificationStyles.field, key === 'remarks' && isInvestmentEmpty && verificationStyles.investmentRemarksField]}><Text style={styles.fieldLabel}>{label}</Text><TextInput value={form[key]} onChangeText={(value) => update(key, value)} placeholder={placeholder} placeholderTextColor="#94A3B8" multiline={multiline} style={[styles.input, verificationStyles.input, multiline && verificationStyles.textarea, key === 'remarks' && isInvestmentEmpty && verificationStyles.investmentRemarksInput]} /></View>;
   const dateField = (label: string, key: 'newMeetingDate' | 'meetingDate' | 'nextFollowupDate', restrictToToday = false) => <View key={key} style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>{label}</Text><Pressable onPress={() => setDatePickerKey(key)} style={[styles.assignDatePicker, verificationStyles.control]}><Icon source="calendar-month-outline" size={18} color="#3156C8" /><Text style={styles.assignDatePickerText}>{form[key] || 'Choose date'}</Text><Icon source="chevron-down" size={18} color="#64748B" /></Pressable><CompactAssignmentCalendar visible={datePickerKey === key} value={form[key]} maxDate={restrictToToday ? localToday() : undefined} onDismiss={() => setDatePickerKey(null)} onSelect={(value) => update(key, value)} /></View>;
-  const select = (label: string, key: 'aloneWith' | 'businessGenerated' | 'blueantAppUsed' | 'position' | 'referenceFor', options: readonly string[]) => <View key={key} style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>{label}</Text><View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue={form[key]} onValueChange={(value) => update(key, value)} style={[styles.picker, verificationStyles.control]}><Picker.Item label={`Select ${label.toLowerCase()}`} value="" color="#FFFFFF" />{options.map((option) => <Picker.Item key={option} label={option === 'SOMEONE' ? 'Someone' : option === 'SELF' ? 'Alone' : option === 'SUPER_ADMIN' ? 'Super Admin' : option === 'TL' ? 'Team Leader' : option === 'SM' ? 'Sales Manager' : option} value={option} color="#FFFFFF" />)}</Picker></View></View>;
+  const select = (label: string, key: 'aloneWith' | 'businessGenerated' | 'blueantAppUsed' | 'position' | 'referenceFor', options: readonly string[]) => <View key={key} style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>{label}</Text><View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue={form[key]} onValueChange={(value) => { const next = String(value); if (key === 'aloneWith' && next === 'SELF') setForm((current) => ({ ...current, aloneWith: next, personName: '', position: '' })); else update(key, next); }} style={[styles.picker, verificationStyles.control]}><Picker.Item label={`Select ${label.toLowerCase()}`} value="" color={pickerOptionColor} />{options.map((option) => <Picker.Item key={option} label={option === 'SOMEONE' ? 'Someone' : option === 'SELF' ? 'Alone' : option === 'SUPER_ADMIN' ? 'Super Admin' : option === 'TL' ? 'Team Leader' : option === 'SM' ? 'Sales Manager' : option} value={option} color={pickerOptionColor} />)}</Picker></View></View>;
   const toggleInvestmentType = (type: string) => update('investmentTypes', form.investmentTypes.includes(type) ? form.investmentTypes.filter((item) => item !== type) : [...form.investmentTypes, type]);
-  const investmentDetail = (type: 'SIP' | 'LUMPSUM' | 'BROKERCHANGE' | 'SERVICE REQUEST' | 'REFERENCE', amountKey: 'sipAmount' | 'lumpsumAmount' | 'brokerChangeAmount' | 'serviceRequestAmount' | 'referenceAmount', remarkKey: 'sipRemark' | 'lumpsumRemark' | 'brokerChangeRemark' | 'serviceRequestRemark' | 'referenceRemark') => form.investmentTypes.includes(type) ? <><View style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>{type === 'BROKERCHANGE' ? 'Broker Change' : type.replace(/\b\w/g, (letter) => letter.toUpperCase())} Amount{type === 'REFERENCE' ? ' (optional)' : ' *'}</Text><TextInput value={form[amountKey]} onChangeText={(value) => update(amountKey, value)} placeholder="Amount" placeholderTextColor="#94A3B8" keyboardType="numeric" style={[styles.input, verificationStyles.input]} /></View><View style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>{type === 'BROKERCHANGE' ? 'Broker Change' : type.replace(/\b\w/g, (letter) => letter.toUpperCase())} Remark</Text><TextInput value={form[remarkKey]} onChangeText={(value) => update(remarkKey, value)} placeholder="Optional remark" placeholderTextColor="#94A3B8" style={[styles.input, verificationStyles.input]} /></View></> : null;
-  const meetingTime = () => { const [selectedHour = ''] = form.meetingTime.split(':'); return <View style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>Meeting Time</Text><View style={styles.timePickerRow}><View style={[styles.pickerShell, styles.timePicker, verificationStyles.control]}><Picker selectedValue={selectedHour} onValueChange={(hour) => update('meetingTime', hour ? `${hour}:00:00` : '')} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Hour" value="" />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} />)}</Picker></View><Text style={styles.timeSeparator}>:</Text><View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View><Text style={styles.timeSeparator}>:</Text><View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View></View></View>; };
+  const investmentDetail = (type: 'SIP' | 'LUMPSUM' | 'BROKERCHANGE' | 'SERVICE REQUEST' | 'REFERENCE', amountKey: 'sipAmount' | 'lumpsumAmount' | 'brokerChangeAmount' | 'serviceRequestAmount' | 'referenceAmount', remarkKey: 'sipRemark' | 'lumpsumRemark' | 'brokerChangeRemark' | 'serviceRequestRemark' | 'referenceRemark') => {
+    if (!form.investmentTypes.includes(type)) return null;
+    const title = type === 'BROKERCHANGE' ? 'Broker Change' : type.replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return <View key={type} style={verificationStyles.investmentDetailCard}><View style={verificationStyles.investmentDetailHeading}><View style={verificationStyles.investmentDetailIcon}><Icon source={type === 'SIP' ? 'chart-line' : type === 'LUMPSUM' ? 'cash-multiple' : type === 'BROKERCHANGE' ? 'swap-horizontal' : type === 'SERVICE REQUEST' ? 'account-wrench-outline' : 'account-heart-outline'} size={14} color="#3156C8" /></View><View><Text style={verificationStyles.investmentDetailTitle}>{title}</Text><Text style={verificationStyles.investmentDetailCaption}>{type === 'REFERENCE' ? 'Amount is optional' : 'Amount required'}</Text></View></View><View style={verificationStyles.investmentInputGrid}><View style={verificationStyles.investmentInputField}><Text style={styles.fieldLabel}>Amount{type === 'REFERENCE' ? ' (optional)' : ' *'}</Text><TextInput value={form[amountKey]} onChangeText={(value) => update(amountKey, value)} placeholder="Enter amount" placeholderTextColor="#94A3B8" keyboardType="numeric" style={[styles.input, verificationStyles.input]} /></View><View style={verificationStyles.investmentInputField}><Text style={styles.fieldLabel}>Remark</Text><TextInput value={form[remarkKey]} onChangeText={(value) => update(remarkKey, value)} placeholder="Add optional remark" placeholderTextColor="#94A3B8" style={[styles.input, verificationStyles.input]} /></View></View></View>;
+  };
+  const meetingTime = () => { const [selectedHour = ''] = form.meetingTime.split(':'); return <View style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>Meeting Time</Text><View style={styles.timePickerRow}><View style={[styles.pickerShell, styles.timePicker, verificationStyles.control]}><Picker selectedValue={selectedHour} onValueChange={(hour) => update('meetingTime', hour ? `${hour}:00:00` : '')} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Hour" value="" color={pickerOptionColor} />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} color={pickerOptionColor} />)}</Picker></View><Text style={styles.timeSeparator}>:</Text><View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View><Text style={styles.timeSeparator}>:</Text><View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View></View></View>; };
   return <View style={[styles.formSection, verificationStyles.section]}>
     <Text style={styles.sectionTitle}>{notConducted ? 'Client Meeting Not Conducted' : 'Client PC Verification'}</Text>
     <Text style={styles.help}>{notConducted ? 'Confirm the meeting date, remarks and next follow-up plan.' : 'Complete the Client Meeting verification details.'}</Text>
@@ -729,7 +836,8 @@ function ClientVerificationFields({ meeting, form, setForm, submitError, submitt
       {notConducted ? <>{dateField('Meeting Date', 'meetingDate', true)}{field('Remarks', 'remarks', 'Verification remarks', true)}</> : <>
         {dateField('Meeting Date', 'newMeetingDate', true)}{meetingTime()}{select('BlueAnt App Used', 'blueantAppUsed', ['YES', 'NO'])}
         {select('Along With', 'aloneWith', ['SELF', 'SOMEONE'])}
-        {select('Business Generated', 'businessGenerated', ['YES', 'NO'])}{form.businessGenerated === 'YES' ? <><View style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>Investment Type</Text><View style={verificationStyles.investmentChoices}>{['SIP', 'LUMPSUM', 'BROKERCHANGE', 'SERVICE REQUEST', 'REFERENCE'].map((type) => <Pressable key={type} onPress={() => toggleInvestmentType(type)} style={[verificationStyles.investmentChoice, form.investmentTypes.includes(type) && verificationStyles.investmentChoiceSelected]}><Text style={[verificationStyles.investmentChoiceText, form.investmentTypes.includes(type) && verificationStyles.investmentChoiceTextSelected]}>{type === 'BROKERCHANGE' ? 'BROKER CHANGE' : type}</Text></Pressable>)}</View></View>{form.investmentTypes.includes('REFERENCE') ? select('Reference For', 'referenceFor', ['INSURANCE', 'LOAN', 'SHARES']) : null}{investmentDetail('SIP', 'sipAmount', 'sipRemark')}{investmentDetail('LUMPSUM', 'lumpsumAmount', 'lumpsumRemark')}{investmentDetail('BROKERCHANGE', 'brokerChangeAmount', 'brokerChangeRemark')}{investmentDetail('SERVICE REQUEST', 'serviceRequestAmount', 'serviceRequestRemark')}{investmentDetail('REFERENCE', 'referenceAmount', 'referenceRemark')}</> : null}
+        {form.aloneWith === 'SOMEONE' ? <><View style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>Person Name *</Text><TextInput value={form.personName} onChangeText={(value) => update('personName', value)} placeholder="Person name" placeholderTextColor="#94A3B8" style={[styles.input, verificationStyles.input]} /></View>{select('Person Designation *', 'position', CLIENT_POSITION_OPTIONS)}</> : null}
+        {select('Business Generated', 'businessGenerated', ['YES', 'NO'])}{form.businessGenerated === 'YES' ? <View style={[verificationStyles.investmentPanel, !form.investmentTypes.length && verificationStyles.investmentPanelEmpty]}><View style={verificationStyles.investmentPanelHeader}><View style={verificationStyles.investmentPanelIcon}><Icon source="chart-box-outline" size={17} color="#3156C8" /></View><View style={verificationStyles.investmentPanelCopy}><Text style={verificationStyles.investmentPanelTitle}>Investment Details</Text><Text style={verificationStyles.investmentPanelSubtitle}>Add every opportunity discussed in this meeting.</Text></View><Text style={verificationStyles.investmentCount}>{form.investmentTypes.length} selected</Text></View><View style={verificationStyles.investmentControlGrid}><View style={verificationStyles.investmentPickerField}><Text style={styles.fieldLabel}>Investment Type</Text><View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue="" onValueChange={(value) => { const type = String(value); if (type) toggleInvestmentType(type); }} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Add investment type" value="" color={pickerOptionColor} />{['SIP', 'LUMPSUM', 'BROKERCHANGE', 'SERVICE REQUEST', 'REFERENCE'].map((type) => <Picker.Item key={type} label={type === 'BROKERCHANGE' ? 'BROKER CHANGE' : type} value={type} color={pickerOptionColor} />)}</Picker></View></View>{form.investmentTypes.includes('REFERENCE') ? <View style={verificationStyles.investmentPickerField}><Text style={styles.fieldLabel}>Reference For</Text><View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue={form.referenceFor} onValueChange={(value) => update('referenceFor', String(value))} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Select reference for" value="" color={pickerOptionColor} />{['INSURANCE', 'LOAN', 'SHARES'].map((option) => <Picker.Item key={option} label={option} value={option} color={pickerOptionColor} />)}</Picker></View></View> : null}</View><View style={verificationStyles.selectedInvestments}>{form.investmentTypes.length ? form.investmentTypes.map((type) => <Pressable key={type} onPress={() => toggleInvestmentType(type)} style={verificationStyles.selectedInvestment}><Text style={verificationStyles.selectedInvestmentText}>{type === 'BROKERCHANGE' ? 'BROKER CHANGE' : type}</Text><Icon source="close" size={13} color="#FFFFFF" /></Pressable>) : <Text style={verificationStyles.investmentHint}>Use the dropdown to add one or more investment types.</Text>}</View>{form.investmentTypes.length ? <View style={verificationStyles.investmentDetailsGrid}>{investmentDetail('SIP', 'sipAmount', 'sipRemark')}{investmentDetail('LUMPSUM', 'lumpsumAmount', 'lumpsumRemark')}{investmentDetail('BROKERCHANGE', 'brokerChangeAmount', 'brokerChangeRemark')}{investmentDetail('SERVICE REQUEST', 'serviceRequestAmount', 'serviceRequestRemark')}{investmentDetail('REFERENCE', 'referenceAmount', 'referenceRemark')}</View> : null}</View> : null}
         {field('Remarks', 'remarks', 'Verification remarks', true)}
       </>}
     </View>
@@ -739,13 +847,32 @@ function ClientVerificationFields({ meeting, form, setForm, submitError, submitt
 }
 
 const verificationStyles = StyleSheet.create({
-  investmentChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  investmentChoice: { paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 8, backgroundColor: '#FFFFFF' },
-  investmentChoiceSelected: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
-  investmentChoiceText: { color: '#475569', fontSize: 9, fontWeight: '900' },
-  investmentChoiceTextSelected: { color: '#4338CA' },
   section: { gap: 6, paddingTop: 7 },
   field: { width: '23%', minWidth: 170, gap: 2 },
+  investmentPanel: { width: '100%', gap: 10, padding: 11, borderWidth: 1, borderColor: '#BFD4FF', borderRadius: 13, backgroundColor: '#F7FAFF' },
+  investmentPanelEmpty: { width: '48%', minWidth: 360, flexGrow: 0 },
+  investmentRemarksField: { width: undefined, minWidth: 290, flex: 1, alignSelf: 'stretch' },
+  investmentRemarksInput: { height: undefined, minHeight: 190, flex: 1 },
+  investmentPanelHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 9, borderBottomWidth: 1, borderBottomColor: '#DCE8FF' },
+  investmentPanelIcon: { width: 31, height: 31, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#E7EFFF' },
+  investmentPanelCopy: { minWidth: 0, flex: 1 },
+  investmentPanelTitle: { color: '#173B7A', fontSize: 11, fontWeight: '900' },
+  investmentPanelSubtitle: { marginTop: 1, color: '#6C7A93', fontSize: 8, fontWeight: '700' },
+  investmentCount: { paddingHorizontal: 7, paddingVertical: 4, borderRadius: 99, color: '#3156C8', fontSize: 8, fontWeight: '900', backgroundColor: '#E3EDFF' },
+  investmentControlGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  investmentPickerField: { minWidth: 260, flex: 1, gap: 2 },
+  selectedInvestments: { minHeight: 26, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 5 },
+  selectedInvestment: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99, backgroundColor: '#3156C8' },
+  selectedInvestmentText: { color: '#FFFFFF', fontSize: 8, fontWeight: '900' },
+  investmentHint: { color: '#718096', fontSize: 8, fontWeight: '700' },
+  investmentDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  investmentDetailCard: { minWidth: 310, flex: 1, gap: 8, padding: 9, borderWidth: 1, borderColor: '#D8E3FB', borderRadius: 10, backgroundColor: '#FFFFFF' },
+  investmentDetailHeading: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  investmentDetailIcon: { width: 26, height: 26, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#EDF3FF' },
+  investmentDetailTitle: { color: '#244275', fontSize: 9, fontWeight: '900' },
+  investmentDetailCaption: { marginTop: 1, color: '#8795AD', fontSize: 7, fontWeight: '700' },
+  investmentInputGrid: { flexDirection: 'row', gap: 6 },
+  investmentInputField: { minWidth: 0, flex: 1, gap: 2 },
   control: { height: Platform.OS === 'web' ? 30 : 36 },
   input: { height: Platform.OS === 'web' ? 30 : 36, paddingVertical: 4, paddingHorizontal: 9, fontSize: 11 },
   textarea: { height: Platform.OS === 'web' ? 44 : 48, minHeight: 44, paddingTop: 8, textAlignVertical: 'top' },
@@ -760,6 +887,8 @@ function VerificationFormField({
   form: VerificationForm;
   setForm: React.Dispatch<React.SetStateAction<VerificationForm>>;
 }) {
+  const { isDark } = useAppTheme();
+  const pickerOptionColor = isDark ? '#FFFFFF' : '#000000';
   const [datePickerVisible, setDatePickerVisible] = useState(false);
   const update = (value: string) => setForm((current) => ({
     ...current,
@@ -799,7 +928,7 @@ function VerificationFormField({
       <View style={[styles.field, tone, verificationStyles.field]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
         <View style={styles.timePickerRow}>
-          <View style={[styles.pickerShell, styles.timePicker, verificationStyles.control]}><Picker selectedValue={selectedHour} onValueChange={updateTime} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Hour" value="" />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} />)}</Picker></View>
+          <View style={[styles.pickerShell, styles.timePicker, verificationStyles.control]}><Picker selectedValue={selectedHour} onValueChange={updateTime} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Hour" value="" color={pickerOptionColor} />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} color={pickerOptionColor} />)}</Picker></View>
           <Text style={styles.timeSeparator}>:</Text>
           <View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
           <Text style={styles.timeSeparator}>:</Text>
@@ -826,7 +955,7 @@ function VerificationFormField({
     return (
       <View style={[styles.field, tone, verificationStyles.field]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
-        <View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue={form[field.key]} onValueChange={update} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Select an option" value="" color="#FFFFFF" />{options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : field.key === 'meetingWith' ? option === 'SELF' ? 'Self' : 'With someone' : option} value={option} color="#FFFFFF" />)}</Picker></View>
+        <View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue={form[field.key]} onValueChange={update} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Select an option" value="" color={pickerOptionColor} />{options.map((option) => <Picker.Item key={option} label={field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : field.key === 'meetingWith' ? option === 'SELF' ? 'Self' : 'With someone' : option} value={option} color={pickerOptionColor} />)}</Picker></View>
       </View>
     );
   }
@@ -902,16 +1031,20 @@ function Details({ meeting: m, visitOnly = false }: { meeting: MeetingResponse; 
     ? [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate]] as const
     : [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate], ['Lead Status', m.leadStatus?.replace(/_/g, ' ')]] as const;
   const employeeLabels = employeeRoleLabels(m);
+  const clientDetails = m.isClientMeeting && (m.clinicAddress || m.speciality)
+    ? [m.speciality, m.clinicAddress].filter(Boolean).join(' · ')
+    : '';
   const contactFields = visitOnly
     ? [['Mobile Number', maskedMobile(m.mobileNumber)], ...(m.isClientMeeting ? [['Alternate Mobile', maskedMobile(m.alternateMobileNumber)], ['Email', m.email]] as const : []), [employeeLabels.person, m.employeeName], [employeeLabels.id, m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : [])] as const
-    : [['Mobile Number', maskedMobile(m.mobileNumber)], ...(m.isClientMeeting ? [['Alternate Mobile', maskedMobile(m.alternateMobileNumber)], ['Email', m.email]] as const : []), [employeeLabels.person, m.employeeName], [employeeLabels.id, m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith]] as const;
+    : [['Mobile Number', maskedMobile(m.mobileNumber)], ...(m.isClientMeeting ? [['Alternate Mobile', maskedMobile(m.alternateMobileNumber)], ['Email', m.email]] as const : []), [employeeLabels.person, m.employeeName], [employeeLabels.id, m.employeeCode], ...(m.meetingCode || m.id ? [['Meeting ID', m.meetingCode ?? m.id] as const] : []), ['Joined With', m.aloneWith], ...(clientDetails ? [['Client Details', clientDetails]] as const : [])] as const;
   return <View style={styles.detailsWrap}>
     <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
-    <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
-    <View style={styles.contextGrid}>{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{meetingPlace ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>{m.isClientMeeting ? 'CLIENT LOCATION' : 'MEETING LOCATION'}</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{m.isClientMeeting && (m.clinicAddress || m.speciality) ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="office-building-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>CLIENT DETAILS</Text></View><Text style={styles.contextValue}>{[m.speciality, m.clinicAddress].filter(Boolean).join(' · ')}</Text></View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={[styles.mapButton, styles.mapButtonCompact]}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
+    <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, label === 'Joined With' && styles.contactCardCompact, label === 'Client Details' && styles.clientDetailsContactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={label === 'Client Details' ? undefined : 1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
+    <View style={styles.contextGrid}>{m.remarks || m.meetingRemarks ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.remarks ?? m.meetingRemarks)}</Text></View> : null}{meetingPlace ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>{m.isClientMeeting ? 'CLIENT LOCATION' : 'MEETING LOCATION'}</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}{mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={[styles.mapButton, styles.mapButtonCompact]}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}</View>
   </View>;
 }
 function VerificationDetails({ meeting: m }: { meeting: MeetingResponse }) { const fields = [['Verified By', m.verifiedBy], ['Verification Date', m.meetingVerificationDate], ...FIELDS.map((field) => [field.label, m[field.key]] as const)]; return <View style={styles.formSection}><Text style={styles.sectionTitle}>Process Coordinator Response</Text><View style={styles.detailGrid}>{fields.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View></View>; }
+function ClientVerificationDetails({ meeting: m }: { meeting: MeetingResponse }) { const fields = [['Meeting Date', m.meetingDate], ['Meeting Time', timeText(m.meetingTime)], ['BlueAnt App Used', m.blueantAppUsed], ['Along With', m.aloneWith], ['Person Name', m.personName], ['Person Designation', m.position], ['Business Generated', m.businessGenerated], ['Investment Type', m.investmentType], ['Investment Amount', m.investmentAmount], ['Remarks', m.remarks]].filter(([, value]) => value !== undefined && value !== null && value !== ''); return <View style={styles.formSection}><Text style={styles.sectionTitle}>Client PC Verification Response</Text><View style={styles.detailGrid}>{fields.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View></View>; }
 function LoadingProgressBar({ progress }: { progress: number }) {
   const animatedProgress = useRef(new Animated.Value(progress)).current;
   useEffect(() => {
@@ -942,7 +1075,11 @@ function HeaderLeadFilters({ leads, coordinatorFilter, setCoordinatorFilter, sal
   const [draftDateRange, setDraftDateRange] = useState<AssignedDateRange>(dateRange);
   const [dateTarget, setDateTarget] = useState<'from' | 'to' | null>(null);
   const coordinators = [...new Set(leads.map((lead) => lead.assignedByEmployeeName).filter(Boolean))] as string[];
-  const salesPeople = [...new Set(leads.filter((lead) => !coordinatorFilter || lead.assignedByEmployeeName === coordinatorFilter).map((lead) => lead.assignedEmployeeName).filter(Boolean))] as string[];
+  const salesPeople = [...new Set(leads
+    .filter((lead) => (!coordinatorFilter || lead.assignedByEmployeeName === coordinatorFilter)
+      && belongsToCoordinatorTeam(coordinatorFilter, lead.assignedEmployeeName))
+    .map((lead) => lead.assignedEmployeeName)
+    .filter(Boolean))] as string[];
   const rangeLabel = dateRange.from || dateRange.to ? `${dateRange.from || '...'} to ${dateRange.to || '...'}` : 'All assigned dates';
   const openDateRange = () => { setDraftDateRange(dateRange); setDateTarget(null); setDatePickerVisible(true); };
   return <><View style={[styles.headerLeadFilters, compact && styles.headerLeadFiltersCompact]}><TextInput value={search} onChangeText={setSearch} placeholder="Search lead name or number" placeholderTextColor="#CBD9FF" style={[styles.headerSearch, compact && styles.headerSearchCompact]} /><View style={[styles.headerLeadFilter, compact && styles.headerLeadFilterCompact]}><Pressable onPress={openDateRange} style={[styles.headerLeadDatePicker, compact && styles.headerLeadPickerCompact]}><Icon source="calendar-month-outline" size={15} color="#BFD1FF" /><Text numberOfLines={1} style={styles.headerLeadDateText}>{rangeLabel}</Text>{dateRange.from || dateRange.to ? <Pressable accessibilityLabel="Clear assigned date range" hitSlop={8} onPress={() => setDateRange({ from: '', to: '' })}><Icon source="close-circle" size={15} color="#BFD1FF" /></Pressable> : <Icon source="chevron-down" size={15} color="#BFD1FF" />}</Pressable></View><View style={[styles.headerLeadFilter, compact && styles.headerLeadFilterCompact]}><Icon source="account-tie-outline" size={15} color="#BFD1FF" /><View style={[styles.headerLeadPicker, compact && styles.headerLeadPickerCompact]}><Picker selectedValue={coordinatorFilter} onValueChange={(value) => { setCoordinatorFilter(String(value)); setSalesPersonFilter(''); }} style={[styles.headerLeadPickerControl, isDark && styles.headerLeadPickerControlDark]}><Picker.Item label="All Coordinators" value="" />{coordinators.map((name) => <Picker.Item key={name} label={name} value={name} />)}</Picker></View></View><View style={[styles.headerLeadFilter, compact && styles.headerLeadFilterCompact, !coordinatorFilter && styles.headerLeadPickerDisabled, isDark && !coordinatorFilter && styles.headerLeadPickerDisabledDark]}><Icon source="account-outline" size={15} color="#BFD1FF" /><View style={[styles.headerLeadPicker, compact && styles.headerLeadPickerCompact]}><Picker enabled={Boolean(coordinatorFilter)} selectedValue={salesPersonFilter} onValueChange={(value) => setSalesPersonFilter(String(value))} style={[styles.headerLeadPickerControl, isDark && styles.headerLeadPickerControlDark]}><Picker.Item label={coordinatorFilter ? 'All Sales Persons' : 'Choose salesperson'} value="" />{salesPeople.map((name) => <Picker.Item key={name} label={name} value={name} />)}</Picker></View></View></View><Modal transparent visible={datePickerVisible} animationType="fade" onRequestClose={() => setDatePickerVisible(false)}><Pressable style={styles.filterBackdrop} onPress={() => setDatePickerVisible(false)}><Pressable style={styles.filterPopover} onPress={() => undefined}><View style={styles.filterPopoverTitle}><View><Text style={styles.filterPopoverTitleText}>ASSIGNED DATE RANGE</Text><Text style={styles.filterPopoverHint}>Choose a start and end date</Text></View><Pressable onPress={() => setDatePickerVisible(false)}><Icon source="close" size={18} color="#64748B" /></Pressable></View><View style={styles.dateRangeFields}>{(['from', 'to'] as const).map((target) => <View key={target}><Text style={styles.dateRangeLabel}>{target === 'from' ? 'From date' : 'To date'}</Text><Pressable onPress={() => setDateTarget(target)} style={styles.datePickerButton}><Icon source="calendar-outline" size={16} color="#3156C8" /><Text style={styles.datePickerText}>{draftDateRange[target] || 'Choose date'}</Text></Pressable></View>)}{dateTarget ? <InlineCalendar key={`${dateTarget}-${draftDateRange[dateTarget]}`} value={draftDateRange[dateTarget]} onSelect={(value) => { setDraftDateRange((current) => ({ ...current, [dateTarget]: value })); setDateTarget(null); }} /> : null}</View><View style={styles.filterActions}><Pressable onPress={() => { setDraftDateRange({ from: '', to: '' }); setDateTarget(null); }} style={styles.filterReset}><Text style={styles.filterResetText}>Clear</Text></Pressable><Pressable onPress={() => { setDateRange(draftDateRange); setDatePickerVisible(false); }} style={styles.filterApply}><Text style={styles.filterApplyText}>Apply</Text></Pressable></View></Pressable></Pressable></Modal></>;
@@ -950,7 +1087,10 @@ function HeaderLeadFilters({ leads, coordinatorFilter, setCoordinatorFilter, sal
 function AssignedLeadCards({ leads, coordinatorFilter, setCoordinatorFilter, salesPersonFilter, setSalesPersonFilter, dateRange, onOpen }: { leads: LeadResponse[]; coordinatorFilter: string; setCoordinatorFilter: (value: string) => void; salesPersonFilter: string; setSalesPersonFilter: (value: string) => void; dateRange: AssignedDateRange; onOpen: (lead: LeadResponse) => void }) {
   const compact = useWindowDimensions().width < 760;
   const { isDark } = useAppTheme();
-  const visible = leads.filter((lead) => (!coordinatorFilter || lead.assignedByEmployeeName === coordinatorFilter) && (!salesPersonFilter || lead.assignedEmployeeName === salesPersonFilter) && matchesAssignedDate(lead.assignedAt, dateRange));
+  const visible = leads.filter((lead) => (!coordinatorFilter || lead.assignedByEmployeeName === coordinatorFilter)
+    && belongsToCoordinatorTeam(coordinatorFilter, lead.assignedEmployeeName)
+    && (!salesPersonFilter || lead.assignedEmployeeName === salesPersonFilter)
+    && matchesAssignedDate(lead.assignedAt, dateRange));
   return <View style={[styles.assignedLeadWrap, compact && styles.assignedLeadWrapCompact]}><View style={[styles.assignedLeadGrid, compact && styles.assignedLeadGridCompact]}>{visible.length ? visible.map((lead) => <Pressable key={lead.leadId ?? lead.leadCode} onPress={() => void onOpen(lead)} style={({ pressed }) => [styles.assignedLeadCard, compact && styles.assignedLeadCardCompact, [styles.leadToneBlue, styles.leadToneTeal, styles.leadToneViolet, styles.leadToneAmber][leadCardTone(lead)], pressed && styles.pressed]}><View style={styles.assignedLeadTop}><View style={styles.assignedLeadCopy}><Text numberOfLines={1} style={[styles.assignedLeadName, isDark && Platform.OS === 'web' && styles.darkModeWhiteSource]}>{show(lead.clientName)}</Text><Text style={styles.assignedLeadMeta}>{leadRole(lead)}</Text></View><View style={styles.leadStatusPill}><Text style={styles.leadStatusPillText}>{show(lead.leadStatus).replace(/_/g, ' ')}</Text></View></View><View style={styles.assignedLeadDivider} /><View style={[styles.assignedLeadDetails, compact && styles.assignedLeadDetailsCompact]}><View><Text style={styles.assignLabel}>ASSIGNED TO</Text><Text style={styles.assignedLeadValue}>{show(lead.assignedEmployeeName)}</Text></View><View><Text style={styles.assignLabel}>ASSIGNED DATE</Text><Text style={styles.assignedLeadValue}>{show(lead.assignedAt)}</Text></View><View><Text style={styles.assignLabel}>LAST MEETING / VERIFIED</Text><Text style={styles.assignedLeadValue}>{show(lead.audit?.updatedAt)}</Text></View></View></Pressable>) : <State message="No assigned leads match these filters." />}</View></View>;
 }
 function LeadHistoryContent({ lead, meetings, loading, error }: { lead: LeadResponse; meetings: MeetingResponse[]; loading: boolean; error: string | null }) { const assignment = [['Assigned by', lead.assignedByEmployeeName], ['Assigned to', lead.assignedEmployeeName], ['Assigned at', lead.assignedAt], ['Current status', lead.leadStatus?.replace(/_/g, ' ')]]; const details = [['Mobile number', maskedMobile(lead.mobileNumber)], ['Location', lead.location], ['Clinic address', lead.clinicAddress], ['Speciality', lead.speciality], ['Lead code', lead.leadCode], ['Remarks', lead.remarks]]; return <View style={styles.historyWrap}><Text style={styles.sectionTitle}>Assignment</Text><View style={styles.detailGrid}>{assignment.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View><Text style={styles.sectionTitle}>Lead details</Text><View style={styles.detailGrid}>{details.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View><View style={styles.historyTitleRow}><Text style={styles.sectionTitle}>Meeting history</Text><Text style={styles.historyCount}>{loading ? 'Loading…' : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}`}</Text></View>{error ? <Text style={styles.error}>{error}</Text> : null}{loading ? <State loading message="Loading lead history…" /> : meetings.length ? <View style={styles.timeline}>{meetings.map((meeting, index) => <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.timelineItem}><View style={styles.timelineRail}><View style={styles.timelineDot} />{index < meetings.length - 1 ? <View style={styles.timelineLine} /> : null}</View><View style={styles.timelineCard}><View style={styles.timelineTop}><Text style={styles.timelineTitle}>{show(meeting.meetingTitle ?? meeting.meetingType)}</Text><Text style={styles.timelineStatus}>{show(meeting.meetingStatus ?? meeting.leadStatus).replace(/_/g, ' ')}</Text></View><Text style={styles.timelineMeta}>{show(meeting.meetingDate)}{meeting.meetingTime ? ` · ${timeText(meeting.meetingTime)}` : ''}{meeting.employeeName ? ` · ${meeting.employeeName}` : ''}</Text><Text style={styles.timelineValue}>Remarks: {show(meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion)}</Text><Text style={styles.timelineValue}>Location: {show(meeting.meetingLocation ?? meeting.location ?? meeting.address)}</Text>{meeting.nextMeetingDate ? <Text style={styles.timelineValue}>Next plan: {meeting.nextMeetingDate}</Text> : null}{meeting.verifiedBy ? <Text style={styles.timelineValue}>Verified by: {meeting.verifiedBy}{meeting.meetingVerificationDate ? ` · ${meeting.meetingVerificationDate}` : ''}</Text> : null}</View></View>)}</View> : <State message="No meeting history is available for this lead yet." />}</View>; }
@@ -1097,6 +1237,8 @@ const styles = StyleSheet.create({
   overviewValue: { marginTop: 3, color: '#1E3A8A', fontSize: 10, fontWeight: '900' },
   contactGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   contactCard: { minWidth: 130, flex: 1, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 9, backgroundColor: '#F8FAFC' },
+  contactCardCompact: { flexGrow: 0, flexBasis: '22%' },
+  clientDetailsContactCard: { minWidth: 300, flexGrow: 1, flexBasis: '52%' },
   meetingOverview: { flexDirection: 'row', alignItems: 'center', gap: 9, padding: 10, borderWidth: 1, borderColor: '#C7D2FE', borderRadius: 11, backgroundColor: '#F2F5FF' },
   overviewIcon: { width: 33, height: 33, alignItems: 'center', justifyContent: 'center', borderRadius: 9, backgroundColor: '#DFE7FF' },
   overviewCopy: { minWidth: 0, flex: 1 },
@@ -1117,7 +1259,7 @@ const styles = StyleSheet.create({
   locationTitleRow: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
   locationHint: { color: '#8190A8', fontSize: 8, fontWeight: '700' },
   mapButton: { minWidth: 190, flexGrow: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 15, borderRadius: 10, backgroundColor: '#0F766E' },
-  mapButtonCompact: { minWidth: 145, flex: 15, flexGrow: 0, paddingHorizontal: 8 },
+  mapButtonCompact: { minWidth: 145, flex: 15, flexGrow: 15, paddingHorizontal: 8 },
   mapButtonText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' },
   contentHeadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, contentHeadingRowCompact: { alignItems: 'stretch', flexDirection: 'column', gap: 9 },
   exportButton: { minHeight: 31, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 11, borderRadius: 8, backgroundColor: '#15803D', shadowColor: '#14532D', shadowOpacity: 0.2, shadowRadius: 5, shadowOffset: { width: 0, height: 2 } }, exportButtonCompact: { minHeight: 38, alignSelf: 'stretch', justifyContent: 'center' },

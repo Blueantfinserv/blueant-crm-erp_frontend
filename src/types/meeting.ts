@@ -18,6 +18,7 @@ export type MeetingResponse = MeetingSummary & {
   employeeRole?: string; assignedEmployeeRole?: string;
   meetingLocation?: string; status?: string; address?: string; discussion?: string;
   remarks?: string; meetingConducted?: 'CONDUCTED' | 'NOT_CONDUCTED'; businessGenerated?: string;
+  blueantAppUsed?: string; investmentType?: string; investmentAmount?: number;
   meetingRemarks?: string;
   leadStatus?: MeetingLeadStatus; latitude?: number; longitude?: number; locationAccuracy?: number;
   lastModifiedDate?: string; createdDate?: string; workflowUpdatedAt?: string; googleMapsUrl?: string;
