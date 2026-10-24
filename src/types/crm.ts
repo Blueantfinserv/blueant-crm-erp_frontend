@@ -246,6 +246,7 @@ export type ClientMeetingResponse = {
   businessGenerated?: string;
   blueantAppUsed?: string;
   investmentType?: string;
+  businessTypes?: string[];
   investmentAmount?: number;
   remarks?: string;
   nextPlanDate?: string;
@@ -324,6 +325,13 @@ export type ClientProfileResponse = {
   documents?: Array<{ documentType?: string; documentName?: string; received?: boolean; receivedDate?: string; verificationStatus?: string; documentReference?: string; remarks?: string }>;
 };
 
+/** One business category recorded during a PC client-meeting verification. */
+export type ClientBusinessItemDto = {
+  businessType: string;
+  /** `null` for non-monetary items such as SERVICE_REQUEST and BROKER_CHANGE. */
+  amount: number | null;
+};
+
 export type ClientMeetingVerificationRequest = {
   newMeetingDate?: string;
   /** Backend accepts Java LocalTime as an HH:mm:ss string, like the Prospect verification endpoint. */
@@ -333,7 +341,11 @@ export type ClientMeetingVerificationRequest = {
   personName?: string;
   position?: string;
   businessGenerated?: string;
+  /** Category-wise business data accepted by the client-meeting verification API. */
+  businessItems?: ClientBusinessItemDto[];
+  /** Legacy aggregate fields retained only for backwards-compatible API responses. */
   investmentType?: string;
+  businessTypes?: string[];
   investmentAmount?: number;
   remarks?: string;
   nextFollowupDate?: string;
