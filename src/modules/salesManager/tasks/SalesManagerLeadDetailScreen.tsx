@@ -68,12 +68,10 @@ const clientProfileSections = (profile: ClientProfileResponse) => [
     ],
   },
   {
-    title: 'Investment & Payment', icon: 'chart-line', fields: [
+    title: 'Investment Details', icon: 'chart-line', fields: [
       { label: 'Investment Type', value: displayProfileValue(profile.investmentType) }, { label: 'Investment Types', value: displayProfileValue(profile.investmentTypes) },
       { label: 'First Investment Amount', value: displayProfileValue(profile.firstInvestmentAmount) }, { label: 'Expected Max SIP', value: displayProfileValue(profile.expectedMaxSIP) },
-      { label: 'Investwell ID', value: displayProfileValue(profile.investwellId) }, { label: 'Payment Status', value: displayProfileValue(profile.paymentStatus) },
-      { label: 'Payment Amount', value: displayProfileValue(profile.paymentAmount) }, { label: 'Payment Date', value: displayProfileValue(profile.paymentDate) },
-      { label: 'Payment Reference', value: displayProfileValue(profile.paymentReference) },
+      { label: 'Investwell ID', value: displayProfileValue(profile.investwellId) },
     ],
   },
   {
