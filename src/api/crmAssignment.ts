@@ -24,7 +24,10 @@ export class CrmAssignmentApiError extends Error {
   }
 }
 
-const roleCode = (value?: string) => String(value ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_').replace(/^ROLE_/, '');
+const roleCode = (value?: string) => {
+  const code = String(value ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_').replace(/^ROLE_/, '');
+  return code === 'RM' ? 'RELATIONSHIP_MANAGER' : code === 'SC' ? 'SALES_COORDINATOR' : code;
+};
 
 const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
   const token = await SecureStorageService.getToken();
