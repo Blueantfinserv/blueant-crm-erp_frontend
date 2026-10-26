@@ -102,8 +102,13 @@ const roleCode = (value?: string) => String(value ?? '').trim().toUpperCase().re
 const messageFor = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 const emptyAssignmentFilters = (): AssignmentFilters => ({ search: '', assignedTo: '', role: '', from: '', to: '' });
 const CLIENT_FORM_SECTIONS: readonly { key: ClientFormSection; label: string }[] = [
-  { key: 'basic', label: 'Basic Client Details' }, { key: 'personal', label: 'PAN Details & Address' }, { key: 'source', label: 'Source & Application' }, { key: 'investment', label: 'Investment Details' }, { key: 'family', label: 'Family Details' }, { key: 'nominee', label: 'Nominee Details' }, { key: 'documents', label: 'Documents' }, { key: 'assignment', label: 'Assignment Details' },
+  { key: 'basic', label: 'Basic Client Details' }, { key: 'personal', label: 'PAN Details & Address' }, { key: 'investment', label: 'Investment Details' }, { key: 'family', label: 'Family Details' }, { key: 'nominee', label: 'Nominee Details' }, { key: 'documents', label: 'Documents' }, { key: 'assignment', label: 'Assignment Details' }, { key: 'source', label: 'Source & Application' },
 ];
+const CLIENT_LOCATIONS: readonly string[] = [
+  'Gurugram', 'Noida', 'Greator Noida', 'Old Gaziabad', 'New Gaziabad', 'Dwarka',
+  'Central Delhi', 'East Delhi', 'Out Of City', 'Out Of Country', 'Faridabad',
+];
+
 const CLIENT_SECTION_INTRO: Record<ClientFormSection, { title: string; subtitle: string }> = {
   basic: { title: 'Basic Client Details', subtitle: 'Enter the client’s contact, clinic and meeting preference details.' },
   personal: { title: 'PAN Details & Address', subtitle: 'Add personal identification and address information.' },
@@ -115,10 +120,9 @@ const CLIENT_SECTION_INTRO: Record<ClientFormSection, { title: string; subtitle:
   assignment: { title: 'Assignment Details', subtitle: 'Select the RM or SC and complete the client assignment.' },
 };
 const CLIENT_FORM_REQUIRED_FIELDS: readonly (keyof CrmAssignForm)[] = [
-  'clientName', 'mobileNumber', 'location', 'clinicAddress', 'speciality', 'alternateMobileNumber', 'email', 'bestTimeToMeet', 'salesPersonEmployeeCode', 'assignedAt',
-  'panNumber', 'dateOfBirth', 'actualDateOfBirth', 'motherName', 'placeOfBirth', 'occupation', 'residentialAddress', 'correspondenceAddress', 'city', 'state', 'pinCode',
+  'clientName', 'mobileNumber', 'location', 'clinicAddress', 'speciality', 'email', 'bestTimeToMeet', 'salesPersonEmployeeCode', 'assignedAt',
+  'panNumber', 'dateOfBirth', 'motherName', 'placeOfBirth', 'occupation', 'residentialAddress', 'correspondenceAddress', 'city', 'state', 'pinCode',
   'clientSource', 'sourceDescription', 'applicationReceivedDate', 'applicationMode', 'clientReportDate', 'expectedMaxSIP', 'investwellId',
-  'nomineeName', 'nomineeRelationship', 'nomineeDateOfBirth', 'nomineeContactNumber', 'nomineePanNumber',
 ];
 const LEAD_REQUIRED_FIELDS: readonly (keyof CrmAssignForm)[] = ['clientName', 'mobileNumber', 'location', 'clinicAddress', 'speciality', 'salesPersonEmployeeCode'];
 const matchesAssignmentFilters = (item: AssignmentFilterItem, filters: AssignmentFilters) => {
@@ -281,7 +285,7 @@ export function CrmOnboardingScreen() {
   const resolvedAssignedClients = useMemo(() => assignedClients.map((client) => resolveAssignedClientTarget(client, assignmentTargets)), [assignedClients, assignmentTargets]);
   const canSubmit = !assigning && LEAD_REQUIRED_FIELDS.every((field) => form[field].trim());
   const uploadedDocumentCount = [clientForm.panDocumentReference, clientForm.aadhaarDocumentReference, clientForm.passportDocumentReference, clientForm.chequeDocumentReference, clientForm.signatureDocumentReference, clientForm.otherDocumentReference].filter(Boolean).length;
-  const canAssignClient = !assigningClient && CLIENT_FORM_REQUIRED_FIELDS.every((field) => clientForm[field].trim()) && uploadedDocumentCount >= 2;
+  const canAssignClient = !assigningClient && CLIENT_FORM_REQUIRED_FIELDS.every((field) => clientForm[field].trim()) && CLIENT_LOCATIONS.includes(clientForm.location) && uploadedDocumentCount >= 2;
   const validateClientSection = (section: ClientFormSection) => {
     const sectionFields: Record<ClientFormSection, readonly (keyof CrmAssignForm)[]> = {
       basic: ['clientName', 'mobileNumber', 'location', 'clinicAddress', 'speciality', 'alternateMobileNumber', 'email', 'bestTimeToMeet'],
@@ -298,23 +302,24 @@ export function CrmOnboardingScreen() {
       placeOfBirth: 'Place of Birth', occupation: 'Occupation', residentialAddress: 'Residential Address',
       correspondenceAddress: 'Correspondence Address', officeAddress: 'Office Address', city: 'City', state: 'State', pinCode: 'PIN Code',
       clientSource: 'Client Source', sourceDescription: 'Source Description', applicationReceivedDate: 'Application Received Date',
-      applicationMode: '', clientReportDate: 'Onboarding Date', expectedMaxSIP: 'Expected Max SIP', investwellId: 'Investwell ID',
+      applicationMode: 'Other Important Information', clientReportDate: 'Onboarding Date', expectedMaxSIP: 'Expected Max SIP', investwellId: 'Investwell ID',
       nomineeName: 'Nominee Name', nomineeRelationship: 'Nominee Relationship', nomineeDateOfBirth: 'Nominee Date of Birth',
       nomineeContactNumber: 'Nominee Contact Number', nomineePanNumber: 'Nominee PAN Number',
       salesPersonEmployeeCode: 'Employee Code', assignedAt: 'Assigned Date',
     };
-    const missing = sectionFields[section].find((field) => !clientForm[field].trim());
+    const missing = sectionFields[section].find((field) => CLIENT_FORM_REQUIRED_FIELDS.includes(field) && !clientForm[field].trim());
     if (missing) { setClientMessage({ type: 'error', text: `${labels[missing] ?? String(missing)} is required.` }); return false; }
+    if (section === 'basic' && !CLIENT_LOCATIONS.includes(clientForm.location)) { setClientMessage({ type: 'error', text: 'Please select a location from the available options.' }); return false; }
     if (section === 'basic' && !/^[6-9]\d{9}$/.test(clientForm.mobileNumber.trim())) { setClientMessage({ type: 'error', text: 'Mobile Number must be a valid 10-digit Indian number starting with 6, 7, 8 or 9.' }); return false; }
-    if (section === 'basic' && !/^\d{10}$/.test(clientForm.alternateMobileNumber.trim())) { setClientMessage({ type: 'error', text: 'Alternate Mobile Number must contain exactly 10 digits.' }); return false; }
+    if (section === 'basic' && clientForm.alternateMobileNumber.trim() && !/^\d{10}$/.test(clientForm.alternateMobileNumber.trim())) { setClientMessage({ type: 'error', text: 'Alternate Mobile Number must contain exactly 10 digits.' }); return false; }
     if (section === 'basic' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(clientForm.email.trim())) { setClientMessage({ type: 'error', text: 'Email address format is invalid.' }); return false; }
     if (section === 'personal' && !/^[A-Z]{5}\d{4}[A-Z]$/.test(clientForm.panNumber.trim().toUpperCase())) { setClientMessage({ type: 'error', text: 'PAN Number must use the format ABCDE1234F.' }); return false; }
     if (['personal', 'source', 'nominee', 'assignment'].includes(section)) {
       const dateFields = section === 'personal' ? ['dateOfBirth', 'actualDateOfBirth'] : section === 'source' ? ['applicationReceivedDate', 'clientReportDate'] : section === 'nominee' ? ['nomineeDateOfBirth'] : ['assignedAt'];
-      const invalidDate = dateFields.find((field) => !/^\d{4}-\d{2}-\d{2}$/.test(clientForm[field as keyof CrmAssignForm] as string));
+      const invalidDate = dateFields.find((field) => clientForm[field as keyof CrmAssignForm].trim() && !/^\d{4}-\d{2}-\d{2}$/.test(clientForm[field as keyof CrmAssignForm] as string));
       if (invalidDate) { setClientMessage({ type: 'error', text: `${labels[invalidDate as keyof CrmAssignForm] ?? 'Date'} must use YYYY-MM-DD format.` }); return false; }
     }
-    if (section === 'nominee' && !/^\d{10}$/.test(clientForm.nomineeContactNumber.trim())) { setClientMessage({ type: 'error', text: 'Nominee Contact Number must contain exactly 10 digits.' }); return false; }
+    if (section === 'nominee' && clientForm.nomineeContactNumber.trim() && !/^\d{10}$/.test(clientForm.nomineeContactNumber.trim())) { setClientMessage({ type: 'error', text: 'Nominee Contact Number must contain exactly 10 digits.' }); return false; }
     if (section === 'documents' && uploadedDocumentCount < 2) { setClientMessage({ type: 'error', text: 'Upload at least 2 document files before continuing.' }); return false; }
     setClientMessage({ type: 'success', text: `${CLIENT_FORM_SECTIONS.find((item) => item.key === section)?.label ?? 'Section'} is valid and saved in this form.` });
     return true;
@@ -326,7 +331,7 @@ export function CrmOnboardingScreen() {
       setClientMessage({ type: 'error', text: 'Mobile number must contain a valid 10-digit Indian mobile number.' });
       return;
     }
-    if (!/^\d{10}$/.test(clientForm.alternateMobileNumber.trim())) {
+    if (clientForm.alternateMobileNumber.trim() && !/^\d{10}$/.test(clientForm.alternateMobileNumber.trim())) {
       setClientMessage({ type: 'error', text: 'Alternate mobile number must contain a valid 10-digit number.' });
       return;
     }
@@ -335,7 +340,7 @@ export function CrmOnboardingScreen() {
       const payload: ClientRegistrationRequest = {
         clientName: clientForm.clientName.trim(), mobileNumber: clientForm.mobileNumber.trim(), speciality: clientForm.speciality.trim(),
         location: clientForm.location.trim(), clinicAddress: clientForm.clinicAddress.trim(), salesPersonEmployeeCode: clientForm.salesPersonEmployeeCode.trim().toUpperCase(),
-        alternateMobileNumber: clientForm.alternateMobileNumber.trim(),
+        ...(clientForm.alternateMobileNumber.trim() ? { alternateMobileNumber: clientForm.alternateMobileNumber.trim() } : {}),
         ...(clientForm.email.trim() ? { email: clientForm.email.trim() } : {}), ...(clientForm.remarks.trim() ? { remarks: clientForm.remarks.trim() } : {}),
         ...(clientForm.assignedAt.trim() ? { assignmentDate: clientForm.assignedAt.trim() } : {}), ...(clientForm.bestTimeToMeet ? { bestTimeToMeet: clientForm.bestTimeToMeet } : {}),
         ...(clientForm.panNumber.trim() ? { panNumber: clientForm.panNumber.trim().toUpperCase() } : {}), ...(clientForm.actualDateOfBirth || clientForm.dateOfBirth ? { dateOfBirth: clientForm.actualDateOfBirth || clientForm.dateOfBirth } : {}), ...(clientForm.motherName.trim() ? { motherName: clientForm.motherName.trim() } : {}), ...(clientForm.placeOfBirth.trim() ? { placeOfBirth: clientForm.placeOfBirth.trim() } : {}), ...(clientForm.occupation.trim() ? { occupation: clientForm.occupation.trim() } : {}),
@@ -347,12 +352,12 @@ export function CrmOnboardingScreen() {
         ...(clientForm.newFamilyName.trim()
           ? { newFamilyName: clientForm.newFamilyName.trim() }
           : clientForm.familyCode.trim() ? { familyCode: clientForm.familyCode.trim() } : {}), ...(clientForm.relationshipToHead ? { relationshipToHead: clientForm.relationshipToHead as NonNullable<ClientRegistrationRequest['relationshipToHead']> } : {}), ...(clientForm.designateAsHead ? { designateAsHead: clientForm.designateAsHead === 'YES' } : {}),
-        ...(clientForm.nomineeName.trim() ? { nominees: [{
-          nomineeName: clientForm.nomineeName.trim(),
-          relationship: clientForm.nomineeRelationship.trim(),
-          dateOfBirth: clientForm.nomineeDateOfBirth,
-          contactNumber: clientForm.nomineeContactNumber.trim(),
-          panNumber: clientForm.nomineePanNumber.trim().toUpperCase(),
+        ...([clientForm.nomineeName, clientForm.nomineeRelationship, clientForm.nomineeDateOfBirth, clientForm.nomineeContactNumber, clientForm.nomineePanNumber].some((value) => value.trim()) ? { nominees: [{
+          nomineeName: clientForm.nomineeName.trim() || undefined,
+          relationship: clientForm.nomineeRelationship.trim() || undefined,
+          dateOfBirth: clientForm.nomineeDateOfBirth.trim() || undefined,
+          contactNumber: clientForm.nomineeContactNumber.trim() || undefined,
+          panNumber: clientForm.nomineePanNumber.trim().toUpperCase() || undefined,
         }] } : {}),
         ...(uploadedDocumentCount ? { documents: ([
           ['PAN', clientForm.panDocumentReference, 'PAN_CARD'], ['Aadhaar', clientForm.aadhaarDocumentReference, 'AADHAAR_CARD'], ['Passport', clientForm.passportDocumentReference, 'PASSPORT'], ['Cheque', clientForm.chequeDocumentReference, 'CHEQUE'], ['Signature', clientForm.signatureDocumentReference, 'SIGNATURE'], ['Other', clientForm.otherDocumentReference, 'OTHER'],
@@ -478,7 +483,7 @@ function AssignForm({ form, targets, selectedTarget, assigning, canSubmit, messa
   };
   return <ScrollView style={kind === 'Client' ? styles.clientFormScroll : undefined} contentContainerStyle={[styles.formWrap, kind === 'Client' && styles.clientFormWrap, isDocumentSection && styles.documentFormWrap]} showsVerticalScrollIndicator={false}>
     <View style={[styles.formIntro, isDocumentSection && styles.documentFormIntro]}><View style={[styles.formIntroIcon, isDocumentSection && styles.documentFormIntroIcon]}><Icon source="account-arrow-right-outline" size={isDocumentSection ? 20 : 24} color="#3156C8" /></View><View style={styles.formIntroCopy}><Text style={[styles.formIntroTitle, isDocumentSection && styles.documentFormIntroTitle]}>{sectionIntro.title}</Text><Text style={[styles.formIntroText, isDocumentSection && styles.documentFormIntroText]}>{sectionIntro.subtitle}</Text></View>{__DEV__ && kind === 'Client' && onFillDemo ? <Pressable onPress={onFillDemo} style={({ pressed }) => [styles.demoFillButton, pressed && styles.pressed]}><Icon source="clipboard-text-outline" size={15} color="#3156C8" /><Text style={styles.demoFillButtonText}>Fill Demo Data</Text></Pressable> : null}</View>
-    <View style={styles.grid}>{visibleTextFields.map((field) => field.key === 'clientSource' ? <Field key={field.key} label="Client Source *"><Select value={form.clientSource} onChange={(clientSource) => onChange({ clientSource })}><Picker.Item label="Select client source" value="" />{['Reference', 'Program', 'Cold Call', 'Canopy', 'Event', 'Walk In', 'Online Platforms'].map((value) => <Picker.Item key={value} label={value} value={value} />)}</Select></Field> : <Field key={field.key} label={fieldLabel(field.key, field.label)} wide={isLargeTextField(field.key)}>{DATE_FORM_FIELDS.has(field.key) ? <DateField value={form[field.key]} placeholder={field.placeholder} onChange={(value) => onChange({ [field.key]: value })} /> : <TextInput value={form[field.key]} onChangeText={(text) => onChange({ [field.key]: field.key === 'mobileNumber' || field.key === 'nomineeContactNumber' ? text.replace(/\D/g, '').slice(0, 10) : text })} placeholder={field.placeholder} placeholderTextColor="#A1A9B7" keyboardType={field.key === 'mobileNumber' || ['expectedMaxSIP', 'paymentAmount', 'nomineeContactNumber'].includes(field.key) ? 'numeric' : 'default'} multiline={isLargeTextField(field.key)} textAlignVertical={isLargeTextField(field.key) ? 'top' : 'auto'} style={[styles.input, isLargeTextField(field.key) && styles.largeTextInput]} />}</Field>)}
+    <View style={styles.grid}>{visibleTextFields.map((field) => kind === 'Client' && field.key === 'location' ? <Field key={field.key} label={fieldLabel(field.key, field.label)}><Select value={CLIENT_LOCATIONS.includes(form.location) ? form.location : ''} onChange={(location) => onChange({ location })}><Picker.Item label="Select location" value="" />{CLIENT_LOCATIONS.map((location) => <Picker.Item key={location} label={location} value={location} />)}</Select></Field> : field.key === 'clientSource' ? <Field key={field.key} label="Client Source *"><Select value={form.clientSource} onChange={(clientSource) => onChange({ clientSource })}><Picker.Item label="Select client source" value="" />{['Reference', 'Program', 'Cold Call', 'Canopy', 'Event', 'Walk In', 'Online Platforms'].map((value) => <Picker.Item key={value} label={value} value={value} />)}</Select></Field> : <Field key={field.key} label={fieldLabel(field.key, field.label)} wide={isLargeTextField(field.key)}>{DATE_FORM_FIELDS.has(field.key) ? <DateField value={form[field.key]} placeholder={field.placeholder} onChange={(value) => onChange({ [field.key]: value })} /> : <TextInput value={form[field.key]} onChangeText={(text) => onChange({ [field.key]: field.key === 'mobileNumber' || field.key === 'nomineeContactNumber' ? text.replace(/\D/g, '').slice(0, 10) : text })} placeholder={field.placeholder} placeholderTextColor="#A1A9B7" keyboardType={field.key === 'mobileNumber' || ['expectedMaxSIP', 'paymentAmount', 'nomineeContactNumber'].includes(field.key) ? 'numeric' : 'default'} multiline={isLargeTextField(field.key)} textAlignVertical={isLargeTextField(field.key) ? 'top' : 'auto'} style={[styles.input, isLargeTextField(field.key) && styles.largeTextInput]} />}</Field>)}
       {kind === 'Client' && section === 'investment' ? <Field label="Payment Status"><Select value={form.paymentStatus} onChange={(paymentStatus) => onChange({ paymentStatus })}><Picker.Item label="Select payment status" value="" />{PAYMENT_STATUSES.map((value) => <Picker.Item key={value} label={value} value={value} />)}</Select></Field> : null}
       {(kind !== 'Client' || section === 'basic') ? <Field label={kind === 'Client' ? 'Best Time to Meet *' : 'Best Time to Meet'}><Select value={form.bestTimeToMeet} onChange={(bestTimeToMeet) => onChange({ bestTimeToMeet })}><Picker.Item label="Select best time" value="" />{kind === 'Client' ? <>{['By Appointment', '1st half of the day', '2nd half of the day', 'Only on weekend'].map((value) => <Picker.Item key={value} label={value} value={value} />)}</> : <><Picker.Item label="9:00 AM - 12:00 PM" value="NINE_TO_TWELVE" /><Picker.Item label="12:00 PM - 3:00 PM" value="TWELVE_TO_THREE" /><Picker.Item label="3:00 PM - 6:00 PM" value="THREE_TO_SIX" /><Picker.Item label="6:00 PM - 9:00 PM" value="SIX_TO_NINE" /></>}</Select></Field> : null}
       {(kind !== 'Client' || section === 'assignment') ? <><Field label="Employee Code *"><Select value={form.salesPersonEmployeeCode} onChange={(salesPersonEmployeeCode) => onChange({ salesPersonEmployeeCode })} disabled={assigning}><Picker.Item label="Select RM or SC employee" value="" />{targets.map((target) => <Picker.Item key={target.employeeCode} label={`${roleLabel(target.role)} - ${target.employeeCode} - ${target.fullName}`} value={target.employeeCode} />)}</Select>{selectedTarget ? <Text style={styles.selectedTarget}>{roleName(selectedTarget.role)}: {selectedTarget.fullName}</Text> : null}</Field><Field label={kind === 'Client' ? 'Assigned Date *' : 'Assigned Date'}><DateField value={form.assignedAt} placeholder="YYYY-MM-DD" onChange={(assignedAt) => onChange({ assignedAt })} /></Field></> : null}
@@ -487,7 +492,7 @@ function AssignForm({ form, targets, selectedTarget, assigning, canSubmit, messa
     </View>
     {message ? <View style={[styles.feedback, message.type === 'success' ? styles.feedbackSuccess : styles.feedbackError]}><Icon source={message.type === 'success' ? 'check-circle-outline' : 'alert-circle-outline'} size={16} color={message.type === 'success' ? '#15803D' : '#B91C1C'} /><Text style={[styles.feedbackText, message.type === 'error' && styles.feedbackErrorText]}>{message.text}</Text></View> : null}
     {kind === 'Client' ? <View style={styles.clientFormFooter}>
-      {section === 'assignment' ? <View style={styles.clientFooterControl}>
+      {section === 'source' ? <View style={styles.clientFooterControl}>
         <Pressable disabled={!canSubmit} onPress={onSubmit} style={({ pressed }) => [styles.assignButton, !canSubmit && (dark ? { borderWidth: 1, borderColor: '#808080', backgroundColor: '#808080', opacity: 1 } : styles.disabled), pressed && styles.pressed]}>{assigning ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Icon source="account-check-outline" size={18} color="#FFFFFF" />}<Text style={[styles.assignButtonText, dark && styles.darkModeBlackText]}>{assigning ? 'Assigning...' : 'Assign Client'}</Text></Pressable>
       </View> : null}
       <View style={styles.clientFooterControl}>
