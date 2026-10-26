@@ -481,7 +481,14 @@ function AppShell() {
         );
       case 'client-work-follow':
         return renderShell(
-          <ClientWorkFollowScreen />,
+          <ClientWorkFollowScreen
+            refreshKey={salesTaskScreenKey}
+            onUpdateMeeting={(client) => void openTaskWorkflowForm(client)}
+            onOpenDetails={(client) => {
+              setSelectedSalesTask(client);
+              navigate('sales-task-details');
+            }}
+          />,
           { salesMenu: true, scrollable: false, onModulePress: (module) => { setActiveModule(module.key); navigate('dashboard'); } }
         );
       case 'assigned-tasks':

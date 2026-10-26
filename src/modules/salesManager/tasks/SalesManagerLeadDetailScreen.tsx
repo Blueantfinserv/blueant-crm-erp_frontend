@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import { meetingService } from '../../../services/MeetingService';
 import { meetingApi } from '../../../api/meeting';
 import { clientMeetingApi } from '../../../api/clientMeeting';
+import { downloadClientDocument } from '../../../services/ClientDocumentService';
+import type { ClientDocument } from '../../../api/clientDocuments';
 import type { MeetingResponse, MeetingSummary } from '../../../types/meeting';
 import type { ClientMeetingResponse, ClientProfileResponse } from '../../../types/crm';
 import type { SalesTask } from './types/tasks';
@@ -48,12 +50,10 @@ const displayProfileValue = (value: string | number | boolean | string[] | undef
   return value === undefined || value === '' ? 'Not provided' : String(value).replace(/_/g, ' ');
 };
 
-const maskedPan = (pan?: string) => pan?.trim() ? `${'•'.repeat(Math.max(0, pan.length - 4))}${pan.slice(-4)}` : 'Not provided';
-
 const clientProfileSections = (profile: ClientProfileResponse) => [
   {
     title: 'Personal & Address', icon: 'card-account-details-outline', fields: [
-      { label: 'PAN Number', value: maskedPan(profile.panNumber) }, { label: 'Date of Birth', value: displayProfileValue(profile.dateOfBirth) },
+      { label: 'PAN Number', value: profile.panNumber?.trim() || 'Not provided' }, { label: 'Date of Birth', value: displayProfileValue(profile.dateOfBirth) },
       { label: 'Mother Name', value: displayProfileValue(profile.motherName) }, { label: 'Place of Birth', value: displayProfileValue(profile.placeOfBirth) },
       { label: 'Occupation', value: displayProfileValue(profile.occupation) }, { label: 'Residential Address', value: displayProfileValue(profile.residentialAddress) },
       { label: 'Correspondence Address', value: displayProfileValue(profile.correspondenceAddress) }, { label: 'Office Address', value: displayProfileValue(profile.officeAddress) },
@@ -118,6 +118,23 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const isMobile = width < 600;
   const isVerificationPending = lead.verificationPending === true;
   const isClient = lead.taskKind === 'CLIENT';
+  const [downloadingDocument, setDownloadingDocument] = useState<string | null>(null);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const documentDownloadInFlight = useRef(false);
+  const openDocument = async (document: ClientDocument) => {
+    if (documentDownloadInFlight.current) return;
+    documentDownloadInFlight.current = true;
+    setDownloadingDocument(document.documentReference ?? String(document.id));
+    setDocumentError(null);
+    try {
+      await downloadClientDocument(lead.clientCode ?? '', document);
+    } catch (error) {
+      setDocumentError(error instanceof Error ? error.message : 'Document could not be downloaded.');
+    } finally {
+      documentDownloadInFlight.current = false;
+      setDownloadingDocument(null);
+    }
+  };
   const [verifiedMeeting, setVerifiedMeeting] = useState<MeetingResponse | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(true);
   const [verificationError, setVerificationError] = useState<string | null>(null);
@@ -350,8 +367,17 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 {clientProfile.documents?.length ? <View style={styles.clientProfileGrid}>{clientProfile.documents.flatMap((document, documentIndex) => [
                   { label: `Document ${documentIndex + 1}`, value: displayProfileValue(document.documentName) }, { label: 'Document Type', value: displayProfileValue(document.documentType) },
                   { label: 'Received', value: displayProfileValue(document.received) }, { label: 'Received Date', value: displayProfileValue(document.receivedDate) },
-                  { label: 'Verification', value: displayProfileValue(document.verificationStatus) }, { label: 'Reference', value: displayProfileValue(document.documentReference) },
-                ]).map((field, index) => <View key={`${field.label}-${index}`} style={styles.clientProfileItem}><Text style={styles.clientProfileLabel}>{field.label}</Text><Text numberOfLines={2} style={styles.clientProfileValue}>{field.value}</Text></View>)}</View> : <Text style={styles.clientProfileEmpty}>No document details recorded.</Text>}
+                  { label: 'Verification', value: displayProfileValue(document.verificationStatus) }, { label: 'Reference', value: document.documentReference || 'Not provided' },
+                ].map((field) => ({ ...field, document }))).map((field, index) => <View key={`${field.label}-${index}`} style={styles.clientProfileItem}>
+                  <Text style={styles.clientProfileLabel}>{field.label}</Text>
+                  {field.label === 'Reference' && field.document.documentReference ? (
+                    <Pressable accessibilityRole="link" accessibilityLabel={`Download ${field.document.documentName ?? 'client document'}`} disabled={downloadingDocument !== null} onPress={() => void openDocument(field.document)} style={styles.documentLink}>
+                      {downloadingDocument === field.document.documentReference ? <ActivityIndicator size="small" color="#0F766E" /> : <Icon source="download" size={15} color="#0F766E" />}
+                      <Text numberOfLines={2} style={[styles.clientProfileValue, styles.documentLinkText]}>{downloadingDocument === field.document.documentReference ? 'Downloading...' : 'Download document'}</Text>
+                    </Pressable>
+                  ) : <Text numberOfLines={2} style={styles.clientProfileValue}>{field.value}</Text>}
+                </View>)}</View> : <Text style={styles.clientProfileEmpty}>No document details recorded.</Text>}
+                {documentError ? <Text accessibilityRole="alert" style={styles.documentError}>{documentError}</Text> : null}
               </View>
             </View> : null}
             {!isClient ? <View style={styles.verificationSection}>
@@ -473,6 +499,9 @@ function SectionHeading({ icon, title, subtitle }: { icon: string; title: string
 }
 
 const styles = StyleSheet.create({
+  documentLink: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 32 },
+  documentLinkText: { color: '#0F766E', textDecorationLine: 'underline', flexShrink: 1 },
+  documentError: { color: '#B91C1C', fontSize: 12, marginTop: 8 },
   screen: { flex: 1, minHeight: 0, backgroundColor: '#F5F7FB' },
   fixedHeader: { width: '100%', maxWidth: 1120, alignSelf: 'center', flexShrink: 0, marginBottom: 14 },
   scrollArea: { flex: 1, minHeight: 0 },

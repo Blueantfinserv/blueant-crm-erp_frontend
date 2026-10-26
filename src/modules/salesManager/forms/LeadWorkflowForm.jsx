@@ -483,17 +483,14 @@ const FOLLOW_UP_OPTIONS = [
   ["After 5 days", 5],
   ["After 8 days", 8],
   ["After 14 days", 14],
-  ["After 1 Month", 0, 1],
-  ["After 2 months", 0, 2],
 ];
 
 const getFollowUpOptions = () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  return FOLLOW_UP_OPTIONS.map(([label, days, months]) => {
+  return FOLLOW_UP_OPTIONS.map(([label, days]) => {
     const date = new Date(today);
-    if (months) date.setMonth(date.getMonth() + months);
-    else date.setDate(date.getDate() + days);
+    date.setDate(date.getDate() + days);
     const displayDate = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(date);
     const weekday = new Intl.DateTimeFormat("en-IN", { weekday: "long" }).format(date);
     return { label, value: getLocalDate(date), detail: displayDate + ", " + weekday };

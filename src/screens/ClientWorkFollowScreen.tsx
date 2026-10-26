@@ -1,37 +1,115 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { clientWorkFollowApi } from '../api/clientWorkFollow';
-import type { ClientWorkFollowResponse } from '../types/crm';
+import { clientMeetingApi } from '../api/clientMeeting';
+import { SalesTaskCard } from '../modules/salesManager/tasks/components/SalesTaskCard';
+import { getTaskSchedule } from '../modules/salesManager/tasks/taskMeetingSelectors';
+import type { SalesTask } from '../modules/salesManager/tasks/types/tasks';
+import type { ClientMeetingResponse, ClientWorkFollowResponse } from '../types/crm';
+import { theme } from '../theme/theme';
 
-const show = (value?: string | number | null) => String(value ?? '').trim() || '-';
+type Props = {
+  onUpdateMeeting: (client: SalesTask) => void;
+  onOpenDetails: (client: SalesTask) => void;
+  refreshKey?: number;
+};
 
-export function ClientWorkFollowScreen() {
-  const [clients, setClients] = useState<ClientWorkFollowResponse[]>([]);
+const formatDate = (value: string | undefined, fallback: string) => {
+  if (!value) return fallback;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return value;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${Number(match[3])} ${months[Number(match[2]) - 1]}`;
+};
+
+const toClientTask = (client: ClientWorkFollowResponse, meetings: ClientMeetingResponse[], index: number): SalesTask => {
+  const latestMeeting = [...meetings].sort((a, b) => String(b.meetingDate ?? '').localeCompare(String(a.meetingDate ?? '')))[0];
+  const nextPlanDate = latestMeeting?.nextPlanDate ?? client.activeMeetingDate;
+  return {
+    id: client.clientCode ?? String(client.clientId ?? `client-${index}`),
+    taskKind: 'CLIENT', clientCode: client.clientCode, meetingCode: client.activeMeetingCode,
+    meetingNumber: latestMeeting?.meetingNumber,
+    clientMeetingCount: client.totalMeetings ?? 0,
+    assignedAt: client.assignmentDate,
+    scheduledAt: nextPlanDate ?? client.activeMeetingDate ?? client.assignmentDate,
+    name: client.clientName ?? 'Unnamed client', phone: client.mobileNumber ?? '',
+    locationText: client.location ?? 'Location unavailable', clinicAddress: client.clinicAddress,
+    coordinates: { latitude: 0, longitude: 0 }, hasLocationPin: false,
+    taskLabel: 'CLIENT',
+    remarks: latestMeeting?.remarks?.trim() || (client.activeMeetingCode ? `Active meeting: ${client.activeMeetingCode}` : 'No meeting scheduled.'),
+    lastUpdated: formatDate(latestMeeting?.meetingDate ?? client.assignmentDate, 'Not available'),
+    nextFollowUpDate: formatDate(nextPlanDate, 'Not scheduled'), nextPlanDate,
+    schedule: getTaskSchedule(nextPlanDate), email: client.email,
+    verificationPending: meetings.some((meeting) => meeting.verificationStatus === 'PENDING' || meeting.verifiedByPc === false),
+  };
+};
+
+export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refreshKey = 0 }: Props) {
+  const { width } = useWindowDimensions();
+  const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
+  const [clients, setClients] = useState<SalesTask[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const load = useCallback(async (refresh = false) => {
-    refresh ? setRefreshing(true) : setLoading(true); setError(null);
+    refresh ? setRefreshing(true) : setLoading(true);
+    setError(null);
     try {
       const first = await clientWorkFollowApi.getQueue({ search: '', page: 0, size: 100 });
       const rest = await Promise.all(Array.from({ length: Math.max(0, (first.totalPages ?? 1) - 1) }, (_, index) => clientWorkFollowApi.getQueue({ search: '', page: index + 1, size: 100 })));
-      setClients([...(first.content ?? []), ...rest.flatMap((page) => page.content ?? [])]);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Client work follow could not be loaded.'); }
-    finally { setLoading(false); setRefreshing(false); }
+      const assignedClients = [...(first.content ?? []), ...rest.flatMap((page) => page.content ?? [])];
+      const tasks = await Promise.all(assignedClients.map(async (client, index) => {
+        const code = client.clientCode?.trim();
+        const meetings = code ? await clientMeetingApi.getByClientCode(code).catch(() => []) : [];
+        return toClientTask(client, meetings, index);
+      }));
+      setClients(tasks);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Client work follow could not be loaded.');
+    } finally {
+      setLoading(false); setRefreshing(false);
+    }
   }, []);
-  useEffect(() => { void load(); }, [load]);
-  const visible = useMemo(() => { const needle = search.trim().toLowerCase(); return !needle ? clients : clients.filter((client) => [client.clientName, client.mobileNumber, client.clientCode, client.location].some((value) => String(value ?? '').toLowerCase().includes(needle))); }, [clients, search]);
-  return <View style={styles.page}><View style={styles.header}><View><Text style={styles.title}>Client Work Follow</Text><Text style={styles.subtitle}>Clients assigned to you by CRM.</Text></View><Pressable disabled={refreshing} onPress={() => void load(true)} style={({ pressed }) => [styles.refresh, refreshing && styles.disabled, pressed && styles.pressed]}>{refreshing ? <ActivityIndicator size="small" color="#3156C8" /> : <Icon source="refresh" size={18} color="#3156C8" />}<Text style={styles.refreshText}>{refreshing ? 'Refreshing...' : 'Refresh'}</Text></Pressable></View><View style={styles.searchRow}><Icon source="magnify" size={19} color="#3156C8" /><TextInput value={search} onChangeText={setSearch} placeholder="Search by client name, mobile or code" placeholderTextColor="#94A3B8" style={styles.search} /></View>{loading ? <View style={styles.state}><ActivityIndicator color="#3156C8" /><Text style={styles.stateText}>Loading assigned clients...</Text></View> : error ? <View style={styles.state}><Icon source="alert-circle-outline" size={34} color="#B91C1C" /><Text style={styles.stateText}>{error}</Text></View> : <ScrollView contentContainerStyle={styles.cards} showsVerticalScrollIndicator={false}>{visible.length ? visible.map((client) => <ClientCard key={client.clientId ?? client.clientCode} client={client} />) : <View style={styles.state}><Icon source="account-multiple-outline" size={34} color="#94A3B8" /><Text style={styles.stateTitle}>No assigned clients found</Text><Text style={styles.stateText}>Clients assigned by CRM will appear here.</Text></View>}</ScrollView>}</View>;
-}
+  useEffect(() => { void load(); }, [load, refreshKey]);
+  const visible = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    return !needle ? clients : clients.filter((client) => [client.name, client.phone, client.clientCode, client.locationText].some((value) => String(value ?? '').toLowerCase().includes(needle)));
+  }, [clients, search]);
 
-function ClientCard({ client }: { client: ClientWorkFollowResponse }) {
-  const phone = String(client.mobileNumber ?? '').replace(/\D/g, '');
-  return <View style={styles.card}><View style={styles.cardTop}><View><Text style={styles.clientName}>{show(client.clientName)}</Text><Text style={styles.clientCode}>{show(client.clientCode)} · {show(client.speciality)}</Text></View><View style={styles.status}><Text style={styles.statusText}>{show(client.activeMeetingStatus ?? client.clientStatus).replace(/_/g, ' ')}</Text></View></View><View style={styles.location}><Icon source="map-marker-outline" size={15} color="#D97706" /><Text numberOfLines={1} style={styles.locationText}>{show(client.location)}</Text></View><View style={styles.details}><Detail label="MOBILE" value={client.mobileNumber} /><Detail label="ASSIGNED DATE" value={client.assignmentDate} /><Detail label="MEETINGS" value={client.totalMeetings ?? 0} /></View><View style={styles.footer}>{client.activeMeetingDate ? <Text style={styles.meeting}>Active meeting: {client.activeMeetingDate}{client.activeMeetingTime ? ` · ${client.activeMeetingTime}` : ''}</Text> : <Text style={styles.meeting}>No meeting scheduled</Text>}{phone ? <View style={styles.contact}><Pressable onPress={() => void Linking.openURL(`https://wa.me/${phone}`)} style={styles.contactButton}><Icon source="whatsapp" size={16} color="#16A34A" /></Pressable><Pressable onPress={() => void Linking.openURL(`tel:${phone}`)} style={styles.contactButton}><Icon source="phone" size={15} color="#2563EB" /></Pressable></View> : null}</View></View>;
+  return (
+    <View style={styles.page}>
+      <View style={styles.header}>
+        <View><Text style={styles.title}>Client Details</Text></View>
+        <Pressable disabled={refreshing} onPress={() => void load(true)} style={({ pressed }) => [styles.refresh, refreshing && styles.disabled, pressed && styles.pressed]}>
+          {refreshing ? <ActivityIndicator size="small" color="#3156C8" /> : <Icon source="refresh" size={18} color="#3156C8" />}
+          <Text style={styles.refreshText}>{refreshing ? 'Refreshing...' : 'Refresh'}</Text>
+        </Pressable>
+      </View>
+      <View style={styles.searchRow}>
+        <Icon source="magnify" size={19} color="#3156C8" />
+        <TextInput value={search} onChangeText={setSearch} placeholder="Search by client name, mobile or code" placeholderTextColor="#94A3B8" style={styles.search} />
+      </View>
+      {loading ? (
+        <View style={styles.state}><ActivityIndicator color="#3156C8" /><Text style={styles.stateText}>Loading assigned clients...</Text></View>
+      ) : error ? (
+        <View style={styles.state}><Icon source="alert-circle-outline" size={34} color="#B91C1C" /><Text style={styles.stateText}>{error}</Text></View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.cards} showsVerticalScrollIndicator={false}>
+          {visible.length ? visible.map((client) => (
+            <SalesTaskCard key={client.id} task={client} width={cardWidth} onUpdateMeeting={onUpdateMeeting} onOpenDetails={onOpenDetails} />
+          )) : (
+            <View style={styles.state}><Icon source="account-multiple-outline" size={34} color="#94A3B8" /><Text style={styles.stateTitle}>No assigned clients found</Text><Text style={styles.stateText}>Clients assigned by CRM will appear here.</Text></View>
+          )}
+        </ScrollView>
+      )}
+    </View>
+  );
 }
-function Detail({ label, value }: { label: string; value?: string | number | null }) { return <View style={styles.detail}><Text style={styles.detailLabel}>{label}</Text><Text numberOfLines={1} style={styles.detailValue}>{show(value)}</Text></View>; }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, minHeight: 0, gap: 12, padding: 20, backgroundColor: '#F7F8FA' }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, title: { color: '#172033', fontSize: 20, fontWeight: '900' }, subtitle: { marginTop: 3, color: '#64748B', fontSize: 11, fontWeight: '600' }, refresh: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 12, borderWidth: 1, borderColor: '#A7DFD7', borderRadius: 9, backgroundColor: '#ECFDF8' }, refreshText: { color: '#3156C8', fontSize: 11, fontWeight: '900' }, searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 560, minHeight: 44, paddingHorizontal: 12, borderWidth: 1, borderColor: '#D8E3FB', borderRadius: 10, backgroundColor: '#FFFFFF' }, search: { flex: 1, color: '#172033', fontSize: 11, fontWeight: '700' }, cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 28 }, card: { minWidth: 290, flexBasis: 300, flexGrow: 1, gap: 11, padding: 14, borderWidth: 1, borderTopWidth: 2, borderTopColor: '#3156C8', borderLeftWidth: 4, borderLeftColor: '#3156C8', borderColor: '#DCE3ED', borderRadius: 13, backgroundColor: '#FFFFFF' }, cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }, clientName: { maxWidth: 190, color: '#172033', fontSize: 15, fontWeight: '900' }, clientCode: { marginTop: 3, color: '#71809A', fontSize: 9, fontWeight: '800' }, status: { maxWidth: '45%', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99, backgroundColor: '#E8EEFF' }, statusText: { color: '#3156C8', fontSize: 8, fontWeight: '900' }, location: { flexDirection: 'row', alignItems: 'center', gap: 5 }, locationText: { flex: 1, color: '#475569', fontSize: 10, fontWeight: '700' }, details: { flexDirection: 'row', gap: 8, paddingVertical: 10, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#E8EDF4' }, detail: { minWidth: 70, flex: 1 }, detailLabel: { color: '#64748B', fontSize: 8, fontWeight: '900' }, detailValue: { marginTop: 3, color: '#334155', fontSize: 9, fontWeight: '800' }, footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 9 }, meeting: { flex: 1, color: '#A16207', fontSize: 9, fontWeight: '800' }, contact: { flexDirection: 'row', gap: 6 }, contactButton: { width: 29, height: 29, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 15, backgroundColor: '#F8FAFC' }, state: { flex: 1, minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 9, padding: 24 }, stateTitle: { color: '#172033', fontSize: 15, fontWeight: '900' }, stateText: { maxWidth: 390, color: '#64748B', fontSize: 12, fontWeight: '600', textAlign: 'center' }, disabled: { opacity: 0.55 }, pressed: { opacity: 0.8 },
+    page: { flex: 1, minHeight: 0, gap: 12, paddingTop: 2, backgroundColor: theme.colors.background }, header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }, title: { color: '#172033', fontSize: 15, lineHeight: 18, fontWeight: '900', letterSpacing: -0.35 }, refresh: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 40, paddingHorizontal: 12, borderWidth: 1, borderColor: '#A7DFD7', borderRadius: 9, backgroundColor: '#ECFDF8' }, refreshText: { color: '#3156C8', fontSize: 11, fontWeight: '900' }, searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8, maxWidth: 460, minHeight: 36, paddingHorizontal: 12, borderWidth: 1, borderColor: '#D8E3FB', borderRadius: 10, backgroundColor: '#FFFFFF' }, search: { flex: 1, color: '#172033', fontSize: 11, fontWeight: '700' },
+  cards: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'stretch', justifyContent: 'center', gap: theme.spacing.md, paddingBottom: 28 },
+  state: { flex: 1, minHeight: 280, alignItems: 'center', justifyContent: 'center', gap: 9, padding: 24 }, stateTitle: { color: '#172033', fontSize: 15, fontWeight: '900' }, stateText: { maxWidth: 390, color: '#64748B', fontSize: 12, fontWeight: '600', textAlign: 'center' }, disabled: { opacity: 0.55 }, pressed: { opacity: 0.8 },
 });
