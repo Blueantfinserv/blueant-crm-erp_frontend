@@ -93,6 +93,7 @@ const mapLeadToSalesTask = (lead: LeadResponse, index: number, meetingNextPlanDa
   return {
     id: lead.uniqueLeadId ?? lead.leadCode ?? String(lead.leadId ?? `lead-${index}`),
     taskKind: 'LEAD',
+    prospectDetails: lead,
     leadCode: lead.leadCode,
     uniqueLeadId: lead.uniqueLeadId,
     meetingCode: lead.currentActiveMeeting?.meetingCode,
@@ -139,6 +140,7 @@ const mapMeetingToSalesTask = (
 ): SalesTask => ({
   id: meeting.meetingCode ?? String(meeting.id ?? `meeting-${index}`),
   taskKind: 'MEETING',
+  prospectDetails: lead,
   leadCode: meeting.leadCode,
   meetingCode: meeting.meetingCode,
   meetingNumber: meeting.meetingNumber,

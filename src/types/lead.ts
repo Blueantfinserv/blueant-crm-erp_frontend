@@ -101,7 +101,7 @@ export type AssignLeadRequest = {
   location: string;
   clinicAddress: string;
   speciality: string;
-  bestTimeForMeeting: 'NINE_TO_TWELVE' | 'TWELVE_TO_THREE' | 'THREE_TO_SIX' | 'SIX_TO_NINE';
+  bestTimeToMeet: 'NINE_TO_TWELVE' | 'TWELVE_TO_THREE' | 'THREE_TO_SIX' | 'SIX_TO_NINE';
   salesPersonEmployeeCode: string;
   assignmentDate: string;
 };
@@ -117,6 +117,9 @@ export type LeadResponse = {
   clinicAddress?: string;
   speciality?: string;
   companyName?: string;
+  alternateMobileNumber?: string;
+  bestTimeToMeet?: string;
+  bestTimeForMeeting?: string;
   leadSource?: LeadSource;
   leadStatus?: LeadStatus;
   leadStage?: LeadStage;

@@ -9,29 +9,16 @@ import { downloadClientDocument } from '../../../services/ClientDocumentService'
 import type { ClientDocument } from '../../../api/clientDocuments';
 import type { MeetingResponse, MeetingSummary } from '../../../types/meeting';
 import type { ClientMeetingResponse, ClientProfileResponse } from '../../../types/crm';
+import { leadApi } from '../../../api/lead';
+import { getProspectMeetingTime, prospectInfoFields } from '../../../utils/prospectDetails';
+import type { LeadResponse } from '../../../types/lead';
 import type { SalesTask } from './types/tasks';
-
-const formatLeadSource = (leadSource?: string) => {
-  if (!leadSource) return '------';
-  return leadSource
-    .toLowerCase()
-    .split('_')
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
-};
 
 type Props = {
   lead: SalesTask;
   onBack: () => void;
   onUpdateMeeting: (lead: SalesTask) => void;
 };
-
-const infoFields = (lead: SalesTask) => [
-  { label: 'Prospect ID', value: lead.leadId !== undefined ? String(lead.leadId) : '------', icon: 'identifier' },
-  { label: 'Email', value: lead.email ?? '------', icon: 'email-outline' },
-  { label: 'Clinic Address', value: lead.clinicAddress ?? '------', icon: 'hospital-building' },
-  { label: 'Prospect Source', value: formatLeadSource(lead.leadSource), icon: 'source-branch' },
-] as const;
 
 const clientInfoFields = (client: SalesTask, profile: ClientProfileResponse | null) => [
   { label: 'Client Code', value: profile?.clientCode ?? client.clientCode ?? 'Not provided', icon: 'identifier' },
@@ -86,12 +73,17 @@ const clientProfileSections = (profile: ClientProfileResponse) => [
 ] as const;
 
 const verificationFields = (meeting: MeetingResponse) => [
+  { label: 'Meeting Date', value: meeting.meetingDate, icon: 'calendar-outline' },
+  { label: 'Verified By', value: meeting.verifiedBy, icon: 'account-check-outline' },
+  { label: 'Verification Date', value: meeting.meetingVerificationDate, icon: 'calendar-check-outline' },
+  { label: 'Verification Remarks', value: meeting.verificationRemarks, icon: 'text-box-outline' },
   { label: 'Meeting Time', value: meeting.meetingTiming, icon: 'clock-outline' },
   { label: 'Age Group', value: meeting.ageGroup, icon: 'account-clock-outline' },
   { label: 'Prior Investment', value: meeting.existingSip, icon: 'chart-line' },
   { label: 'Profession', value: meeting.profession, icon: 'briefcase-outline' },
   { label: 'Clinic / Company / Firm', value: meeting.professionDetail, icon: 'office-building-outline' },
   { label: 'Best Meeting Time', value: meeting.bestTimeForMeeting, icon: 'calendar-clock-outline' },
+  { label: 'Alone / Accompanied', value: meeting.aloneWith, icon: 'account-multiple-outline' },
   { label: 'Meeting With', value: meeting.meetingWith, icon: 'account-group-outline' },
   { label: 'Joined Person', value: meeting.personName, icon: 'account-outline' },
   { label: 'Position', value: meeting.position, icon: 'badge-account-outline' },
@@ -142,6 +134,18 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const [clientProfile, setClientProfile] = useState<ClientProfileResponse | null>(null);
   const [clientProfileLoading, setClientProfileLoading] = useState(false);
   const [clientProfileError, setClientProfileError] = useState<string | null>(null);
+  const [prospectProfile, setProspectProfile] = useState<LeadResponse | null>(null);
+  useEffect(() => {
+    setProspectProfile(null);
+    if (isClient || !lead.uniqueLeadId) return;
+    let active = true;
+    void leadApi.getLeadDetails(lead.uniqueLeadId).then((response) => {
+      if (active) setProspectProfile(response.data ?? null);
+    }).catch(() => {
+      // Keep the original list response visible if detail lookup is unavailable.
+    });
+    return () => { active = false; };
+  }, [isClient, lead.uniqueLeadId]);
   const phone = lead.phone.replace(/[^\d+]/g, '');
   const whatsapp = lead.phone.replace(/\D/g, '');
   const hasCoordinates = Boolean(lead.hasLocationPin)
@@ -254,7 +258,14 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
     return () => { active = false; };
   }, [isClient, lead.clientCode, lead.leadId, lead.uniqueLeadId]);
 
-  const displayedInfoFields = isClient ? clientInfoFields(lead, clientProfile) : infoFields(lead);
+  const displayedInfoFields = isClient ? clientInfoFields(lead, clientProfile) : prospectInfoFields({
+    leadId: lead.leadId, leadCode: lead.leadCode, uniqueLeadId: lead.uniqueLeadId,
+    clientName: lead.name, mobileNumber: lead.phone, location: lead.locationText,
+    clinicAddress: lead.clinicAddress, email: lead.email, leadSource: lead.leadSource as LeadResponse['leadSource'],
+    assignedAt: lead.assignedAt, remarks: lead.remarks,
+    ...lead.prospectDetails, ...prospectProfile,
+    bestTimeToMeet: getProspectMeetingTime(prospectProfile, lead.prospectDetails),
+  });
 
   return (
     <View style={styles.screen}>
@@ -337,7 +348,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                   <View style={styles.infoCopy}>
                     <Text style={styles.infoLabel}>{field.label}</Text>
                     <Text
-                      numberOfLines={field.label === 'Clinic Address' ? undefined : 1}
+                      numberOfLines={isClient && field.label !== 'Clinic Address' ? 1 : undefined}
                       ellipsizeMode={field.label === 'Clinic Address' ? undefined : 'tail'}
                       style={[styles.infoValue, field.label === 'Clinic Address' && styles.infoAddressValue]}
                     >
@@ -411,7 +422,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                       </View>
                       <View style={styles.infoCopy}>
                         <Text style={styles.verificationLabel}>{field.label}</Text>
-                        <Text numberOfLines={2} style={styles.verificationValue}>{displayVerificationValue(field.value)}</Text>
+                        <Text style={styles.verificationValue}>{displayVerificationValue(field.value)}</Text>
                       </View>
                     </View>
                   ))}

@@ -1,3 +1,4 @@
+import { prospectInfoFields } from '../utils/prospectDetails';
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { ActivityIndicator, Alert, Animated, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
@@ -610,8 +611,8 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     if (!/^\d{10}$/.test(assignForm.mobileNumber.trim())) { setAssignMessage({ type: 'error', text: 'Mobile number must contain exactly 10 digits.' }); return; }
     setAssigning(true); setAssignMessage(null);
     try {
-      const { assignedAt, ...leadValues } = assignForm;
-      const lead = await leadService.assignLead({ ...leadValues, clientName: assignForm.clientName.trim(), mobileNumber: assignForm.mobileNumber.trim(), location: assignForm.location.trim(), clinicAddress: assignForm.clinicAddress.trim(), speciality: assignForm.speciality.trim(), bestTimeForMeeting: assignForm.bestTimeForMeeting as AssignLeadRequest['bestTimeForMeeting'], salesPersonEmployeeCode: assignForm.salesPersonEmployeeCode.trim().toUpperCase(), assignmentDate: assignedAt });
+      const { assignedAt, bestTimeForMeeting, ...leadValues } = assignForm;
+      const lead = await leadService.assignLead({ ...leadValues, clientName: assignForm.clientName.trim(), mobileNumber: assignForm.mobileNumber.trim(), location: assignForm.location.trim(), clinicAddress: assignForm.clinicAddress.trim(), speciality: assignForm.speciality.trim(), bestTimeToMeet: bestTimeForMeeting as AssignLeadRequest['bestTimeToMeet'], salesPersonEmployeeCode: assignForm.salesPersonEmployeeCode.trim().toUpperCase(), assignmentDate: assignedAt });
       setAssignForm(emptyAssignForm());
       setAssignMessage({ type: 'success', text: `${lead.clientName ?? 'Lead'} assigned successfully${lead.assignedEmployeeName ? ` to ${lead.assignedEmployeeName}` : ''}.` });
     } catch (e) {
@@ -1239,12 +1240,12 @@ function LeadHistoryContent({ lead, meetings, loading, progress, error }: { lead
   const latest = meetings.find((m) => isDone(m) && (m.remarks || m.meetingRemarks || m.discussion));
   const latestRemarks = latest?.remarks ?? latest?.meetingRemarks ?? latest?.discussion ?? lead.remarks;
   const liveLocationUrl = meetings.map(mapUrlFor).find(Boolean);
-  const leadFields = [['Mobile number', maskedMobile(lead.mobileNumber)], ['Location', lead.location], ['Clinic address', lead.clinicAddress], ['Speciality', lead.speciality], ['Lead code', lead.leadCode]];
+  const leadFields = prospectInfoFields(lead).map(({ label, value }) => [label, label === 'Mobile Number' || label === 'Alternate Mobile' ? maskedMobile(value) : value]);
   const assignmentFields = [['Sales person', lead.assignedEmployeeName], ['Sales person ID', lead.assignedEmployeeCode], ['Sales coordinator', lead.assignedByEmployeeName], ['SC ID', lead.assignedByEmployeeCode], ['Assigned date', lead.assignedAt], ['Current status', lead.leadStatus?.replace(/_/g, ' ')]];
-  const scFields = verifiedMeeting ? [['Verified by', verifiedMeeting.verifiedBy], ['Verification date', verifiedMeeting.meetingVerificationDate], ['Verification remarks', verifiedMeeting.verificationRemarks], ['Age group', verifiedMeeting.ageGroup], ['Prior investment', verifiedMeeting.existingSip], ['Profession', verifiedMeeting.profession], ['Firm / clinic', verifiedMeeting.professionDetail], ['Best time', verifiedMeeting.bestTimeForMeeting]].filter(([, value]) => value !== undefined && value !== null && value !== '') : [];
+  const scFields = verifiedMeeting ? [['Verified by', verifiedMeeting.verifiedBy], ['Verification date', verifiedMeeting.meetingVerificationDate], ['Verification remarks', verifiedMeeting.verificationRemarks], ['Age group', verifiedMeeting.ageGroup], ['Prior investment', verifiedMeeting.existingSip], ['Profession', verifiedMeeting.profession], ['Firm / clinic', verifiedMeeting.professionDetail], ['Best time', verifiedMeeting.bestTimeForMeeting], ['Meeting date', verifiedMeeting.meetingDate], ['Meeting time', verifiedMeeting.meetingTiming], ['Alone / accompanied', verifiedMeeting.aloneWith], ['Meeting with', verifiedMeeting.meetingWith], ['Joined person', verifiedMeeting.personName], ['Position', verifiedMeeting.position]].filter(([, value]) => value !== undefined && value !== null && value !== '') : [];
   const section = (title: string, fields: (string | undefined)[][], tone: 'lead' | 'assignment' | 'verification') => <View style={[historyStyles.section, tone === 'lead' ? historyStyles.leadSection : tone === 'assignment' ? historyStyles.assignmentSection : historyStyles.verificationSection]}>
     <Text style={historyStyles.sectionTitle}>{title}</Text>
-    <View style={styles.compactDetailGrid}>{fields.map(([label, value]) => <View key={label} style={[styles.detail, styles.compactDetail, historyStyles.detail]}><Text style={styles.label}>{label}</Text><Text numberOfLines={2} style={styles.detailValue}>{show(value)}</Text></View>)}</View>
+    <View style={styles.compactDetailGrid}>{fields.map(([label, value]) => <View key={label} style={[styles.detail, styles.compactDetail, historyStyles.detail]}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View>
     {tone === 'lead' ? <View style={historyStyles.latestRow}><View style={historyStyles.latestRemarks}><Text style={styles.label}>LATEST REMARKS</Text><Text numberOfLines={2} style={styles.detailValue}>{show(latestRemarks)}</Text></View><LiveLocationButton url={liveLocationUrl} /></View> : null}
   </View>;
   return <View style={styles.historyWrap}>
