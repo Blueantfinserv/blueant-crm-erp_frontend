@@ -71,5 +71,4 @@ const styles = StyleSheet.create({
   },
   compactInput: { minHeight: 36, borderRadius: 14, paddingHorizontal: 14, fontSize: 14 },
   inputError: { borderColor: theme.colors.error },
-  error: { color: theme.colors.error, fontSize: 12, fontWeight: '500' },
 });

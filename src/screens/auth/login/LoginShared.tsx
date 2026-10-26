@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Image, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { theme } from '../../../theme/theme';
 import {
@@ -251,10 +251,6 @@ export function LoginCard({
   );
 }
 
-export function BrandLogo({ size }: { size: number }) {
-  return <Image source={brandAsset} style={{ width: size, height: size }} resizeMode="contain" />;
-}
-
 export function LogoRow({ width = 180, height = 56 }: { width?: number; height?: number } = {}) {
   return (
     <View style={styles.logoRow}>
@@ -391,27 +387,6 @@ const styles = StyleSheet.create({
   activateLink: { alignItems: 'center', gap: 6, paddingTop: 2 },
   activatePrompt: { color: theme.colors.muted, fontSize: 10, fontWeight: '500' },
   activateAction: { color: theme.colors.primary, fontSize: 13, fontWeight: '800' },
-  secondaryActionPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(37, 99, 235, 0.06)',
-    borderWidth: 1,
-    borderColor: 'rgba(37, 99, 235, 0.16)',
-  },
-  secondaryActionBadge: {
-    width: 24,
-    height: 24,
-    borderRadius: 999,
-    backgroundColor: 'rgba(37, 99, 235, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secondaryActionBadgeText: { color: theme.colors.primary, fontSize: 10, fontWeight: '900' },
-  buttonPressed: { transform: [{ scale: 0.985 }], opacity: 0.96 },
   linkPressed: { opacity: 0.8 },
   logoRow: { alignItems: 'flex-start' },
   logoImage: { width: 180, height: 56 },
@@ -460,30 +435,4 @@ const styles = StyleSheet.create({
   featureDescriptionUltra: { fontSize: 13, lineHeight: 19 },
   featureDescriptionMission: { color: '#9A3412' },
   featureDescriptionVision: { color: '#4B6472' },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.42)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 420,
-    borderRadius: 28,
-    paddingHorizontal: 16,
-    paddingTop: 14,
-    paddingBottom: 12,
-    gap: 10,
-    backgroundColor: 'rgba(255,255,255,0.96)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.95)',
-    shadowColor: '#2563EB',
-    shadowOpacity: 0.22,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 16 },
-    elevation: 12,
-  },
-  forgotSuccessBox: { gap: 12 },
-  forgotSuccessTitle: { color: theme.colors.success, fontSize: 22, fontWeight: '800' },
 });

@@ -1,5 +1,4 @@
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 
 type Props = {
   variant: 'mobile' | 'tablet' | 'desktop';

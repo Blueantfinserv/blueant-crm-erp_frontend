@@ -1,5 +1,5 @@
 import { type RefObject } from 'react';
-import { Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { Pressable, Text, TextInput, View } from 'react-native';
 import { AuthButton } from '../../../components/AuthButton';
 import { AuthInput } from '../../../components/AuthInput';
 import { Checkbox } from '../../../components/Checkbox';
@@ -252,70 +252,5 @@ export function CreateAccountFormSection({
         <Text style={styles.activateAction}>Login</Text>
       </Pressable>
     </View>
-  );
-}
-
-type ForgotPasswordModalSectionProps = {
-  styles: SharedStyles;
-  visible: boolean;
-  sent: boolean;
-  loading: boolean;
-  email: string;
-  emailError?: string;
-  onEmailChange: (value: string) => void;
-  onEmailBlur: () => void;
-  onClose: () => void;
-  onSubmit: () => void;
-};
-
-export function ForgotPasswordModalSection({
-  styles,
-  visible,
-  sent,
-  loading,
-  email,
-  emailError,
-  onEmailChange,
-  onEmailBlur,
-  onClose,
-  onSubmit,
-}: ForgotPasswordModalSectionProps) {
-  return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.modalBackdrop} accessibilityViewIsModal>
-        <View style={styles.modalCard}>
-          {sent ? (
-            <View style={styles.forgotSuccessBox}>
-              <Text style={styles.forgotSuccessTitle}>Success</Text>
-              <FormAlert message="Password reset link has been sent to your registered email." tone="success" />
-              <AuthButton title="Close" onPress={onClose} loading={false} />
-            </View>
-          ) : (
-            <View style={styles.form}>
-              <View style={styles.titleRow}>
-                <Text style={styles.cardTitle}>Forgot Password</Text>
-                <Text style={styles.sparkle}>{'\u2726'}</Text>
-              </View>
-              <AuthInput
-                label="Email"
-                placeholder="Enter your email"
-                value={email}
-                onChangeText={onEmailChange}
-                onBlur={onEmailBlur}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoComplete="email"
-                error={emailError}
-              />
-              <AuthButton title="Send Reset Link" onPress={onSubmit} loading={loading} />
-              <Pressable onPress={onClose} style={({ pressed }) => [styles.activateLink, pressed && styles.linkPressed]}>
-                <Text style={styles.activatePrompt}>Back to</Text>
-                <Text style={styles.activateAction}>Login</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      </View>
-    </Modal>
   );
 }

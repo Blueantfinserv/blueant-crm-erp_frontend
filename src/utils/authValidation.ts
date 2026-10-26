@@ -46,11 +46,6 @@ export const validateConfirmPassword = (password: string, confirmPassword: strin
   return '';
 };
 
-export const validateResetToken = (value: string) => {
-  if (!value.trim()) return 'Reset token is required.';
-  return '';
-};
-
 export const validateLoginForm = (values: Pick<LoginFormValues, 'employeeCode' | 'password'>): LoginFieldErrors => {
   const employeeCode = validateEmployeeCode(values.employeeCode);
   const password = validatePassword(values.password);

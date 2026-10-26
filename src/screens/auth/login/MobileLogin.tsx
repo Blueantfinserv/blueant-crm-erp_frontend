@@ -82,11 +82,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 14,
   },
-  footerText: {
-    color: '#2563EB',
-    fontWeight: '700',
-    fontSize: 13,
-  },
   footerSubtext: {
     color: '#75829D',
     fontSize: 12,

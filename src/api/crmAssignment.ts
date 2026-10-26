@@ -1,6 +1,6 @@
 import { SecureStorageService } from '../services/SecureStorageService';
 import { requestWithSessionRefresh } from './authenticatedRequest';
-import type { ClientRegistrationRequest, ClientRegistrationResponse, CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleLeadPage } from '../types/crm';
+import type { ClientRegistrationRequest, ClientRegistrationResponse, CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleFamilyHeadResponse, EligibleLeadPage, FamilyDetailResponse, FamilyHeadHistoryResponse, FamilyRelationship } from '../types/crm';
 
 // CRM endpoints are served by the same production API that issues and refreshes
 // the authenticated user token. Keeping one base URL prevents cross-deployment
@@ -11,6 +11,8 @@ type ApiResponse<T> = { success?: boolean; message?: string; data?: T; details?:
 type RoleSummary = { id?: number; roleCode?: string; roleName?: string; status?: string };
 type UserSummary = { id?: number; employeeCode?: string; fullName?: string; roleName?: string; status?: string };
 type UserPage = { content?: UserSummary[]; totalPages?: number };
+type ClientLookup = { id?: number; clientCode?: string; clientName?: string; mobileNumber?: string };
+type ClientPage = { content?: ClientLookup[]; totalPages?: number };
 export type ClientDocumentUploadResponse = { documentReference?: string; fileName?: string; fileType?: string; fileSize?: number; documentType?: string; uploadStatus?: string };
 export type ClientDocumentType = 'PAN_CARD' | 'AADHAAR_CARD' | 'PASSPORT' | 'CHEQUE' | 'SIGNATURE' | 'OTHER';
 type UploadableDocument = { uri: string; name: string; mimeType?: string | null; file?: File };
@@ -75,6 +77,13 @@ export const crmAssignmentApi = {
     const page = await request<EligibleLeadPage>('/v1/Leads_assign/eligible?page=0&size=100');
     return page.content ?? [];
   },
+  findClientByMobile: async (mobileNumber: string): Promise<ClientLookup | null> => {
+    const digits = mobileNumber.replace(/\D/g, '');
+    if (!digits) return null;
+    const first = await request<ClientPage>('/v1/clients?page=0&size=100');
+    const pages = [first, ...await Promise.all(Array.from({ length: Math.max(0, Math.min((first.totalPages ?? 1) - 1, 19)) }, (_, index) => request<ClientPage>(`/v1/clients?page=${index + 1}&size=100`)))];
+    return pages.flatMap((page) => page.content ?? []).find((client) => client.mobileNumber?.replace(/\D/g, '') === digits) ?? null;
+  },
   getTargets: async (): Promise<CrmAssignmentTarget[]> => {
     const roles = await request<RoleSummary[]>('/v1/roles');
     const targetRoles = roles
@@ -95,4 +104,10 @@ export const crmAssignmentApi = {
     else body.append('file', { uri: document.uri, name: document.name, type: document.mimeType || 'application/octet-stream' } as never);
     return request<ClientDocumentUploadResponse>(`/v1/clients/documents/upload?documentType=${encodeURIComponent(documentType)}`, { method: 'POST', body });
   },
+  getFamily: (familyCode: string) => request<FamilyDetailResponse>(`/v1/client-families/${encodeURIComponent(familyCode)}`),
+  createFamily: (familyName: string, initialHeadClientId?: number, initialHeadRelationship: FamilyRelationship = 'SELF') => request<FamilyDetailResponse>('/v1/client-families', { method: 'POST', body: JSON.stringify({ familyName, ...(initialHeadClientId ? { initialHeadClientId, initialHeadRelationship } : {}) }) }),
+  addFamilyMember: (familyCode: string, clientId: number, relationshipToHead: FamilyRelationship, designateAsHead = false) => request<unknown>(`/v1/client-families/${encodeURIComponent(familyCode)}/members`, { method: 'POST', body: JSON.stringify({ clientId, relationshipToHead, designateAsHead }) }),
+  getEligibleFamilyHeads: (familyCode: string) => request<EligibleFamilyHeadResponse[]>(`/v1/client-families/${encodeURIComponent(familyCode)}/eligible-heads`),
+  changeFamilyHead: (familyCode: string, newHeadClientId: number, reason?: string) => request<FamilyDetailResponse>(`/v1/client-families/${encodeURIComponent(familyCode)}/head`, { method: 'PUT', body: JSON.stringify({ newHeadClientId, ...(reason?.trim() ? { reason: reason.trim() } : {}) }) }),
+  getFamilyHeadHistory: (familyCode: string) => request<FamilyHeadHistoryResponse[]>(`/v1/client-families/${encodeURIComponent(familyCode)}/head-history`),
 };

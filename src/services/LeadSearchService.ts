@@ -1,4 +1,4 @@
-import { leadSearchApi, LeadSearchApiError } from '../api/leadSearch';
+import { leadSearchApi } from '../api/leadSearch';
 import type { LeadSearchState } from '../types/lead';
 
 type Listener = (state: LeadSearchState) => void;
@@ -11,7 +11,6 @@ const initialState: LeadSearchState = {
 };
 
 const toMessage = (error: unknown) => {
-  if (error instanceof LeadSearchApiError) return error.message;
   if (error instanceof Error) return error.message;
   return 'Prospects could not be loaded.';
 };

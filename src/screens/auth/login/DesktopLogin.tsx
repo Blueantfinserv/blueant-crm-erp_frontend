@@ -149,11 +149,6 @@ const styles = StyleSheet.create({
   footerUltra: {
     gap: 42,
   },
-  footerLink: {
-    color: theme.colors.muted,
-    fontSize: 13,
-    fontWeight: '600',
-  },
   footerText: {
     color: theme.colors.subtle,
     fontSize: 13,

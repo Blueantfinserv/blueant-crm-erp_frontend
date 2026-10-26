@@ -306,10 +306,6 @@ const styles = StyleSheet.create({
   tabsScroll: {
     flex: 1,
   },
-  tabsScrollCompact: {
-    flexBasis: '100%',
-    width: '100%',
-  },
   tabsRow: {
     flex: 1,
     paddingLeft: 18,
@@ -317,12 +313,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingRight: 8,
     zIndex: 1,
-  },
-  tabsRowCompact: {
-    flexGrow: 0,
-    paddingLeft: 0,
-    paddingRight: 0,
-    gap: 6,
   },
   actions: {
     flexDirection: 'row',
@@ -560,10 +550,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: shellColors.topBarSurfaceBorder,
   },
-  tabCompact: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
   tabActive: {
     backgroundColor: 'rgba(37, 99, 235, 0.12)',
     borderColor: 'rgba(37, 99, 235, 0.24)',
@@ -572,9 +558,6 @@ const styles = StyleSheet.create({
     color: theme.colors.muted,
     fontSize: 12,
     fontWeight: '700',
-  },
-  tabTextCompact: {
-    fontSize: 11,
   },
   tabTextActive: {
     color: theme.colors.primary,

@@ -37,7 +37,6 @@ const createAuthState = (response: AuthResponse, rememberMe: boolean): Partial<A
 });
 
 const toMessage = (error: unknown, fallback: string) => {
-  if (error instanceof AuthApiError) return error.message;
   if (error instanceof Error) return error.message;
   return fallback;
 };
@@ -250,13 +249,5 @@ export class AuthService {
 }
 
 export const authService = new AuthService();
-
-export type AuthServiceApi = {
-  login: (credentials: LoginCredentials) => Promise<AuthResponse>;
-  forgotPassword: (credentials: ForgotPasswordCredentials) => Promise<{ success: boolean; message: string }>;
-  resetPassword: (credentials: ResetPasswordCredentials) => Promise<{ success: boolean; message: string }>;
-  refreshToken: (refreshToken: string) => Promise<import('../types/auth').RefreshTokenResponseData>;
-  logout: (refreshToken: string) => Promise<{ success: boolean; message: string }>;
-};
 
 export type { AuthUser, AuthResponse };

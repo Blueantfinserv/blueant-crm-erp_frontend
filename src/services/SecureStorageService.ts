@@ -155,9 +155,6 @@ export const SecureStorageService = {
     const localValue = getWebItem('localStorage', REMEMBER_ME_KEY) ?? getWebItem('sessionStorage', REMEMBER_ME_KEY);
     return localValue === 'true';
   },
-  getStorageKind: async () => isWeb
-    ? getWebItem('localStorage', AUTH_KIND_KEY) ?? getWebItem('sessionStorage', AUTH_KIND_KEY)
-    : memoryStore.get(AUTH_KIND_KEY) ?? await getItem(AUTH_KIND_KEY),
   removeToken: async () => {
     if (!isWeb) {
       await Promise.all([

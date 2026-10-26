@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { buildAdditionalFooterSummary, CARD_HORIZONTAL_PADDING, columnSpecs, DEFAULT_SUMMARY_BOX_WIDTH, getMemberTotal, getMeetingBreakup, MOCK_MEETING_BREAKUPS, tableWidth, type MeetingBreakupEntry, type MeetingBreakupMap } from './additionalPerformanceHelpers';
 import { LayoutChangeEvent, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../../theme/theme';
-import type { DashboardSecondaryPerformanceGroup, DashboardSecondaryPerformanceMember } from '../../screens/dashboard/dashboardTypes';
+import type { DashboardSecondaryPerformanceGroup } from '../../screens/dashboard/dashboardTypes';
 
 type Props = {
   title: string;
@@ -571,9 +571,6 @@ const styles = StyleSheet.create({
   footerValueShiftLeftPoints: {
     marginLeft: 22,
   },
-  footerShiftRight10: {
-    transform: [{ translateX: 10 }],
-  },
   footerPair: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -604,17 +601,11 @@ const styles = StyleSheet.create({
   shiftLeft15: {
     transform: [{ translateX: -20 }],
   },
-  shiftLeftExtra10: {
-    transform: [{ translateX: -10 }],
-  },
   shiftLeft30: {
     transform: [{ translateX: -30 }],
   },
   clientsShiftLeft30: {
     transform: [{ translateX: -35 }],
-  },
-  sachinShiftLeft30: {
-    transform: [{ translateX: -30 }],
   },
   sachinShiftLeft45: {
     transform: [{ translateX: -65 }],
@@ -637,12 +628,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 2,
   },
-  summaryAlokStack: {
-    flex: 1,
-    width: '100%',
-    gap: 4,
-    justifyContent: 'center',
-  },
   summaryMiniRow: {
     flexDirection: 'row',
     gap: 4,
@@ -661,10 +646,6 @@ const styles = StyleSheet.create({
   },
   summaryMiniBoxFull: {
     flex: 1,
-  },
-  summaryAlokBox: {
-    width: '100%',
-    minHeight: 24,
   },
   summaryAlokRow: {
     flexDirection: 'row',

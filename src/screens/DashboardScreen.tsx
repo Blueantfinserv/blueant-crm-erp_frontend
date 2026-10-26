@@ -9,7 +9,7 @@ import { FilterBar } from '../components/superAdminDashboard/FilterBar';
 import { InsightCard } from '../components/superAdminDashboard/InsightCard';
 import { CurrentWeekPerformanceSection } from '../components/superAdminDashboard/CurrentWeekPerformanceSection';
 import { AdditionalPerformanceSection } from '../components/superAdminDashboard/AdditionalPerformanceSection';
-import { dashboardLeaderboardCards, dashboardPerformanceRows, dashboardSecondaryPerformanceGroups, dashboardTeamPerformanceGroups } from './dashboard/dashboardData';
+import { dashboardLeaderboardCards, dashboardSecondaryPerformanceGroups, dashboardTeamPerformanceGroups } from './dashboard/dashboardData';
 import { useDashboardDatePicker } from './dashboard/useDashboardDatePicker';
 import { TodayOverviewSection } from '../modules/salesManager/dashboard/components/TodayOverviewSection';
 import { todayOverviewData } from '../modules/salesManager/dashboard/mock/todayOverviewData';
@@ -70,7 +70,6 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
   const displayName = user?.fullName ?? 'Executive';
   const isSuperAdmin = experience === 'SUPER_ADMIN';
   const isSalesWorkspace = isSalesWorkspaceExperience(experience);
-  const rows = dashboardPerformanceRows[period];
   const isLoading = dashboardState === 'loading';
   const isEmpty = dashboardState === 'empty';
   const isError = dashboardState === 'error';
@@ -314,26 +313,26 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
               </View>
               <View style={styles.monthControls}>
                 <Pressable onPress={() => shiftViewedMonth(-1)} style={styles.monthButton}>
-                  <Text style={styles.monthButtonText}>�</Text>
+                  <Text style={styles.monthButtonText}>‹</Text>
                 </Pressable>
                 <Pressable onPress={() => shiftViewedMonth(1)} style={styles.monthButton}>
-                  <Text style={styles.monthButtonText}>�</Text>
+                  <Text style={styles.monthButtonText}>›</Text>
                 </Pressable>
               </View>
             </View>
             <View style={styles.weekRow}>
-              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day) => (
-                <Text key={day} style={styles.weekLabel}>
+              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((day, index) => (
+                <Text key={`weekday-${index}`} style={styles.weekLabel}>
                   {day}
                 </Text>
               ))}
             </View>
             <View style={styles.calendarGrid}>
-              {calendarDays.map((day) => {
+              {calendarDays.map((day, index) => {
                 const isEmpty = !day;
                 return (
                   <Pressable
-                    key={day ? day : `empty-${Math.random()}`}
+                    key={day ? day : `empty-${index}`}
                     disabled={isEmpty}
                     onPress={() => selectCalendarDay(day)}
                     style={[styles.dayCell, isEmpty && styles.dayEmpty]}
@@ -383,20 +382,6 @@ const styles = StyleSheet.create({
   analyticsRowCompact: {
     flexDirection: 'column',
     flexWrap: 'nowrap',
-  },
-  sectionHeader: {
-    gap: 4,
-    marginBottom: 12,
-  },
-  sectionTitle: {
-    color: theme.colors.text,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  sectionSubtitle: {
-    color: theme.colors.subtle,
-    fontSize: 12,
-    fontWeight: '600',
   },
   insightGrid: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Animated, Easing, Modal, Platform, Pressable, SafeAreaView, StatusBar, StyleSheet } from 'react-native';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { en, registerTranslation } from 'react-native-paper-dates';
@@ -12,10 +12,9 @@ import { SalesCoordinatorScreen } from './src/screens/SalesCoordinatorScreen';
 import { CrmOnboardingScreen } from './src/screens/CrmOnboardingScreen';
 import { AssignedLeadsScreen } from './src/screens/AssignedLeadsScreen';
 import { LegalDocsScreen, type LegalPageKind } from './src/components/LegalPage';
-import { AuthRole } from './src/types/auth';
 import { LoginFormValues } from './src/utils/authValidation';
 import { getRoleNavigationConfig } from './src/navigation/navigationConfig';
-import { getRoleExperience, isSalesWorkspaceExperience, type FrontendExperience } from './src/navigation/roleExperience';
+import { getRoleExperience, isSalesWorkspaceExperience } from './src/navigation/roleExperience';
 import { LeadScreen } from './src/modules/leads/LeadScreen';
 import { LeadDetailsScreen } from './src/modules/leads/details/LeadDetailsScreen';
 import { AddFollowupScreen } from './src/modules/leads/followup/FollowupScreen';
@@ -41,60 +40,14 @@ import { leadSearchService } from './src/services/LeadSearchService';
 import { meetingService } from './src/services/MeetingService';
 import { meetingApi } from './src/api/meeting';
 import type { CreateLeadRequest } from './src/types/lead';
-import type {
-  MeetingFormSubmission,
-  MeetingLeadStatus,
-  MeetingWorkflowRequest,
-} from './src/types/meeting';
+import type { MeetingFormSubmission } from './src/types/meeting';
 import { PwaInstallPrompt } from './src/components/PwaInstallPrompt';
 import { darkPalette, ThemeProvider, useAppTheme } from './src/theme/ThemeProvider';
 
+import { toMeetingWorkflow } from './src/utils/meetingWorkflow';
+import { getTopTabsForExperience, getModuleItemsForExperience } from './src/navigation/shellConfig';
+
 registerTranslation('en', en);
-
-const MEETING_LEAD_STATUS: Record<NonNullable<MeetingFormSubmission['leadStatus']>, MeetingLeadStatus> = {
-  'Work In Progress': 'WORK_IN_PROGRESS',
-  'Converted as Client': 'CONVERTED_CLIENT',
-  'Client Not Interested': 'CLIENT_NOT_INTERESTED',
-  'Remove This Client': 'CLIENT_REMOVED',
-  'Already Blueant Client': 'ALREADY_CLIENT',
-};
-
-const toMeetingWorkflow = (form: MeetingFormSubmission): { meetingCode: string; workflow: MeetingWorkflowRequest } => {
-  if (!form.meetingCode) throw new Error('No active meeting is available for this prospect.');
-  if (form.meetingConducted === 'NOT_CONDUCTED') {
-    return {
-      meetingCode: form.meetingCode,
-      workflow: {
-        meetingConducted: 'NOT_CONDUCTED',
-        meetingRemarks: form.remarks.trim(),
-        nextPlanDate: form.nextPlanDate,
-        latitude: form.latitude,
-        longitude: form.longitude,
-        ...(form.accuracy !== null && form.accuracy !== undefined ? { accuracy: form.accuracy } : {}),
-      },
-    };
-  }
-  if (!form.meetingMode || !form.leadStatus || !form.aloneWith) {
-    throw new Error('Meeting details are incomplete.');
-  }
-  const meetingMode = form.meetingMode === 'Physical' ? 'PHYSICAL' : 'VIRTUAL/ONLINE';
-  return {
-    meetingCode: form.meetingCode,
-    workflow: {
-      meetingMode,
-      meetingConducted: 'CONDUCTED',
-      leadStatus: MEETING_LEAD_STATUS[form.leadStatus],
-      aloneWith: form.aloneWith,
-      remarks: form.remarks.trim(),
-      latitude: form.latitude,
-      longitude: form.longitude,
-      address: form.address,
-      ...(form.accuracy !== null && form.accuracy !== undefined ? { accuracy: form.accuracy } : {}),
-      ...(form.visitingCard ? { visitingCard: form.visitingCard } : {}),
-      ...(form.nextPlanDate ? { nextPlanDate: form.nextPlanDate } : {}),
-    },
-  };
-};
 
 type ScreenState =
   | 'splash'
@@ -107,51 +60,6 @@ type ScreenState =
   | NavigationRoute;
 
 type SalesTaskView = 'all-task' | 'task-to-do' | 'today-task' | 'pending-task' | 'future-3-days' | 'all-leads';
-
-const baseTopTabs: TopTabItem[] = [
-  { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
-  { key: 'reports', label: 'Reports', route: 'reports' },
-  { key: 'team-mapping', label: 'Team Mapping', route: 'team-mapping' },
-  { key: 'users-roles', label: 'Users & Roles', route: 'users-roles' },
-  { key: 'all-tasks', label: 'All Tasks', route: 'leads' },
-  { key: 'more', label: 'More', route: 'lead-details' },
-];
-
-const baseModuleItems: ModuleItem[] = [
-  { key: 'sales', label: 'Sales', icon: 'SA', route: 'dashboard' },
-  { key: 'new-onboarding', label: 'New Onboarding', icon: 'NO', route: 'coming-soon' },
-  { key: 'rm-crm', label: 'RM & CRM', icon: 'RC', route: 'coming-soon' },
-  { key: 'helpdesk', label: 'Helpdesk', icon: 'HD', route: 'coming-soon' },
-  { key: 'accounts', label: 'Accounts', icon: 'AC', route: 'coming-soon' },
-  { key: 'hr', label: 'HR', icon: 'HR', route: 'coming-soon' },
-];
-
-const getTopTabsForExperience = (experience: FrontendExperience): TopTabItem[] => {
-  if (experience === 'SALES_COORDINATOR') {
-    return [{ key: 'dashboard', label: 'Dashboard', route: 'dashboard' }];
-  }
-
-  if (experience === 'CRM_ONBOARDING') {
-    return [{ key: 'dashboard', label: 'Dashboard', route: 'dashboard' }];
-  }
-
-  if (isSalesWorkspaceExperience(experience)) {
-    return [
-      { key: 'dashboard', label: 'Dashboard', route: 'dashboard' },
-      { key: 'all-tasks', label: 'Your Task', route: 'leads' },
-    ];
-  }
-
-  return baseTopTabs;
-};
-
-const getModuleItemsForExperience = (experience: FrontendExperience): ModuleItem[] => {
-  if (experience === 'SALES_COORDINATOR' || experience === 'CRM_ONBOARDING' || isSalesWorkspaceExperience(experience)) {
-    return [];
-  }
-
-  return baseModuleItems;
-};
 
 export default function App() {
   return (
@@ -363,6 +271,33 @@ function AppShell() {
     void runAction(() => auth.logout(), 'login');
   };
 
+  const submitNewLead = async (request: CreateLeadRequest) => {
+    await leadService.createLead(request);
+    return leadService.getState().success ?? 'Prospect created successfully.';
+  };
+
+  const submitMeeting = async (form: MeetingFormSubmission) => {
+    const task = leadForm?.lead;
+    if (!task) throw new Error('Prospect task is unavailable.');
+    const meetingCode = form.meetingCode?.trim() || task.meetingCode?.trim() || null;
+    if (!meetingCode) {
+      throw new Error('No active meeting is available for this prospect. Please refresh and try again.');
+    }
+    const submission = toMeetingWorkflow({ ...form, meetingCode });
+    await meetingService.submitWorkflow(submission.meetingCode, submission.workflow);
+    if (form.leadStatus === 'Converted as Client' || form.leadStatus === 'Already Blueant Client') {
+      const leadIdentity = {
+        leadId: task.leadId,
+        leadCode: task.leadCode,
+        uniqueLeadId: task.uniqueLeadId,
+      };
+      leadSearchService.hideLeadFromTasks(leadIdentity);
+      meetingService.hideLeadFromTasks(leadIdentity);
+    }
+    await leadSearchService.loadLeads();
+    return 'Meeting submitted successfully.';
+  };
+
   const content = useMemo(() => {
     const roleNavigation = getRoleNavigationConfig(backendRole);
     const topTabs = getTopTabsForExperience(experience);
@@ -406,6 +341,40 @@ function AppShell() {
       year: 'numeric',
     }).format(new Date());
 
+    const renderShell = (children: ReactNode, options: {
+      salesMenu?: boolean;
+      scrollable?: boolean;
+      bare?: boolean;
+      onModulePress?: (module: ModuleItem) => void;
+    } = {}) => (
+      <ErpShell
+        currentDate={currentDate}
+        {...(!options.bare ? {
+          tabs: topTabs,
+          activeTab,
+          onTabPress: (tab: TopTabItem) => { setActiveTab(tab.key); navigate(tab.route); },
+        } : {})}
+        {...(options.salesMenu && isSalesWorkspaceExperience(experience)
+          ? { salesPersonMenu, onSalesPersonMenuSelect }
+          : {})}
+        contentScrollable={options.scrollable}
+        onLogout={handleLogout}
+        modules={moduleItems}
+        activeModule={activeModule}
+        onModulePress={options.onModulePress ?? ((module) => {
+          setActiveModule(module.key);
+          if (module.key === 'sales') {
+            navigate('dashboard');
+            return;
+          }
+          setComingSoonModule(module.label);
+          navigate('coming-soon');
+        })}
+      >
+        {children}
+      </ErpShell>
+    );
+
     switch (screen) {
       case 'splash':
         return <SplashScreen />;
@@ -427,60 +396,36 @@ function AppShell() {
           />
         );
       case 'dashboard':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
-            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
-            contentScrollable={experience !== 'SALES_COORDINATOR'}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
-            }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              if (module.key === 'sales') {
-                navigate('dashboard');
-                return;
-              }
-              setComingSoonModule(module.label);
-              navigate('coming-soon');
-            }}
-          >
-            {experience === 'SALES_COORDINATOR' ? (
-              <SalesCoordinatorScreen permissions={auth.user?.permissions} />
-            ) : experience === 'CRM_ONBOARDING' ? (
-              <CrmOnboardingScreen />
-            ) : activeModule === 'sales' ? (
-              <DashboardScreen
-                role={roleNavigation.role}
-                experience={experience}
-                title={roleNavigation.title}
-                subtitle={roleNavigation.subtitle}
-                menuItems={roleNavigation.menuItems}
-                user={auth.user}
-                onMenuItemPress={(item) => navigate(item.route)}
-                onLogout={() => runAction(() => auth.logout(), 'login')}
-                onOpenDashboardList={(listId) => {
-                  setSelectedDashboardListId(listId);
-                  navigate('dashboard-list');
-                }}
-                onOpenTaskFilter={(filter) => {
-                  setSalesTaskView(filter === 'Today' ? 'today-task' : 'pending-task');
-                  setSalesTaskFilter(filter);
-                  setSalesTaskScreenKey((current) => current + 1);
-                  navigate('leads');
-                }}
-              />
-            ) : (
-              <ComingSoon title={comingSoonModule} />
-            )}
-          </ErpShell>
+        return renderShell(
+          experience === 'SALES_COORDINATOR' ? (
+            <SalesCoordinatorScreen permissions={auth.user?.permissions} />
+          ) : experience === 'CRM_ONBOARDING' ? (
+            <CrmOnboardingScreen />
+          ) : activeModule === 'sales' ? (
+            <DashboardScreen
+              role={roleNavigation.role}
+              experience={experience}
+              title={roleNavigation.title}
+              subtitle={roleNavigation.subtitle}
+              menuItems={roleNavigation.menuItems}
+              user={auth.user}
+              onMenuItemPress={(item) => navigate(item.route)}
+              onLogout={() => runAction(() => auth.logout(), 'login')}
+              onOpenDashboardList={(listId) => {
+                setSelectedDashboardListId(listId);
+                navigate('dashboard-list');
+              }}
+              onOpenTaskFilter={(filter) => {
+                setSalesTaskView(filter === 'Today' ? 'today-task' : 'pending-task');
+                setSalesTaskFilter(filter);
+                setSalesTaskScreenKey((current) => current + 1);
+                navigate('leads');
+              }}
+            />
+          ) : (
+            <ComingSoon title={comingSoonModule} />
+          ),
+          { salesMenu: true, scrollable: experience !== 'SALES_COORDINATOR' }
         );
       case 'dashboard-list': {
         const selectedList = dashboardListsData.find((list) => list.id === selectedDashboardListId);
@@ -488,305 +433,87 @@ function AppShell() {
           return null;
         }
 
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
-            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
-            contentScrollable={false}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
-            }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              navigate('dashboard');
-            }}
-          >
-            <DashboardListScreen
-              list={selectedList}
-              userName={auth.user?.fullName ?? 'Salesperson'}
-              userId={typeof auth.user?.id === 'number' ? auth.user.id : undefined}
-              employeeCode={auth.user?.employeeId}
-              onBack={goBack}
-            />
-          </ErpShell>
+        return renderShell(
+          <DashboardListScreen
+            list={selectedList}
+            userName={auth.user?.fullName ?? 'Salesperson'}
+            userId={typeof auth.user?.id === 'number' ? auth.user.id : undefined}
+            employeeCode={auth.user?.employeeId}
+            onBack={goBack}
+          />,
+          { salesMenu: true, scrollable: false, onModulePress: (module) => { setActiveModule(module.key); navigate('dashboard'); } }
         );
       }
       case 'reports':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
-            }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              if (module.key === 'sales') {
-                navigate('reports');
-                return;
-              }
-              setComingSoonModule(module.label);
-              navigate('coming-soon');
-            }}
-          >
-            <ReportsScreen />
-          </ErpShell>
+        return renderShell(
+          <ReportsScreen />,
+          { onModulePress: (module) => { setActiveModule(module.key); if (module.key === 'sales') { navigate('reports'); return; } setComingSoonModule(module.label); navigate('coming-soon'); } }
         );
       case 'users-roles':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
-            }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              if (module.key === 'sales') {
-                navigate('dashboard');
-                return;
-              }
-              setComingSoonModule(module.label);
-              navigate('coming-soon');
-            }}
-          >
-            <UsersRolesScreen />
-          </ErpShell>
-        );
+        return renderShell(<UsersRolesScreen />);
       case 'team-mapping':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
-            }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              if (module.key === 'sales') {
-                navigate('dashboard');
-                return;
-              }
-              setComingSoonModule(module.label);
-              navigate('coming-soon');
-            }}
-          >
-            <TeamMappingScreen />
-          </ErpShell>
-        );
+        return renderShell(<TeamMappingScreen />);
       case 'leads':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
-            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
-            contentScrollable={!isSalesWorkspaceExperience(experience)}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
-            }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              if (module.key === 'sales') {
-                navigate('dashboard');
-                return;
-              }
-              setComingSoonModule(module.label);
-              navigate('coming-soon');
-            }}
-          >
-            {experience === 'CRM_ONBOARDING' ? (
-              <CrmOnboardingScreen />
-            ) : isSalesWorkspaceExperience(experience) ? (
-              <SalesManagerTasksScreen
-                key={salesTaskScreenKey}
-                initialTaskType={salesTaskFilter}
-                allTaskMode={salesTaskView === 'all-task'}
-                taskToDoMode={salesTaskView === 'task-to-do'}
-                todaysTaskMode={salesTaskView === 'today-task'}
-                pendingTaskMode={salesTaskView === 'pending-task'}
-                future3DaysTaskMode={salesTaskView === 'future-3-days'}
-                allLeadsMode={salesTaskView === 'all-leads'}
-                onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
-                onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
-                onOpenLeadDetails={(lead) => {
-                  setSelectedSalesTask(lead);
-                  navigate('sales-task-details');
-                }}
-              />
-            ) : (
-              <LeadScreen onOpenLeadDetails={() => navigate('lead-details')} />
-            )}
-          </ErpShell>
+        return renderShell(
+          experience === 'CRM_ONBOARDING' ? (
+            <CrmOnboardingScreen />
+          ) : isSalesWorkspaceExperience(experience) ? (
+            <SalesManagerTasksScreen
+              key={salesTaskScreenKey}
+              initialTaskType={salesTaskFilter}
+              allTaskMode={salesTaskView === 'all-task'}
+              taskToDoMode={salesTaskView === 'task-to-do'}
+              todaysTaskMode={salesTaskView === 'today-task'}
+              pendingTaskMode={salesTaskView === 'pending-task'}
+              future3DaysTaskMode={salesTaskView === 'future-3-days'}
+              allLeadsMode={salesTaskView === 'all-leads'}
+              onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
+              onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
+              onOpenLeadDetails={(lead) => {
+                setSelectedSalesTask(lead);
+                navigate('sales-task-details');
+              }}
+            />
+          ) : (
+            <LeadScreen onOpenLeadDetails={() => navigate('lead-details')} />
+          ),
+          { salesMenu: true, scrollable: !isSalesWorkspaceExperience(experience) }
         );
       case 'client-work-follow':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
-            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
-            contentScrollable={false}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => { setActiveTab(tab.key); navigate(tab.route); }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => { setActiveModule(module.key); navigate('dashboard'); }}
-          >
-            <ClientWorkFollowScreen />
-          </ErpShell>
+        return renderShell(
+          <ClientWorkFollowScreen />,
+          { salesMenu: true, scrollable: false, onModulePress: (module) => { setActiveModule(module.key); navigate('dashboard'); } }
         );
       case 'assigned-tasks':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
-            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
-            contentScrollable={false}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => { setActiveTab(tab.key); navigate(tab.route); }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={() => navigate('dashboard')}
-          >
-            <AssignedLeadsScreen />
-          </ErpShell>
+        return renderShell(
+          <AssignedLeadsScreen />,
+          { salesMenu: true, scrollable: false, onModulePress: () => navigate('dashboard') }
         );
       case 'sales-task-details':
         if (!selectedSalesTask) return null;
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            salesPersonMenu={isSalesWorkspaceExperience(experience) ? salesPersonMenu : undefined}
-            onSalesPersonMenuSelect={isSalesWorkspaceExperience(experience) ? onSalesPersonMenuSelect : undefined}
-            contentScrollable={false}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
-            }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              navigate('dashboard');
-            }}
-          >
-            <SalesManagerLeadDetailScreen
-              lead={selectedSalesTask}
-              onBack={goBack}
-              onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
-            />
-          </ErpShell>
+        return renderShell(
+          <SalesManagerLeadDetailScreen
+            lead={selectedSalesTask}
+            onBack={goBack}
+            onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
+          />,
+          { salesMenu: true, scrollable: false, onModulePress: (module) => { setActiveModule(module.key); navigate('dashboard'); } }
         );
       case 'lead-details':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
-            }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              if (module.key === 'sales') {
-                navigate('dashboard');
-                return;
-              }
-              setComingSoonModule(module.label);
-              navigate('coming-soon');
-            }}
-          >
-            <LeadDetailsScreen onBack={goBack} followups={followups} onAddFollowup={() => navigate('add-followup')} />
-          </ErpShell>
-        );
+        return renderShell(<LeadDetailsScreen onBack={goBack} followups={followups} onAddFollowup={() => navigate('add-followup')} />);
       case 'add-followup':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            tabs={topTabs}
-            activeTab={activeTab}
-            onLogout={handleLogout}
-            onTabPress={(tab) => {
-              setActiveTab(tab.key);
-              navigate(tab.route);
+        return renderShell(
+          <AddFollowupScreen
+            onCancel={goBack}
+            onSave={(followup) => {
+              setFollowups((current) => [followup, ...current]);
             }}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              if (module.key === 'sales') {
-                navigate('dashboard');
-                return;
-              }
-              setComingSoonModule(module.label);
-              navigate('coming-soon');
-            }}
-          >
-            <AddFollowupScreen
-              onCancel={goBack}
-              onSave={(followup) => {
-                setFollowups((current) => [followup, ...current]);
-              }}
-            />
-          </ErpShell>
+          />
         );
       case 'coming-soon':
-        return (
-          <ErpShell
-            currentDate={currentDate}
-            modules={moduleItems}
-            activeModule={activeModule}
-            onLogout={handleLogout}
-            onModulePress={(module) => {
-              setActiveModule(module.key);
-              if (module.key === 'sales') {
-                navigate('dashboard');
-                return;
-              }
-              setComingSoonModule(module.label);
-              navigate('coming-soon');
-            }}
-          >
-            <ComingSoon title={comingSoonModule} />
-          </ErpShell>
+        return renderShell(
+          <ComingSoon title={comingSoonModule} />,
+          { bare: true }
         );
       default:
         return null;
@@ -818,33 +545,7 @@ function AppShell() {
                   lead={leadForm.lead}
                   role={backendRole}
                   onClose={() => setLeadForm(null)}
-                  onSubmit={leadForm.type === 'new-lead'
-                    ? async (request: CreateLeadRequest) => {
-                        await leadService.createLead(request);
-                        return leadService.getState().success ?? 'Prospect created successfully.';
-                      }
-                    : async (form: MeetingFormSubmission) => {
-                          const task = leadForm.lead;
-                          if (!task) throw new Error('Prospect task is unavailable.');
-                          const meetingCode = form.meetingCode?.trim() || task.meetingCode?.trim() || null;
-                          if (!meetingCode) {
-                            throw new Error('No active meeting is available for this prospect. Please refresh and try again.');
-                          }
-                          const submission = toMeetingWorkflow({ ...form, meetingCode });
-                          await meetingService.submitWorkflow(submission.meetingCode, submission.workflow);
-                          if (form.leadStatus === 'Converted as Client' || form.leadStatus === 'Already Blueant Client') {
-                            const leadIdentity = {
-                              leadId: task.leadId,
-                              leadCode: task.leadCode,
-                              uniqueLeadId: task.uniqueLeadId,
-                            };
-                            leadSearchService.hideLeadFromTasks(leadIdentity);
-                            meetingService.hideLeadFromTasks(leadIdentity);
-                          }
-                          await leadSearchService.loadLeads();
-                          return 'Meeting submitted successfully.';
-                        }
-                  }
+                  onSubmit={leadForm.type === 'new-lead' ? submitNewLead : submitMeeting}
                 />
               ) : null}
             </Pressable>
@@ -852,7 +553,7 @@ function AppShell() {
         </Modal>
         <Modal transparent visible={Boolean(clientMeetingTask)} animationType="fade" onRequestClose={() => setClientMeetingTask(null)}>
           <Pressable style={styles.newLeadBackdrop} onPress={() => setClientMeetingTask(null)}>
-            <Pressable style={styles.clientMeetingModal} onPress={() => {}}>
+            <Pressable style={styles.newLeadModal} onPress={() => {}}>
               {clientMeetingTask ? <ClientMeetingScheduleForm client={clientMeetingTask} onClose={() => setClientMeetingTask(null)} onSuccess={() => { setClientMeetingTask(null); setSalesTaskScreenKey((current) => current + 1); }} /> : null}
             </Pressable>
           </Pressable>
@@ -896,5 +597,4 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 16 },
     elevation: 20,
   },
-  clientMeetingModal: { width: '100%', maxWidth: 470, height: '92%', maxHeight: 900, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.42)', borderRadius: 20, backgroundColor: '#F8FAFC', shadowColor: '#000000', shadowOpacity: 0.3, shadowRadius: 34, shadowOffset: { width: 0, height: 16 }, elevation: 20 },
 });

@@ -1,4 +1,4 @@
-import { leadApi, LeadApiError } from '../api/lead';
+import { leadApi } from '../api/lead';
 import { AssignLeadRequest, CreateLeadRequest, LeadResponse, LeadState } from '../types/lead';
 
 type Listener = (state: LeadState) => void;
@@ -11,7 +11,6 @@ const initialState: LeadState = {
 };
 
 const toMessage = (error: unknown, fallback: string) => {
-  if (error instanceof LeadApiError) return error.message;
   if (error instanceof Error) return error.message;
   return fallback;
 };
@@ -73,10 +72,5 @@ export class LeadService {
 }
 
 export const leadService = new LeadService();
-
-export type LeadServiceApi = {
-  createLead: (request: CreateLeadRequest) => Promise<LeadResponse>;
-  assignLead: (request: AssignLeadRequest) => Promise<LeadResponse>;
-};
 
 export type { CreateLeadRequest, LeadResponse };

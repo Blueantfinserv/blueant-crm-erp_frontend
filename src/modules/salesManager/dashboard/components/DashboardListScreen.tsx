@@ -133,7 +133,6 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
     if (!isLiveList) return;
     const refresh = () => {
       const leads = leadSearchService.getState().leads;
-      const meetings = meetingService.getState().meetings;
       if (list.id === 'lead-collected-list') {
         setLiveLeadItems(leads
           .filter((lead) => showRemovedLeads ? isRemovedLead(lead.leadStatus) : !isRemovedLead(lead.leadStatus))

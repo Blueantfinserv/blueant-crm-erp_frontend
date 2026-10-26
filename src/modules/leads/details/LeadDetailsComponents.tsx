@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AuthButton } from '../../../components/AuthButton';
 import { theme } from '../../../theme/theme';
 import { LeadDocument, LeadInfo, LeadNote, FollowupItem, TimelineActivity } from './leadDetailsData';

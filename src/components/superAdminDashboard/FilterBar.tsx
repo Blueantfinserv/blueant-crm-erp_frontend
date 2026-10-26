@@ -1,4 +1,4 @@
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { theme } from '../../theme/theme';
 import type { DashboardDateFilterDisplayState } from '../../screens/dashboard/dashboardTypes';
 

@@ -1,9 +1,9 @@
-import { meetingApi, MeetingApiError } from '../api/meeting';
+import { meetingApi } from '../api/meeting';
 import type { MeetingQueueState, MeetingResponse, MeetingVerificationRequest, MeetingWorkflowRequest } from '../types/meeting';
 
 type Listener = (state: MeetingQueueState) => void;
 const initialState: MeetingQueueState = { meetings: [], timestamp: null, isLoading: false, error: null };
-const toMessage = (error: unknown) => error instanceof MeetingApiError || error instanceof Error ? error.message : 'Meetings could not be loaded.';
+const toMessage = (error: unknown) => error instanceof Error ? error.message : 'Meetings could not be loaded.';
 
 export class MeetingService {
   private state = initialState;

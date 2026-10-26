@@ -27,7 +27,7 @@ export function ClientMeetingScheduleForm({ client, onClose, onSuccess }: { clie
   const [aloneWith, setAloneWith] = useState<'SELF' | 'SOMEONE'>('SELF');
   const [businessGenerated, setBusinessGenerated] = useState('');
   const [remarks, setRemarks] = useState('');
-  const [nextPlanDate, setNextPlanDate] = useState(() => followUpOptions().find((option) => option.label === 'After 2 months')?.value ?? '');
+  const [nextPlanDate, setNextPlanDate] = useState('');
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const [capturing, setCapturing] = useState(false);
   const [saving, setSaving] = useState(false);

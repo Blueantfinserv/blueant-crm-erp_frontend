@@ -143,7 +143,6 @@ const belongsToCoordinatorTeam = (coordinator: string, salesPerson: string | und
   const team = COORDINATOR_SALES_TEAM[coordinator];
   return !coordinator || !team || Boolean(salesPerson && team.includes(salesPerson));
 };
-const brokerTitle = (type: string) => type === 'BROKERCHANGE' ? 'Broker Change' : type.replace(/\b\w/g, (letter) => letter.toUpperCase());
 const isValidAmount = (value: string) => Boolean(value.trim()) && Number.isFinite(Number(value)) && Number(value) >= 0;
 
 /* ───────────────────────── Roles ───────────────────────── */
@@ -1251,7 +1250,7 @@ function LeadHistoryContent({ lead, meetings, loading, progress, error }: { lead
   return <View style={styles.historyWrap}>
     {section('Lead details', leadFields, 'lead')}
     {section('Assignment details', assignmentFields, 'assignment')}
-    {section('SC verification details', scFields, 'verification')}
+    {section('PC verification details', scFields, 'verification')}
     <View style={styles.historyTitleRow}><Text style={styles.sectionTitle}>Meeting history</Text><Text style={styles.historyCount}>{loading ? 'Loading...' : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}`}</Text></View>
     {error ? <Text style={styles.error}>{error}</Text> : null}
     {loading ? <State loading progress={progress} message="Loading lead history..." /> : meetings.length ? <View style={historyStyles.meetingList}>{meetings.map((meeting, index) => <MeetingHistoryRow key={meeting.meetingCode ?? `${meeting.id ?? index}`} meeting={meeting} alternate={index % 2 === 1} />)}</View> : <State message="No meeting history is available for this lead yet." />}

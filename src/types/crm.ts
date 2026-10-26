@@ -325,6 +325,12 @@ export type ClientProfileResponse = {
   documents?: Array<{ documentType?: string; documentName?: string; received?: boolean; receivedDate?: string; verificationStatus?: string; documentReference?: string; remarks?: string }>;
 };
 
+export type FamilyRelationship = 'SELF' | 'MOTHER' | 'FATHER' | 'SPOUSE' | 'CHILD' | 'SIBLING' | 'OTHER';
+export type FamilyMemberResponse = { memberId?: number; clientId?: number; clientCode?: string; clientName?: string; mobileNumber?: string; relationshipToHead?: FamilyRelationship; membershipStatus?: 'ACTIVE' | 'INACTIVE'; joinedAt?: string; joinedBy?: string; isFamilyHead?: boolean };
+export type EligibleFamilyHeadResponse = { clientId?: number; clientCode?: string; clientName?: string; eligible?: boolean; eligibilityReason?: string; qualifyingDetails?: string; currentHead?: boolean };
+export type FamilyHeadHistoryResponse = { id?: number; previousHeadClientId?: number; previousHeadClientCode?: string; previousHeadClientName?: string; newHeadClientId?: number; newHeadClientCode?: string; newHeadClientName?: string; changedByUser?: string; changedAt?: string; reason?: string };
+export type FamilyDetailResponse = { id?: number; familyCode?: string; familyName?: string; familyHeadClientId?: number; familyHeadClientCode?: string; familyHeadClientName?: string; status?: 'ACTIVE' | 'INACTIVE'; createdAt?: string; createdBy?: string; updatedAt?: string; updatedBy?: string; members?: FamilyMemberResponse[] };
+
 /** One business category recorded during a PC client-meeting verification. */
 export type ClientBusinessItemDto = {
   businessType: string;

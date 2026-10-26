@@ -361,15 +361,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: theme.spacing.sm,
   },
-  scoreContent: {
-    minWidth: 0,
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 6,
-    zIndex: 1,
-  },
   scorePrimary: {
     minWidth: 0,
     flex: 1,

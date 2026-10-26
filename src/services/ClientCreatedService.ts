@@ -1,4 +1,4 @@
-import { leadSearchApi, LeadSearchApiError } from '../api/leadSearch';
+import { leadSearchApi } from '../api/leadSearch';
 import type { LeadResponse } from '../types/lead';
 
 type ClientCreatedState = {
@@ -62,7 +62,7 @@ export class ClientCreatedService {
     } catch (error) {
       this.setState({
         leads: [],
-        error: error instanceof LeadSearchApiError || error instanceof Error ? error.message : 'Created clients could not be loaded.',
+        error: error instanceof Error ? error.message : 'Created clients could not be loaded.',
       });
     } finally {
       this.setState({ isLoading: false });
