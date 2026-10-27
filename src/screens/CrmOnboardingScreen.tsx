@@ -656,7 +656,7 @@ function CrmLeadDetailsModal({ lead, onClose }: { lead: LeadResponse | null; onC
 }
 
 function DetailSection({ title, fields, dark = false }: { title: string; fields: readonly (readonly (string | undefined | null)[])[]; dark?: boolean }) {
-  return <View style={[styles.detailSection, dark && styles.detailSectionDark]}><Text style={[styles.detailSectionTitle, dark && styles.detailSectionTitleDark]}>{title}</Text><View style={styles.detailGrid}>{fields.map(([label, value], index) => <View key={`${label ?? 'field'}-${index}`} style={[styles.detailCell, dark && styles.detailCellDark]}><Text style={[styles.detailLabel, dark && styles.detailLabelDark]}>{String(label ?? '-')}</Text><Text numberOfLines={2} style={[styles.detailValue, dark && styles.detailValueDark]}>{show(value)}</Text></View>)}</View></View>;
+  return <View style={[styles.detailSection, dark && styles.detailSectionDark]}><Text style={[styles.detailSectionTitle, dark && styles.detailSectionTitleDark]}>{title}</Text><View style={styles.detailGrid}>{fields.map(([label, value], index) => <View key={`${label ?? 'field'}-${index}`} style={[styles.detailCell, dark && styles.detailCellDark]}><Text style={[styles.detailLabel, dark && styles.detailLabelDark]}>{String(label ?? '-')}</Text><Text style={[styles.detailValue, dark && styles.detailValueDark]}>{show(value)}</Text></View>)}</View></View>;
 }
 
 const styles = StyleSheet.create({
@@ -685,7 +685,7 @@ const styles = StyleSheet.create({
   detailSectionTitle: { color: '#1E3A8A', fontSize: 12, fontWeight: '900' },
   detailSectionTitleDark: { color: '#BFDBFE' },
   detailGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  detailCell: { minWidth: 140, flex: 1, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#E1E8F3', borderRadius: 9, backgroundColor: '#FFFFFF' },
+  detailCell: { minWidth: 0, maxWidth: '100%', flexBasis: 220, flexGrow: 1, flexShrink: 1, paddingHorizontal: 9, paddingVertical: 7, borderWidth: 1, borderColor: '#E1E8F3', borderRadius: 9, backgroundColor: '#FFFFFF' },
   detailCellDark: { borderColor: '#334155', backgroundColor: '#0B1220' },
   detailLabel: { color: '#64748B', fontSize: 8, fontWeight: '900', textTransform: 'uppercase' },
   detailLabelDark: { color: '#94A3B8' },
