@@ -1,5 +1,6 @@
+import { VerificationDropdown } from '../components/VerificationDropdown';
 import { prospectInfoFields } from '../utils/prospectDetails';
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { createElement, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { ActivityIndicator, Alert, Animated, Linking, Modal, Platform, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Icon } from 'react-native-paper';
@@ -15,7 +16,7 @@ import { SecureStorageService } from '../services/SecureStorageService';
 import type { ClientProfileResponse } from '../types/crm';
 import { useAppTheme } from '../theme/ThemeProvider';
 import { createMeetingVerificationForm } from './meetingVerificationForm';
-import { historyStyles, styles, verificationStyles } from './salesCoordinatorStyles';
+import { historyStyles, styles, verificationStyles, popupStyles } from './salesCoordinatorStyles';
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -826,7 +827,10 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         {!loading && tabLoading !== 'assignedLeads' && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} onOpen={openLeadHistory} /><Pagination page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /></> : null}
       </ScrollView>}
     </View>
-    <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View nativeID="blueant-workflow-modal" style={styles.modal}>
+    <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View nativeID="blueant-workflow-modal" style={[styles.modal, selected && tab !== 'responses' && !selected.isClientMeeting && [popupStyles.modal, { width: Math.min(1100, Math.max(0, windowWidth - 48)) }]]}>
+      {selected && tab !== 'responses' && !selected.isClientMeeting ? (
+        <LeadVerificationPopup meeting={selected} form={form} setForm={setForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} onClose={() => setSelected(null)} />
+      ) : <>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
       <ScrollView contentContainerStyle={styles.modalBody}>
         {selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} /> : null}
@@ -834,12 +838,13 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
           : selected?.isClientMeeting ? <ClientVerificationFields meeting={selected} form={clientForm} setForm={setClientForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} />
           : selected ? <View style={[styles.formSection, verificationStyles.section]}>
             <Text style={styles.sectionTitle}>{isNotConductedMeeting(selected) ? 'Verify Location Visit' : 'PC Additional Information'}</Text>
-            <Text style={styles.help}>{isNotConductedMeeting(selected) ? 'Confirm only the date and time of this visited-but-not-met record.' : 'Choose the available values below. Blank optional values are omitted; backend validation messages are shown unchanged.'}</Text>
+            {isNotConductedMeeting(selected) ? <Text style={styles.help}>Confirm only the date and time of this visited-but-not-met record.</Text> : null}
             <View style={styles.formGrid}>{(isNotConductedMeeting(selected) ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>
             {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
             <SubmitButton submitting={submitting} onPress={() => void verify()} label={isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'} />
           </View> : null}
       </ScrollView>
+      </>}
     </View></View></Modal>
     <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={styles.backdrop}><View nativeID="blueant-workflow-modal" style={styles.modal}>
       <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
@@ -850,8 +855,67 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
 
 /* ───────────────────────── Small components ───────────────────────── */
 
-function SubmitButton({ submitting, onPress, label }: { submitting: boolean; onPress: () => void; label: string }) {
-  return <Pressable disabled={submitting} onPress={onPress} style={[styles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : label}</Text></Pressable>;
+const verificationPopupCss = `
+#blueant-verification-popup { box-sizing: border-box; }
+#blueant-verification-fields select {
+  appearance: none !important; -webkit-appearance: none !important;
+  width: 100%; min-width: 0; height: 40px !important; min-height: 40px !important;
+  border: 1px solid #D5E1F1 !important; border-radius: 9px !important;
+  padding: 0 32px 0 10px !important; background-color: #FFFFFF;
+  color: #1E3353; font-size: 12px !important; line-height: normal;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23647793' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 9px center;
+  cursor: pointer; transition: border-color .15s, box-shadow .15s;
+}
+#blueant-verification-fields select:hover { border-color: #9DB7E4 !important; }
+#blueant-verification-fields select:focus-visible,
+#blueant-verification-fields input:focus-visible {
+  outline: 2px solid #2563EB; outline-offset: 1px;
+  border-color: #2563EB !important;
+}
+#blueant-verification-fields select:disabled { background-color: #EFF3F8; color: #8693A8; cursor: not-allowed; }
+#blueant-verification-fields input { min-width: 0; height: 40px !important; box-sizing: border-box; }
+`;
+
+function LeadVerificationPopup({ meeting, form, setForm, submitError, submitting, onSubmit, onClose }: {
+  meeting: MeetingResponse; form: VerificationForm; setForm: React.Dispatch<React.SetStateAction<VerificationForm>>;
+  submitError: string | null; submitting: boolean; onSubmit: () => void; onClose: () => void;
+}) {
+  const { width, height } = useWindowDimensions();
+  const stacked = width < 960 || height < 650;
+  const Container = stacked ? ScrollView : View;
+  const visitOnly = isNotConductedMeeting(meeting);
+  return <Container nativeID="blueant-verification-popup" style={stacked ? popupStyles.scroll : popupStyles.layout} {...(stacked ? { contentContainerStyle: [popupStyles.layout, popupStyles.stacked], keyboardShouldPersistTaps: 'handled' as const } : {})}>
+    {Platform.OS === 'web' ? createElement('style', null, verificationPopupCss) : null}
+    <View style={[popupStyles.sidebar, stacked && popupStyles.sidebarStacked]}>
+      <View style={popupStyles.status}><View style={popupStyles.statusDot} /><Text style={popupStyles.statusText}>PENDING VERIFICATION</Text></View>
+      <Text style={popupStyles.clientName}>{meeting.clientName ?? meeting.meetingCode}</Text>
+      <Details meeting={meeting} visitOnly={visitOnly} presentation="sidebar" />
+    </View>
+    <View style={popupStyles.main}>
+      <View style={popupStyles.heading}>
+        <View style={popupStyles.headingIcon}><Icon source="calendar-check-outline" size={28} color="#2563EB" /></View>
+        <View style={popupStyles.headingCopy}><Text style={popupStyles.title}>Meeting Details</Text></View>
+        <Pressable accessibilityLabel="Close meeting verification" onPress={onClose} style={popupStyles.close}><Icon source="close" size={23} color="#23416A" /></Pressable>
+      </View>
+      <View style={popupStyles.mainBody}>
+        <Details meeting={meeting} visitOnly={visitOnly} presentation="summary" />
+        <View style={popupStyles.formCard}>
+          <View style={popupStyles.formHeading}><Icon source="file-document-outline" size={20} color="#2563EB" /><Text style={popupStyles.formTitle}>{visitOnly ? 'Verify Location Visit' : 'PC Additional Information'}</Text></View>
+          {visitOnly ? <Text style={styles.help}>Confirm only the date and time of this visited-but-not-met record.</Text> : null}
+          <View nativeID="blueant-verification-fields" style={[styles.formGrid, popupStyles.formGrid]}>{(visitOnly ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} layoutStyle={popupStyles.formField} />)}</View>
+          {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
+        </View>
+        <View style={popupStyles.footer}>
+          <View style={popupStyles.submitWrap}><SubmitButton submitting={submitting} onPress={onSubmit} label={visitOnly ? 'Verify Visit' : 'Verify Meeting'} blue /></View>
+        </View>
+      </View>
+    </View>
+  </Container>;
+}
+
+function SubmitButton({ submitting, onPress, label, blue = false }: { submitting: boolean; onPress: () => void; label: string; blue?: boolean }) {
+  return <Pressable disabled={submitting} onPress={onPress} style={[styles.submit, blue && popupStyles.submit, submitting && styles.disabled]}>{submitting ? <ActivityIndicator color="#fff" /> : <Icon source="check-decagram-outline" size={20} color="#fff" />}<Text style={styles.submitText}>{submitting ? 'Verifying...' : label}</Text></Pressable>;
 }
 function AutoRefreshBadge({ tab, refreshing, submitting, nextRefreshAt, nextVerifiedRefreshAt, nextTaskRefreshAt, nextAssignedLeadsRefreshAt }: { tab: Tab; refreshing: boolean; submitting: boolean; nextRefreshAt: MutableRefObject<number>; nextVerifiedRefreshAt: MutableRefObject<number>; nextTaskRefreshAt: MutableRefObject<number>; nextAssignedLeadsRefreshAt: MutableRefObject<number> }) {
   const [seconds, setSeconds] = useState<number | null>(null);
@@ -933,9 +997,9 @@ function CompactAssignmentCalendar({ visible, value, maxDate, onDismiss, onSelec
     })}</View>
   </View></View></Modal>;
 }
-function DatePickerField({ label, value, placeholder, maxDate, onSelect, style, tone }: { label: string; value: string; placeholder: string; maxDate?: string; onSelect: (value: string) => void; style?: object; tone?: object }) {
+function DatePickerField({ label, value, placeholder, maxDate, onSelect, style, tone, controlStyle }: { label: string; value: string; placeholder: string; maxDate?: string; onSelect: (value: string) => void; style?: object; tone?: object; controlStyle?: object }) {
   const [visible, setVisible] = useState(false);
-  return <View style={[styles.field, tone, style]}><Text style={styles.fieldLabel}>{label}</Text><Pressable onPress={() => setVisible(true)} style={[styles.assignDatePicker, verificationStyles.control]}><Icon source="calendar-month-outline" size={18} color="#3156C8" /><Text style={styles.assignDatePickerText}>{value || placeholder}</Text><Icon source="chevron-down" size={18} color="#64748B" /></Pressable><CompactAssignmentCalendar visible={visible} value={value} maxDate={maxDate} onDismiss={() => setVisible(false)} onSelect={onSelect} /></View>;
+  return <View style={[styles.field, tone, style]}><Text style={styles.fieldLabel}>{label}</Text><Pressable onPress={() => setVisible(true)} style={[styles.assignDatePicker, verificationStyles.control, controlStyle]}><Icon source="calendar-month-outline" size={18} color="#3156C8" /><Text style={styles.assignDatePickerText}>{value || placeholder}</Text><Icon source="chevron-down" size={18} color="#64748B" /></Pressable><CompactAssignmentCalendar visible={visible} value={value} maxDate={maxDate} onDismiss={() => setVisible(false)} onSelect={onSelect} /></View>;
 }
 
 /* ───────────────────────── Verification forms ───────────────────────── */
@@ -983,9 +1047,7 @@ function ClientVerificationFields({ meeting, form, setForm, submitError, submitt
     <SubmitButton submitting={submitting} onPress={onSubmit} label="Verify Client Meeting" />
   </View>;
 }
-function VerificationFormField({ field, form, setForm }: { field: typeof FIELDS[number]; form: VerificationForm; setForm: React.Dispatch<React.SetStateAction<VerificationForm>> }) {
-  const { isDark } = useAppTheme();
-  const pickerOptionColor = isDark ? '#FFFFFF' : '#000000';
+function VerificationFormField({ field, form, setForm, layoutStyle }: { field: typeof FIELDS[number]; form: VerificationForm; setForm: React.Dispatch<React.SetStateAction<VerificationForm>>; layoutStyle?: object }) {
   const update = (value: string) => setForm((current) => ({
     ...current,
     [field.key]: value,
@@ -996,19 +1058,19 @@ function VerificationFormField({ field, form, setForm }: { field: typeof FIELDS[
   if (!isVerificationFieldVisible(field.key, form.meetingWith)) return null;
 
   if (field.key === 'meetingDate') {
-    return <DatePickerField label={field.label} value={form.meetingDate} placeholder={field.placeholder} maxDate={localToday()} onSelect={update} style={verificationStyles.field} tone={tone} />;
+    return <DatePickerField label={field.label} value={form.meetingDate} placeholder={field.placeholder} maxDate={localToday()} onSelect={update} style={[verificationStyles.field, layoutStyle]} tone={tone} controlStyle={layoutStyle ? popupStyles.control : undefined} />;
   }
   if (field.key === 'meetingTiming') {
     const [selectedHour = ''] = form.meetingTiming.split(':');
     return (
-      <View style={[styles.field, tone, verificationStyles.field]}>
+      <View style={[styles.field, tone, verificationStyles.field, layoutStyle]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
         <View style={styles.timePickerRow}>
-          <View style={[styles.pickerShell, styles.timePicker, verificationStyles.control]}><Picker selectedValue={selectedHour} onValueChange={(hour) => update(hour ? `${hour}:00:00` : '')} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Hour" value="" color={pickerOptionColor} />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} color={pickerOptionColor} />)}</Picker></View>
+          <View style={[styles.timePicker, { minWidth: 0 }]}><VerificationDropdown label={field.label} value={selectedHour} onChange={(hour) => update(hour ? `${hour}:00:00` : '')} options={[{ label: 'Hour', value: '' }, ...HOURS.map((hour) => ({ label: hour, value: hour }))]} /></View>
           <Text style={styles.timeSeparator}>:</Text>
-          <View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
+          <View style={[styles.secondsBox, verificationStyles.control, layoutStyle && popupStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
           <Text style={styles.timeSeparator}>:</Text>
-          <View style={[styles.secondsBox, verificationStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
+          <View style={[styles.secondsBox, verificationStyles.control, layoutStyle && popupStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
         </View>
       </View>
     );
@@ -1024,13 +1086,13 @@ function VerificationFormField({ field, form, setForm }: { field: typeof FIELDS[
   const optionLabel = (option: string) => field.key === 'ageGroup' ? AGE_GROUP_LABELS[option] : field.key === 'profession' ? PROFESSION_LABELS[option] : field.key === 'meetingWith' ? option === 'SELF' ? 'Self' : 'With someone' : option;
   if (options) {
     return (
-      <View style={[styles.field, tone, verificationStyles.field]}>
+      <View style={[styles.field, tone, verificationStyles.field, layoutStyle]}>
         <Text style={styles.fieldLabel}>{field.label}</Text>
-        <View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue={form[field.key]} onValueChange={update} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Select an option" value="" color={pickerOptionColor} />{options.map((option) => <Picker.Item key={option} label={optionLabel(option)} value={option} color={pickerOptionColor} />)}</Picker></View>
+        <VerificationDropdown label={field.label} value={form[field.key]} onChange={update} options={[{ label: 'Select an option', value: '' }, ...options.map((option) => ({ label: optionLabel(option), value: option }))]} />
       </View>
     );
   }
-  return <View style={[styles.field, tone, verificationStyles.field]}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={[styles.input, verificationStyles.input]} /></View>;
+  return <View style={[styles.field, tone, verificationStyles.field, layoutStyle]}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={[styles.input, verificationStyles.input, layoutStyle && popupStyles.control]} /></View>;
 }
 
 /* ───────────────────────── Table header with column filters ───────────────────────── */
@@ -1105,7 +1167,7 @@ function Cards({ items, empty, action, onOpen, verified = false, taskOnly = fals
     {onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : taskOnly ? null : <View style={styles.desktopActionColumn} />}
   </View>)}</View>;
 }
-function Details({ meeting: m, visitOnly = false }: { meeting: MeetingResponse; visitOnly?: boolean }) {
+function Details({ meeting: m, visitOnly = false, presentation }: { meeting: MeetingResponse; visitOnly?: boolean; presentation?: 'sidebar' | 'summary' }) {
   const meetingPlace = m.meetingLocation ?? m.location ?? m.address;
   const mapUrl = mapUrlFor(m);
   const overviewFields: [string, unknown][] = [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate]];
@@ -1120,6 +1182,17 @@ function Details({ meeting: m, visitOnly = false }: { meeting: MeetingResponse; 
     contactFields.push(['Joined With', m.aloneWith]);
     if (clientDetails) contactFields.push(['Client Details', clientDetails]);
   }
+  if (presentation === 'summary') return <View style={popupStyles.summaryGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[popupStyles.summaryCard, index === 3 && popupStyles.summaryStatus]}><Icon source={index === 3 ? 'chart-timeline-variant' : 'calendar-outline'} size={20} color="#2563EB" /><View style={popupStyles.summaryCopy}><Text style={popupStyles.label}>{label}</Text><Text numberOfLines={index === 3 ? 1 : undefined} adjustsFontSizeToFit={index === 3} minimumFontScale={0.8} style={[popupStyles.value, index === 3 && popupStyles.statusValue]}>{show(field)}</Text></View></View>)}</View>;
+  if (presentation === 'sidebar') return <View style={popupStyles.sidebarCards}>
+    <View style={popupStyles.infoCard}><View style={popupStyles.formHeading}><Icon source="account-box-outline" size={20} color="#2563EB" /><Text style={popupStyles.cardTitle}>Client Information</Text></View>
+      {contactFields.map(([label, field]) => <View key={label} style={popupStyles.contactRow}><Text style={popupStyles.contactLabel}>{label}</Text><Text style={popupStyles.contactValue}>{show(field)}</Text></View>)}
+    </View>
+    {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={popupStyles.remarks}><View style={popupStyles.formHeading}><Icon source="comment-text-outline" size={18} color="#A16207" /><Text style={popupStyles.cardTitle}>Remarks</Text></View><Text style={popupStyles.bodyText}>{show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)}</Text></View> : null}
+    {meetingPlace || mapUrl ? <View style={popupStyles.locationCard}>
+      {meetingPlace ? <><View style={popupStyles.formHeading}><Icon source="map-marker-outline" size={20} color="#2563EB" /><Text style={popupStyles.cardTitle}>{m.isClientMeeting ? 'Client Location' : 'Meeting Location'}</Text></View><Text style={popupStyles.bodyText}>{show(meetingPlace)}</Text></> : null}
+      {mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={popupStyles.mapButton}><Icon source="google-maps" size={18} color="#2563EB" /><Text style={popupStyles.mapText}>Open in Google Maps</Text></Pressable> : null}
+    </View> : null}
+  </View>;
   return <View style={styles.detailsWrap}>
     <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
     <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, label === 'Joined With' && styles.contactCardCompact, label === 'Client Details' && styles.clientDetailsContactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={label === 'Client Details' ? undefined : 1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
