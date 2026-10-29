@@ -19,7 +19,32 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 - React Native Paper
 - Web, Android, and iOS targets
 
-## Latest updates — 21 September 2026
+## Latest updates - 29 October 2026
+
+- Split Sales Manager tasks into focused styles, constants, date helpers, mappers, filters, dropdown, types, and state-hook modules under `src/modules/salesManager/tasks/`.
+- SM task mount/refresh now loads prospects and meetings only. Removed client work-follow requests and the Clients filter because client tasks are not enabled for SM.
+- Fixed nested HTML buttons in web task cards while preserving separate details/update actions and native card behavior.
+- Split the coordinator workspace into forms, table, calendars, details/history, loading, filters, export, storage, types, constants, and controls under `src/screens/salesCoordinator/`. Main screen state, refresh, assignment, and verification orchestration remain in place.
+- Coordinator desktop verification forms show four fields per row. Meeting Time displays only the hour and still submits `HH:00:00`. The date placeholder is **Select date**.
+- Verified meeting rows use a compact **Details** action and extra Conducted / Verified By spacing.
+- Added 20 regression tests for task logic/loading/actions and coordinator filters/forms/storage/pagination/CSV helpers.
+- Added the [codebase file guide](Blueant-ERP-Codebase-File-Guide.pdf), with short Hinglish file explanations. It is a file guide, not a role-by-role permission reference.
+
+### Refactor validation
+
+```bash
+npx tsc --noEmit
+node --test src/modules/salesManager/tasks/__tests__/taskLogic.test.cjs src/modules/salesManager/tasks/__tests__/taskCard.test.cjs src/modules/salesManager/tasks/__tests__/smTaskLoading.test.cjs src/screens/salesCoordinator/__tests__/coordinatorLogic.test.cjs
+npm run export:web
+```
+
+If Metro cannot resolve newly extracted files, restart with `npx expo start --web --clear`.
+
+### Documentation maintenance
+
+Update this README with relevant behavior, structure, and validation changes before each requested GitHub push.
+
+## Previous updates — 21 September 2026
 
 - Sales Coordinator screens no longer display Excel export buttons.
 - The Assign New Lead employee dropdown shows `EMPLOYEE_CODE - Sales Person Name` when live employee data is available; its submitted value remains only the employee code.

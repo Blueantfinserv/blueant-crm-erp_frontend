@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { GestureResponderEvent, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { GestureResponderEvent, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../../theme/theme';
 import { SalesTask } from '../types/tasks';
@@ -41,8 +41,9 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
 
   return (
     <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Open details for ${task.name}, ${task.taskLabel}`}
+      accessibilityRole={Platform.OS === 'web' ? undefined : 'button'}
+      focusable={Platform.OS !== 'web'}
+      accessibilityLabel={Platform.OS === 'web' ? undefined : `Open details for ${task.name}, ${task.taskLabel}`}
       onPress={() => onOpenDetails?.(task)}
       style={({ pressed }) => [
         styles.card,
@@ -53,7 +54,19 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
       <View style={styles.header}>
         <View style={styles.identity}>
           <View style={[styles.kindMarker, task.taskKind === 'CLIENT' && styles.clientKindMarker]}><Text style={[styles.kindMarkerText, task.taskKind === 'CLIENT' && styles.clientKindMarkerText]}>{task.taskKind === 'CLIENT' ? 'C' : 'P'}</Text></View>
-          <Text numberOfLines={1} style={styles.name}>{task.name}</Text>
+          {Platform.OS === 'web' ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open details for ${task.name}, ${task.taskLabel}`}
+              onPress={(event) => {
+                event.stopPropagation();
+                onOpenDetails?.(task);
+              }}
+              style={styles.nameAction}
+            >
+              <Text numberOfLines={1} style={styles.name}>{task.name}</Text>
+            </Pressable>
+          ) : <Text numberOfLines={1} style={styles.name}>{task.name}</Text>}
           <View style={styles.contactActions}>
             {task.hasLocationPin ? (
               <Pressable
@@ -202,6 +215,7 @@ const styles = StyleSheet.create({
   clientKindMarker: { backgroundColor: '#ECFDF5' },
   kindMarkerText: { color: '#C2410C', fontSize: 11, fontWeight: '900' },
   clientKindMarkerText: { color: '#0F766E' },
+  nameAction: { minWidth: 0, flex: 1 },
   name: { minWidth: 0, flex: 1, color: theme.colors.text, fontSize: 13, lineHeight: 18, fontWeight: '900' },
   contactActions: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   contactButton: {

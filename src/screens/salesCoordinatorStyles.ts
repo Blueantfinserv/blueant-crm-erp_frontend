@@ -414,7 +414,7 @@ export const popupStyles = StyleSheet.create({
   formTitle: { color: '#172B50', fontSize: 15, fontWeight: '800', flex: 1 },
   formGrid: { columnGap: 8, rowGap: 8, elevation: 0, zIndex: 1 },
   control: { height: 40, minHeight: 40, borderRadius: 9, minWidth: 0 },
-  formField: { width: undefined, minWidth: 0, flexBasis: 195, flexGrow: 1, flexShrink: 1, padding: 0, backgroundColor: 'transparent' },
+  formField: { width: undefined, minWidth: 0, flexBasis: '23%', flexGrow: 1, flexShrink: 1, padding: 0, backgroundColor: 'transparent' },
   footer: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   submitWrap: { width: '100%', flexGrow: 1, minWidth: 0 },
   submit: { backgroundColor: '#2563EB', minHeight: 44, borderRadius: 11 },
