@@ -21,6 +21,19 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 
 ## Latest updates - 29 October 2026
 
+### PC mobile workspace improvements
+
+- PC mobile navigation now lives in the hamburger menu: Today Meetings, Verified Meetings, Sales Person Tasks, Assign New Lead, and Assigned Leads. Dashboard is omitted; My Profile and Logout remain available. Desktop navigation and other role menus retain their existing behavior.
+- Compact counters, manual sync icon, countdown, list headings, and pagination leave more space for records. Mobile lists use 25 records per page.
+- Today and Verified meetings use compact colored rows with salesperson/role, conducted status, and Verify/Details actions. Verified rows retain meeting and next-plan dates.
+- Mobile sales tasks hide masked phone numbers and place the All/Today/Pending dropdown beside search.
+- Assigned-lead filters expand below search into one Date/Coordinator/Salesperson row. Compact lead summaries open full history through Details.
+- The mobile assignment form keeps one column with shorter controls, consistent dropdown styling, and highlighted focus borders.
+- Mobile verification has a fixed top-right close button and a fixed submit footer. Two-column fields and collapsible client/history sections reduce scrolling.
+- Added MobileWorkspaceHeader.tsx, MobileMeetingCards.tsx, and MobileDetailSection.tsx for these mobile layouts.
+- Today verification popups omit the read-only backend Meeting Date because the salesperson workflow does not submit an authoritative conducted date. The PC-selected verification date and Verified Meetings date displays remain available.
+
+
 - Split Sales Manager tasks into focused styles, constants, date helpers, mappers, filters, dropdown, types, and state-hook modules under `src/modules/salesManager/tasks/`.
 - SM task mount/refresh now loads prospects and meetings only. Removed client work-follow requests and the Clients filter because client tasks are not enabled for SM.
 - Fixed nested HTML buttons in web task cards while preserving separate details/update actions and native card behavior.

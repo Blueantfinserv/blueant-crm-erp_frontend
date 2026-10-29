@@ -1,14 +1,15 @@
-import { Linking,Pressable,Text,View } from 'react-native';
+import { Linking,Pressable,Text,useWindowDimensions,View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import type { MeetingResponse } from '../../../types/meeting';
 import { popupStyles,styles } from '../../salesCoordinatorStyles';
 import { FIELDS } from '../coordinatorConstants';
 import { employeeRoleLabels,mapUrlFor,maskedMobile,show,timeText } from '../coordinatorUtils';
 
-export function Details({ meeting: m, visitOnly = false, presentation }: { meeting: MeetingResponse; visitOnly?: boolean; presentation?: 'sidebar' | 'summary' }) {
+export function Details({ meeting: m, visitOnly = false, presentation, hideMeetingDate = false }: { meeting: MeetingResponse; visitOnly?: boolean; hideMeetingDate?: boolean; presentation?: 'sidebar' | 'summary' }) {
+  const compact = useWindowDimensions().width < 760;
   const meetingPlace = m.meetingLocation ?? m.location ?? m.address;
   const mapUrl = mapUrlFor(m);
-  const overviewFields: [string, unknown][] = [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Date', m.meetingDate], ['Next Plan Date', m.nextMeetingDate]];
+  const overviewFields: [string, unknown][] = [['Meeting Type', m.meetingTitle ?? m.meetingType], ...(!hideMeetingDate ? [['Meeting Date', m.meetingDate] as [string, unknown]] : []), ['Next Plan Date', m.nextMeetingDate]];
   if (!visitOnly) overviewFields.push(['Lead Status', m.leadStatus?.replace(/_/g, ' ')]);
   const employeeLabels = employeeRoleLabels(m);
   const clientDetails = m.isClientMeeting && (m.clinicAddress || m.speciality) ? [m.speciality, m.clinicAddress].filter(Boolean).join(' · ') : '';
@@ -20,7 +21,7 @@ export function Details({ meeting: m, visitOnly = false, presentation }: { meeti
     contactFields.push(['Joined With', m.aloneWith]);
     if (clientDetails) contactFields.push(['Client Details', clientDetails]);
   }
-  if (presentation === 'summary') return <View style={popupStyles.sidebarCards}><View style={popupStyles.summaryGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[popupStyles.summaryCard, index === 3 && popupStyles.summaryStatus]}><Icon source={index === 3 ? 'chart-timeline-variant' : 'calendar-outline'} size={20} color="#2563EB" /><View style={popupStyles.summaryCopy}><Text style={popupStyles.label}>{label}</Text><Text numberOfLines={index === 3 ? 1 : undefined} adjustsFontSizeToFit={index === 3} minimumFontScale={0.8} style={[popupStyles.value, index === 3 && popupStyles.statusValue]}>{show(field)}</Text></View></View>)}</View>
+  if (presentation === 'summary') return <View style={popupStyles.sidebarCards}><View style={popupStyles.summaryGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[popupStyles.summaryCard, compact && { flexBasis: '46%', padding: 8, gap: 6 }, label === 'Lead Status' && popupStyles.summaryStatus]}><Icon source={label === 'Lead Status' ? 'chart-timeline-variant' : 'calendar-outline'} size={20} color="#2563EB" /><View style={popupStyles.summaryCopy}><Text style={popupStyles.label}>{label}</Text><Text numberOfLines={label === 'Lead Status' ? 1 : undefined} adjustsFontSizeToFit={label === 'Lead Status'} minimumFontScale={0.8} style={[popupStyles.value, label === 'Lead Status' && popupStyles.statusValue]}>{show(field)}</Text></View></View>)}</View>
     {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={popupStyles.remarks}><View style={popupStyles.formHeading}><Icon source="comment-text-outline" size={18} color="#A16207" /><Text style={popupStyles.cardTitle}>Remarks</Text></View><Text style={popupStyles.bodyText}>{show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)}</Text></View> : null}
   </View>;
   if (presentation === 'sidebar') return <View style={popupStyles.sidebarCards}>
@@ -33,7 +34,7 @@ export function Details({ meeting: m, visitOnly = false, presentation }: { meeti
     </View> : null}
   </View>;
   return <View style={styles.detailsWrap}>
-    <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, index === 3 && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
+    <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, label === 'Lead Status' && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
     <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, label === 'Joined With' && styles.contactCardCompact, label === 'Client Details' && styles.clientDetailsContactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={label === 'Client Details' ? undefined : 1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
     <View style={styles.contextGrid}>
       {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)}</Text></View> : null}
@@ -44,7 +45,8 @@ export function Details({ meeting: m, visitOnly = false, presentation }: { meeti
 }
 
 export function DetailGrid({ fields }: { fields: readonly (readonly [string, unknown])[] }) {
-  return <View style={styles.detailGrid}>{fields.map(([label, value]) => <View key={label} style={styles.detail}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View>;
+  const compact = useWindowDimensions().width < 760;
+  return <View style={styles.detailGrid}>{fields.map(([label, value]) => <View key={label} style={[styles.detail, compact && { flexBasis: '46%', paddingHorizontal: 8, paddingVertical: 7 }]}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View>;
 }
 
 export function VerificationDetails({ meeting: m }: { meeting: MeetingResponse }) {

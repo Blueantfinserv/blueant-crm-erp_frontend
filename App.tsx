@@ -1,5 +1,7 @@
+import type { Tab as CoordinatorTab } from './src/screens/salesCoordinator/coordinatorTypes';
+import { TABS as COORDINATOR_TABS } from './src/screens/salesCoordinator/coordinatorConstants';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Modal, Platform, Pressable, SafeAreaView, StatusBar, StyleSheet } from 'react-native';
+import { Animated, Easing, Modal, Platform, Pressable, SafeAreaView, StatusBar, StyleSheet, useWindowDimensions } from 'react-native';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { en, registerTranslation } from 'react-native-paper-dates';
 import { AuthProvider } from './src/context/AuthProvider';
@@ -99,6 +101,8 @@ function ThemeAwarePaperProvider() {
 }
 
 function AppShell() {
+  const { width: viewportWidth } = useWindowDimensions();
+  const [coordinatorTab, setCoordinatorTab] = useState<CoordinatorTab>('today');
   const { isDark } = useAppTheme();
   const auth = useAuth();
   const backendRole = auth.user?.role;
@@ -354,9 +358,11 @@ function AppShell() {
           activeTab,
           onTabPress: (tab: TopTabItem) => { setActiveTab(tab.key); navigate(tab.route); },
         } : {})}
-        {...(options.salesMenu && isSalesWorkspaceExperience(experience)
-          ? { salesPersonMenu, onSalesPersonMenuSelect }
-          : {})}
+        {...(experience === 'SALES_COORDINATOR' && viewportWidth < 760
+          ? { salesPersonMenu: [...COORDINATOR_TABS.map(item => ({ key: item.key, label: item.label })), { key: 'profile', label: 'My Profile' }], onSalesPersonMenuSelect: (key: string) => { if (COORDINATOR_TABS.some(item => item.key === key)) { setCoordinatorTab(key as CoordinatorTab); navigate('dashboard'); } } }
+          : options.salesMenu && isSalesWorkspaceExperience(experience)
+            ? { salesPersonMenu, onSalesPersonMenuSelect }
+            : {})}
         contentScrollable={options.scrollable}
         onLogout={handleLogout}
         modules={moduleItems}
@@ -398,7 +404,7 @@ function AppShell() {
       case 'dashboard':
         return renderShell(
           experience === 'SALES_COORDINATOR' ? (
-            <SalesCoordinatorScreen permissions={auth.user?.permissions} />
+            <SalesCoordinatorScreen permissions={auth.user?.permissions} activeTab={coordinatorTab} onTabChange={setCoordinatorTab} />
           ) : experience === 'CRM_ONBOARDING' ? (
             <CrmOnboardingScreen />
           ) : activeModule === 'sales' ? (
@@ -525,7 +531,7 @@ function AppShell() {
       default:
         return null;
     }
-  }, [activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, message, salesTaskFilter, salesTaskScreenKey, salesTaskView, screen, selectedDashboardListId, selectedSalesTask]);
+  }, [coordinatorTab, viewportWidth, activeModule, activeTab, auth, backendRole, comingSoonModule, experience, followups, message, salesTaskFilter, salesTaskScreenKey, salesTaskView, screen, selectedDashboardListId, selectedSalesTask]);
 
   return (
     <SafeAreaView style={[styles.root, isDark && Platform.OS !== 'web' && styles.rootDark]}>

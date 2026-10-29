@@ -1,3 +1,4 @@
+import { MobileWorkspaceHeader } from './salesCoordinator/components/MobileWorkspaceHeader';
 import { useCallback,useEffect,useMemo,useRef,useState } from 'react';
 import { ActivityIndicator,Alert,Modal,Platform,Pressable,ScrollView,Text,TextInput,useWindowDimensions,View } from 'react-native';
 import { Icon } from 'react-native-paper';
@@ -27,11 +28,15 @@ import { belongsToCoordinatorTeam,clientMeetingTime,digitsOnly,isAlreadyAssigned
 import { loadStoredVerifiedClientMeetings,mergeVerifiedMeetings,saveStoredVerifiedClientMeetings } from './salesCoordinator/verifiedMeetingStorage';
 import { popupStyles,styles } from './salesCoordinatorStyles';
 
-export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly string[] | null }) {
+export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: { permissions?: readonly string[] | null; activeTab?: Tab; onTabChange?: (tab: Tab) => void }) {
   const { isDark } = useAppTheme();
   const { width: windowWidth } = useWindowDimensions();
   const compact = windowWidth < 760;
-  const [tab, setTab] = useState<Tab>('today');
+  const pageSize = compact ? 25 : PAGE_SIZE;
+  const [mobileMeetingPage, setMobileMeetingPage] = useState(0);
+  const [localTab, setLocalTab] = useState<Tab>('today');
+  const tab = activeTab ?? localTab;
+  const setTab = (value: Tab) => { setLocalTab(value); onTabChange?.(value); };
   const [pending, setPending] = useState<MeetingResponse[]>([]);
   const [verified, setVerified] = useState<MeetingResponse[]>([]);
   const [meetings, setMeetings] = useState<MeetingResponse[]>([]);
@@ -287,7 +292,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     });
     return filterMeetingRecords(matchingTasks, taskColumnFilters);
   }, [statusFilter, tab, taskColumnFilters, taskRecords, taskSearch]);
-  const pagedTasks = useMemo(() => filteredTasks.slice(taskPage * PAGE_SIZE, (taskPage + 1) * PAGE_SIZE), [filteredTasks, taskPage]);
+  const pagedTasks = useMemo(() => filteredTasks.slice(taskPage * pageSize, (taskPage + 1) * pageSize), [filteredTasks, taskPage, pageSize]);
   const visibleTodayMeetings = useMemo(() => filterMeetingRecords(pending, todayColumnFilters), [pending, todayColumnFilters]);
   const visibleVerifiedMeetings = useMemo(() => filterMeetingRecords(verified.filter((meeting) => matchesSearch(meeting.clientName, responseSearch) || matchesSearch(meeting.mobileNumber, responseSearch)), responseColumnFilters), [responseColumnFilters, responseSearch, verified]);
   const visibleAssignedLeads = useMemo(() => assignedLeads.filter((lead) => (
@@ -297,11 +302,11 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     && (!assignedSalesPersonFilter || lead.assignedEmployeeName === assignedSalesPersonFilter)
     && matchesAssignedDate(lead.assignedAt, assignedDateRange)
   )), [assignedDateRange, assignedLeads, assignedSalesPersonFilter, assignedSearch, coordinatorFilter]);
-  const pagedAssignedLeads = useMemo(() => visibleAssignedLeads.slice(assignedLeadsPage * PAGE_SIZE, (assignedLeadsPage + 1) * PAGE_SIZE), [assignedLeadsPage, visibleAssignedLeads]);
+  const pagedAssignedLeads = useMemo(() => visibleAssignedLeads.slice(assignedLeadsPage * pageSize, (assignedLeadsPage + 1) * pageSize), [assignedLeadsPage, visibleAssignedLeads, pageSize]);
   useEffect(() => { setTaskPage(0); }, [taskSearch, statusFilter, taskColumnFilters]);
   useEffect(() => { setAssignedLeadsPage(0); }, [assignedSearch, coordinatorFilter, assignedSalesPersonFilter, assignedDateRange]);
-  useEffect(() => { setTaskPage((page) => Math.min(page, Math.max(0, Math.ceil(filteredTasks.length / PAGE_SIZE) - 1))); }, [filteredTasks.length]);
-  useEffect(() => { setAssignedLeadsPage((page) => Math.min(page, Math.max(0, Math.ceil(visibleAssignedLeads.length / PAGE_SIZE) - 1))); }, [visibleAssignedLeads.length]);
+  useEffect(() => { setTaskPage((page) => Math.min(page, Math.max(0, Math.ceil(filteredTasks.length / pageSize) - 1))); }, [filteredTasks.length, pageSize]);
+  useEffect(() => { setAssignedLeadsPage((page) => Math.min(page, Math.max(0, Math.ceil(visibleAssignedLeads.length / pageSize) - 1))); }, [visibleAssignedLeads.length, pageSize]);
   const taskSalesPeople = useMemo(() => new Set(assignedLeads.map((lead) => lead.assignedEmployeeCode ?? lead.assignedEmployeeName).filter(Boolean)).size, [assignedLeads]);
 
   const assignLead = async () => {
@@ -480,20 +485,25 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
     : tab === 'tasks' ? `Showing ${filteredTasks.length} of ${taskRecords.length} active tasks`
     : tab === 'assignedLeads' ? `Showing ${visibleAssignedLeads.length} of ${assignedLeads.length} assigned leads`
     : 'Create a physical lead and assign it to a sales person';
+  const mobileMeetings = tab === 'responses' ? visibleVerifiedMeetings : visibleTodayMeetings;
+  const mobileMeetingPages = Math.max(1, Math.ceil(mobileMeetings.length / 25));
+  const safeMobilePage = Math.min(mobileMeetingPage, mobileMeetingPages - 1);
+  useEffect(() => { setMobileMeetingPage(0); }, [tab, responseSearch, responseColumnFilters, todayColumnFilters]);
+  const mobilePageItems = mobileMeetings.slice(safeMobilePage * 25, (safeMobilePage + 1) * 25);
   const hasAssignedFilters = Boolean(assignedSearch || coordinatorFilter || assignedSalesPersonFilter || assignedDateRange.from || assignedDateRange.to);
   const clearAssignedFilters = () => { setAssignedSearch(''); setCoordinatorFilter(''); setAssignedSalesPersonFilter(''); setAssignedDateRange({ from: '', to: '' }); };
 
   return <View style={[styles.page, compact && styles.pageCompact]}>
     <View style={styles.topSection}>
-      <View style={[styles.workspaceHeader, compact && styles.workspaceHeaderCompact]}>{compact ? <><View style={styles.mobileHeaderTopRow}>{metricsBlock}{syncBlock}</View><View style={styles.mobileTabRow}>{TABS.slice(0, 3).map(renderTab)}</View><View style={styles.mobileTabRow}>{TABS.slice(3).map(renderTab)}</View></> : <>{metricsBlock}<View style={[styles.tabs, styles.workspaceTabs]}>{TABS.map(renderTab)}</View>{syncBlock}</>}</View>
+      {compact ? <MobileWorkspaceHeader hideTabs pendingCount={pending.length} salesPeopleCount={taskSalesPeople} tab={tab} onTabChange={setTab} onSync={() => void load(true)} refreshing={refreshing} submitting={submitting} nextRefreshAt={nextRefreshAt} nextVerifiedRefreshAt={nextVerifiedRefreshAt} nextTaskRefreshAt={nextTaskRefreshAt} nextAssignedLeadsRefreshAt={nextAssignedLeadsRefreshAt} /> : <View style={styles.workspaceHeader}>{metricsBlock}<View style={[styles.tabs, styles.workspaceTabs]}>{TABS.map(renderTab)}</View>{syncBlock}</View>}
       {refreshError ? <Text style={styles.error}>Sync failed. Retrying automatically in 10 seconds.</Text> : null}
     </View>
     <View style={styles.contentPanel}>
-      <View style={styles.contentHeading}>
-        <View style={[styles.contentHeadingRow, compact && styles.contentHeadingRowCompact]}>
+      <View style={[styles.contentHeading, compact && { paddingHorizontal: 10, paddingVertical: 7 }]}>
+        <View style={[styles.contentHeadingRow, compact && styles.contentHeadingRowCompact, compact && { gap: 5 }]}>
           <View>
-            <Text style={styles.contentTitle}>{TABS.find((item) => item.key === tab)?.label}</Text>
-            <Text style={styles.contentSubtitle}>{subtitle}</Text>
+            <Text style={[styles.contentTitle, compact && { fontSize: 16, lineHeight: 20 }]}>{TABS.find((item) => item.key === tab)?.label}</Text>
+            <Text style={[styles.contentSubtitle, compact && { fontSize: 11, lineHeight: 15 }]}>{subtitle}</Text>
           </View>
           {tab === 'responses' ? <TextInput value={responseSearch} onChangeText={setResponseSearch} placeholder="Search lead name or number" placeholderTextColor="#CBD9FF" style={[styles.headerSearch, compact && styles.headerSearchCompact]} /> : null}
           {tab === 'tasks' && !loading && !error ? <TaskToolbar search={taskSearch} onSearch={setTaskSearch} status={statusFilter} onStatus={setStatusFilter} /> : null}
@@ -510,34 +520,35 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         <View>
           {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
           {loading || tabLoading === 'tasks' ? <State loading progress={loading ? loadingProgress : tabLoadingProgress} message="Loading sales person tasks..." /> : error ? <State message={error} /> : null}
-          {!loading && tabLoading !== 'tasks' && !error ? <><Cards taskOnly items={pagedTasks} empty="No meeting tasks match these filters." /><Pagination page={taskPage} total={filteredTasks.length} onPageChange={setTaskPage} /></> : null}
+          {!loading && tabLoading !== 'tasks' && !error ? <><Cards taskOnly items={pagedTasks} empty="No meeting tasks match these filters." />{!compact ? <Pagination page={taskPage} total={filteredTasks.length} onPageChange={setTaskPage} /> : null}</> : null}
         </View>
       </ScrollView> : <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator={tab === 'responses'} stickyHeaderIndices={tab === 'responses' ? [0] : undefined}>
         <View style={tab === 'responses' ? styles.verifiedStickyHeader : undefined}>{!compact && !loading && !error && tab === 'responses' ? <MeetingTableHeader verified records={verified} filters={responseColumnFilters} onFiltersChange={setResponseColumnFilters} /> : null}</View>
         {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
         {loading ? <State loading progress={loadingProgress} message="Loading coordinator workspace..." /> : tabLoading === 'assignedLeads' ? <State loading progress={tabLoadingProgress} message="Loading assigned leads..." /> : error ? <State message={error} /> : null}
-        {!loading && !error && tab === 'today' ? <Cards hideMeetingDate items={visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
-        {!loading && !error && tab === 'responses' ? <Cards items={visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="Details" onOpen={setSelected} verified /> : null}
+        {!loading && !error && tab === 'today' ? <Cards hideMeetingDate items={compact ? mobilePageItems : visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
+        {!loading && !error && tab === 'responses' ? <Cards items={compact ? mobilePageItems : visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="Details" onOpen={setSelected} verified /> : null}
         {!loading && !error && tab === 'assign' ? <AssignLeadForm compact={compact} form={assignForm} setForm={setAssignForm} assigning={assigning} message={assignMessage} salesPersonNamesByCode={salesPersonNamesByCode} onSubmit={() => void assignLead()} /> : null}
-        {!loading && tabLoading !== 'assignedLeads' && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} onOpen={openLeadHistory} /><Pagination page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /></> : null}
+        {!loading && tabLoading !== 'assignedLeads' && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} onOpen={openLeadHistory} />{!compact ? <Pagination page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /> : null}</> : null}
       </ScrollView>}
+      {compact && !loading && !error && tab !== 'assign' ? <Pagination compact pageSize={25} page={tab === 'tasks' ? taskPage : tab === 'assignedLeads' ? assignedLeadsPage : safeMobilePage} total={tab === 'tasks' ? filteredTasks.length : tab === 'assignedLeads' ? visibleAssignedLeads.length : mobileMeetings.length} onPageChange={tab === 'tasks' ? setTaskPage : tab === 'assignedLeads' ? setAssignedLeadsPage : setMobileMeetingPage} /> : null}
     </View>
-    <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={styles.backdrop}><View nativeID="blueant-workflow-modal" style={[styles.modal, selected && tab !== 'responses' && !selected.isClientMeeting && [popupStyles.modal, { width: Math.min(1100, Math.max(0, windowWidth - 48)) }]]}>
+    <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={[styles.backdrop, compact && { padding: 10 }]}><View nativeID="blueant-workflow-modal" style={[styles.modal, selected && tab !== 'responses' && !selected.isClientMeeting && [popupStyles.modal, { width: Math.min(1100, Math.max(0, windowWidth - 48)) }]]}>
       {selected && tab !== 'responses' && !selected.isClientMeeting ? (
         <LeadVerificationPopup meeting={selected} form={form} setForm={setForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} onClose={() => setSelected(null)} />
       ) : <>
-      <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
-      <ScrollView contentContainerStyle={styles.modalBody}>
-        {selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} /> : null}
+      <View style={[styles.modalHeader, compact && { paddingRight: 52 }]}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={[styles.close, compact && { position: 'absolute', top: 10, right: 10 }]}><Icon source="close" size={22} color="#334155" /></Pressable></View>
+      <ScrollView contentContainerStyle={[styles.modalBody, compact && { padding: 10, gap: 9 }]}>
+        {selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} hideMeetingDate={tab === 'today'} /> : null}
         {tab === 'responses' && selected ? selected.isClientMeeting ? <ClientVerificationDetails meeting={selected} /> : <VerificationDetails meeting={selected} />
           : selected?.isClientMeeting ? <ClientVerificationFields meeting={selected} form={clientForm} setForm={setClientForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} />
           : null}
       </ScrollView>
       </>}
     </View></View></Modal>
-    <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={styles.backdrop}><View nativeID="blueant-workflow-modal" style={styles.modal}>
-      <View style={styles.modalHeader}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={styles.close}><Icon source="close" size={22} color="#334155" /></Pressable></View>
-      <ScrollView contentContainerStyle={styles.modalBody}>{historyLead ? <LeadHistoryContent lead={historyLead} meetings={historyMeetings} loading={historyLoading} progress={historyLoadingProgress} error={historyError} /> : null}</ScrollView>
+    <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={[styles.backdrop, compact && { padding: 10 }]}><View nativeID="blueant-workflow-modal" style={styles.modal}>
+      <View style={[styles.modalHeader, compact && { paddingRight: 52 }]}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={[styles.close, compact && { position: 'absolute', top: 10, right: 10 }]}><Icon source="close" size={22} color="#334155" /></Pressable></View>
+      <ScrollView contentContainerStyle={[styles.modalBody, compact && { padding: 10, gap: 9 }]}>{historyLead ? <LeadHistoryContent lead={historyLead} meetings={historyMeetings} loading={historyLoading} progress={historyLoadingProgress} error={historyError} /> : null}</ScrollView>
     </View></View></Modal>
   </View>;
 }

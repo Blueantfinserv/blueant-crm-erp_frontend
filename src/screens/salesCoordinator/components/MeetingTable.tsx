@@ -1,3 +1,4 @@
+import { MobileMeetingCards } from './MobileMeetingCards';
 import { useState } from 'react';
 import { Modal,Pressable,ScrollView,Text,useWindowDimensions,View } from 'react-native';
 import { Icon } from 'react-native-paper';
@@ -55,7 +56,7 @@ export function MeetingTableHeader({ verified = false, taskOnly = false, hideMee
 export function Cards({ items, empty, action, onOpen, verified = false, taskOnly = false, hideMeetingDate = false }: { items: readonly MeetingResponse[]; empty: string; action?: string; onOpen?: (m: MeetingResponse) => void; verified?: boolean; taskOnly?: boolean; hideMeetingDate?: boolean }) {
   const compact = useWindowDimensions().width < 760;
   if (!items.length) return <State message={empty} />;
-  if (compact) return <View style={styles.list}>{items.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.mobileRow, i % 2 === 1 && styles.listRowAlternate]}><View style={styles.personCell}><View style={styles.cellCopy}><Text style={styles.client}>{show(m.clientName)}</Text><Text style={styles.code}>{show(maskedMobile(m.mobileNumber))}</Text></View></View><View style={styles.mobileMeeting}><Text style={styles.cellMain}>{show(m.meetingTitle ?? m.meetingType)}</Text><Text style={styles.cellSub}>{show(m.meetingDate)} · {show(m.nextMeetingDate)}{verified ? ` · Verified by ${show(m.verifiedBy)}` : ''}</Text></View>{onOpen ? <Pressable onPress={() => onOpen(m)} style={styles.mobileAction}><Icon source="chevron-right" size={16} color="#3156C8" /></Pressable> : null}</View>)}</View>;
+  if (compact) return <MobileMeetingCards hideMobileNumber={taskOnly} items={items} action={action} onOpen={onOpen} verified={verified} />;
   const columns = (taskOnly ? [
     ['MEETING TYPE', (m: MeetingResponse) => m.meetingTitle ?? m.meetingType],
     ['ASSIGNED TO', (m: MeetingResponse) => m.employeeName],

@@ -77,7 +77,7 @@ export function TopNavigation({
   ].filter((field) => Boolean(field.value));
 
   return (
-    <View style={[styles.shell, isCompact && styles.shellCompact]}>
+    <View style={[styles.shell, isCompact && styles.shellCompact, isCompact && user?.role === 'PC_COORDINATOR' && { paddingVertical: 3 }]}>
       {!isCompact ? (
         <>
           <View pointerEvents="none" style={styles.blobWrap}>

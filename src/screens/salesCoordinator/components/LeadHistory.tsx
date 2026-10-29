@@ -1,4 +1,5 @@
-import { Linking,Platform,Pressable,Text,View } from 'react-native';
+import { MobileDetailSection } from './MobileDetailSection';
+import { Linking,Platform,Pressable,Text,useWindowDimensions,View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { useAppTheme } from '../../../theme/ThemeProvider';
 import type { LeadResponse } from '../../../types/lead';
@@ -37,6 +38,7 @@ export function LiveLocationButton({ url }: { url: string | null | undefined }) 
 }
 
 export function LeadHistoryContent({ lead, meetings, loading, progress, error }: { lead: LeadResponse; meetings: MeetingResponse[]; loading: boolean; progress: number; error: string | null }) {
+  const compact = useWindowDimensions().width < 760;
   const isDone = (m: MeetingResponse) => ['COMPLETED', 'VERIFIED'].includes(String(m.meetingStatus ?? m.verificationStatus ?? '').toUpperCase());
   const verifiedMeeting = meetings.find((m) => m.verificationStatus === 'VERIFIED' || Boolean(m.verifiedBy) || Boolean(m.meetingVerificationDate) || Boolean(m.ageGroup) || Boolean(m.profession));
   const latest = meetings.find((m) => isDone(m) && (m.remarks || m.meetingRemarks || m.discussion));
@@ -46,14 +48,14 @@ export function LeadHistoryContent({ lead, meetings, loading, progress, error }:
   const assignmentFields = [['Sales person', lead.assignedEmployeeName], ['Sales person ID', lead.assignedEmployeeCode], ['Sales coordinator', lead.assignedByEmployeeName], ['SC ID', lead.assignedByEmployeeCode], ['Assigned date', lead.assignedAt], ['Current status', lead.leadStatus?.replace(/_/g, ' ')]];
   const scFields = verifiedMeeting ? [['Verified by', verifiedMeeting.verifiedBy], ['Verification date', verifiedMeeting.meetingVerificationDate], ['Verification remarks', verifiedMeeting.verificationRemarks], ['Age group', verifiedMeeting.ageGroup], ['Prior investment', verifiedMeeting.existingSip], ['Profession', verifiedMeeting.profession], ['Firm / clinic', verifiedMeeting.professionDetail], ['Best time', verifiedMeeting.bestTimeForMeeting], ['Meeting date', verifiedMeeting.meetingDate], ['Meeting time', verifiedMeeting.meetingTiming], ['Alone / accompanied', verifiedMeeting.aloneWith], ['Meeting with', verifiedMeeting.meetingWith], ['Joined person', verifiedMeeting.personName], ['Position', verifiedMeeting.position]].filter(([, value]) => value !== undefined && value !== null && value !== '') : [];
   const section = (title: string, fields: (string | undefined)[][], tone: 'lead' | 'assignment' | 'verification') => <View style={[historyStyles.section, tone === 'lead' ? historyStyles.leadSection : tone === 'assignment' ? historyStyles.assignmentSection : historyStyles.verificationSection]}>
-    <Text style={historyStyles.sectionTitle}>{title}</Text>
-    <View style={styles.compactDetailGrid}>{fields.map(([label, value]) => <View key={label} style={[styles.detail, styles.compactDetail, historyStyles.detail]}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View>
+    {!compact ? <Text style={historyStyles.sectionTitle}>{title}</Text> : null}
+    <View style={styles.compactDetailGrid}>{fields.map(([label, value]) => <View key={label} style={[styles.detail, styles.compactDetail, historyStyles.detail, compact && { width: '47%', flexBasis: '47%', minWidth: 0, paddingHorizontal: 7, paddingVertical: 6 }]}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View>
     {tone === 'lead' ? <View style={historyStyles.latestRow}><View style={historyStyles.latestRemarks}><Text style={styles.label}>LATEST REMARKS</Text><Text numberOfLines={2} style={styles.detailValue}>{show(latestRemarks)}</Text></View><LiveLocationButton url={liveLocationUrl} /></View> : null}
   </View>;
   return <View style={styles.historyWrap}>
-    {section('Lead details', leadFields, 'lead')}
-    {section('Assignment details', assignmentFields, 'assignment')}
-    {section('PC verification details', scFields, 'verification')}
+    {compact ? <MobileDetailSection title="Lead details" initiallyOpen>{section('Lead details', leadFields, 'lead')}</MobileDetailSection> : section('Lead details', leadFields, 'lead')}
+    {compact ? <MobileDetailSection title="Assignment details">{section('Assignment details', assignmentFields, 'assignment')}</MobileDetailSection> : section('Assignment details', assignmentFields, 'assignment')}
+    {compact ? <MobileDetailSection title="PC verification details">{section('PC verification details', scFields, 'verification')}</MobileDetailSection> : section('PC verification details', scFields, 'verification')}
     <View style={styles.historyTitleRow}><Text style={styles.sectionTitle}>Meeting history</Text><Text style={styles.historyCount}>{loading ? 'Loading...' : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}`}</Text></View>
     {error ? <Text style={styles.error}>{error}</Text> : null}
     {loading ? <State loading progress={progress} message="Loading lead history..." /> : meetings.length ? <View style={historyStyles.meetingList}>{meetings.map((meeting, index) => <MeetingHistoryRow key={meeting.meetingCode ?? `${meeting.id ?? index}`} meeting={meeting} alternate={index % 2 === 1} />)}</View> : <State message="No meeting history is available for this lead yet." />}

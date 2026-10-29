@@ -1,3 +1,4 @@
+import { MobileDetailSection } from './MobileDetailSection';
 import { Picker } from '@react-native-picker/picker';
 import { createElement } from 'react';
 import { Platform,Pressable,ScrollView,Text,TextInput,useWindowDimensions,View } from 'react-native';
@@ -46,6 +47,16 @@ export function LeadVerificationPopup({ meeting, form, setForm, submitError, sub
   const scrollable = stacked || height < POPUP_MIN_HEIGHT_FOR_NO_SCROLL;
   const Container = scrollable ? ScrollView : View;
   const visitOnly = isNotConductedMeeting(meeting);
+  if (stacked) return <View style={{ maxHeight: Math.max(240, height - 40), flexShrink: 1, backgroundColor: '#F7FAFF' }}>
+    <View style={{ padding: 12, paddingRight: 54, borderBottomWidth: 1, borderBottomColor: '#DFE7F4', backgroundColor: '#EEF3FF' }}><Text style={{ fontSize: 10, color: '#6366F1', fontWeight: '800' }}>PENDING VERIFICATION</Text><Text numberOfLines={2} style={{ fontSize: 17, lineHeight: 22, marginTop: 4, fontWeight: '800', color: '#172B50' }}>{meeting.clientName ?? meeting.meetingCode}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close meeting verification" onPress={onClose} style={[popupStyles.close, { position: 'absolute', top: 10, right: 10 }]}><Icon source="close" size={22} color="#334155" /></Pressable></View>
+    <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 10, gap: 10 }}>
+      {Platform.OS === 'web' ? createElement('style', null, verificationPopupCss) : null}
+      <MobileDetailSection title="Client information and location"><Details meeting={meeting} visitOnly={visitOnly} presentation="sidebar" /></MobileDetailSection>
+      <Details meeting={meeting} visitOnly={visitOnly} presentation="summary" hideMeetingDate />
+      <View style={[popupStyles.formCard, { padding: 10 }]}><Text style={{ fontSize: 14, fontWeight: '800', color: '#172B50' }}>{visitOnly ? 'Verify Location Visit' : 'PC Additional Information'}</Text><View nativeID="blueant-verification-fields" style={[styles.formGrid, popupStyles.formGrid]}>{(visitOnly ? NOT_CONDUCTED_FIELDS : FIELDS).map(field => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>{submitError ? <Text style={styles.error}>{submitError}</Text> : null}</View>
+    </ScrollView>
+    <View style={{ padding: 10, borderTopWidth: 1, borderTopColor: '#DFE7F4', backgroundColor: '#FFFFFF' }}><SubmitButton submitting={submitting} onPress={onSubmit} label={visitOnly ? 'Verify Visit' : 'Verify Meeting'} blue /></View>
+  </View>;
   return <Container nativeID="blueant-verification-popup" style={scrollable ? popupStyles.scroll : popupStyles.layout} {...(scrollable ? { contentContainerStyle: [popupStyles.layout, stacked && popupStyles.stacked], keyboardShouldPersistTaps: 'handled' as const } : {})}>
     {Platform.OS === 'web' ? createElement('style', null, verificationPopupCss) : null}
     <View style={[popupStyles.sidebar, stacked && popupStyles.sidebarStacked]}>
@@ -60,7 +71,7 @@ export function LeadVerificationPopup({ meeting, form, setForm, submitError, sub
         <Pressable accessibilityLabel="Close meeting verification" onPress={onClose} style={popupStyles.close}><Icon source="close" size={23} color="#23416A" /></Pressable>
       </View>
       <View style={popupStyles.mainBody}>
-        <Details meeting={meeting} visitOnly={visitOnly} presentation="summary" />
+        <Details meeting={meeting} visitOnly={visitOnly} presentation="summary" hideMeetingDate />
         <View style={popupStyles.formCard}>
           <View style={popupStyles.formHeading}><Icon source="file-document-outline" size={20} color="#2563EB" /><Text style={popupStyles.formTitle}>{visitOnly ? 'Verify Location Visit' : 'PC Additional Information'}</Text></View>
           {visitOnly ? <Text style={styles.help}>Confirm only the date and time of this visited-but-not-met record.</Text> : null}
@@ -77,6 +88,7 @@ export function LeadVerificationPopup({ meeting, form, setForm, submitError, sub
 
 export function ClientVerificationFields({ meeting, form, setForm, submitError, submitting, onSubmit }: { meeting: MeetingResponse; form: ClientVerificationForm; setForm: React.Dispatch<React.SetStateAction<ClientVerificationForm>>; submitError: string | null; submitting: boolean; onSubmit: () => void }) {
   const { isDark } = useAppTheme();
+  const compact = useWindowDimensions().width < POPUP_STACK_WIDTH;
   const notConducted = isNotConductedMeeting(meeting);
   const pickerOptionColor = isDark ? '#FFFFFF' : '#000000';
   const amountError = Boolean(submitError?.startsWith('Enter a valid amount'));
@@ -97,7 +109,7 @@ export function ClientVerificationFields({ meeting, form, setForm, submitError, 
   const selectedBusinessDetails = () => <View style={verificationStyles.investmentDetailsGrid}>{form.businessItems.map((item) => {
     const definition = clientBusinessDefinition(item.businessType);
     const invalid = amountError && (definition.requiresAmount || item.amount.trim()) && !isValidAmount(item.amount);
-    return <View key={item.businessType} style={verificationStyles.investmentDetailCard}><View style={verificationStyles.investmentDetailHeading}><View style={verificationStyles.investmentDetailIcon}><Icon source={definition.icon} size={14} color="#3156C8" /></View><View><Text style={verificationStyles.investmentDetailTitle}>{definition.label}</Text><Text style={verificationStyles.investmentDetailCaption}>{definition.requiresAmount ? 'Amount required — enter 0 if applicable.' : 'Amount optional — leave blank if it does not apply.'}</Text></View></View><View style={verificationStyles.investmentInputField}><Text style={styles.fieldLabel}>{definition.requiresAmount ? 'Amount *' : 'Amount (optional)'}</Text><TextInput value={item.amount} onChangeText={(amount) => updateBusinessAmount(item.businessType, amount)} placeholder="Enter amount" placeholderTextColor="#94A3B8" keyboardType="numeric" style={[styles.input, verificationStyles.input, invalid && verificationStyles.investmentInputInvalid]} />{invalid ? <Text style={verificationStyles.investmentInputError}>Enter 0 or a positive number.</Text> : null}</View></View>;
+    return <View key={item.businessType} style={[verificationStyles.investmentDetailCard, compact && { minWidth: 0, width: '100%' }]}><View style={verificationStyles.investmentDetailHeading}><View style={verificationStyles.investmentDetailIcon}><Icon source={definition.icon} size={14} color="#3156C8" /></View><View><Text style={verificationStyles.investmentDetailTitle}>{definition.label}</Text><Text style={verificationStyles.investmentDetailCaption}>{definition.requiresAmount ? 'Amount required — enter 0 if applicable.' : 'Amount optional — leave blank if it does not apply.'}</Text></View></View><View style={verificationStyles.investmentInputField}><Text style={styles.fieldLabel}>{definition.requiresAmount ? 'Amount *' : 'Amount (optional)'}</Text><TextInput value={item.amount} onChangeText={(amount) => updateBusinessAmount(item.businessType, amount)} placeholder="Enter amount" placeholderTextColor="#94A3B8" keyboardType="numeric" style={[styles.input, verificationStyles.input, invalid && verificationStyles.investmentInputInvalid]} />{invalid ? <Text style={verificationStyles.investmentInputError}>Enter 0 or a positive number.</Text> : null}</View></View>;
   })}</View>;
   const [selectedHour = ''] = form.meetingTime.split(':');
   const meetingTime = <View style={[styles.field, verificationStyles.field]}><Text style={styles.fieldLabel}>Meeting Time</Text><View style={[styles.pickerShell, verificationStyles.control]}><Picker selectedValue={selectedHour} onValueChange={(hour) => update('meetingTime', hour ? `${hour}:00:00` : '')} style={[styles.picker, verificationStyles.control]}><Picker.Item label="Hour" value="" color={pickerOptionColor} />{HOURS.map((hour) => <Picker.Item key={hour} label={hour} value={hour} color={pickerOptionColor} />)}</Picker></View></View>;
@@ -127,7 +139,7 @@ export function VerificationFormField({ field, form, setForm }: { field: typeof 
   }));
   const tone = field.key === 'meetingTiming' || field.key === 'ageGroup' ? styles.fieldToneBlue : field.key === 'existingSip' || field.key === 'profession' ? styles.fieldToneTeal : field.key === 'professionDetail' || field.key === 'bestTimeForMeeting' ? styles.fieldToneViolet : styles.fieldToneAmber;
   const { width } = useWindowDimensions();
-  const layoutStyle = [popupStyles.formField, width < POPUP_STACK_WIDTH && { flexBasis: '100%' as const }];
+  const layoutStyle = [popupStyles.formField, width < POPUP_STACK_WIDTH && { flexBasis: '46%' as const }];
 
   if (!isVerificationFieldVisible(field.key, form.meetingWith)) return null;
 

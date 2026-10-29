@@ -2,7 +2,7 @@ import { Platform, StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
   headerSearch: { width: 155, height: 32, paddingHorizontal: 10, borderWidth: 1, borderColor: '#91A7E0', borderRadius: 7, color: '#FFFFFF', fontSize: 9, fontWeight: '700', backgroundColor: 'rgba(255,255,255,0.12)' },
-  headerSearchCompact: { width: '100%', height: 38, fontSize: 11 },
+  headerSearchCompact: { width: '100%', height: 32, fontSize: 11 },
   assignedHeaderActions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 9 },
   assignedHeaderActionsCompact: { width: '100%', flexDirection: 'column', alignItems: 'stretch' },
   headerLeadFilters: { flexDirection: 'row', gap: 7 },
@@ -156,7 +156,7 @@ export const styles = StyleSheet.create({
   assignEmployeeField: { width: '20%', minWidth: 200, flexGrow: 0 },
   assignDateField: { width: '24%', minWidth: 220, flexGrow: 0 },
   assignActionField: { minWidth: 170, flexGrow: 1, alignSelf: 'flex-end' },
-  assignFieldCompact: { width: '100%', minWidth: 0 },
+  assignFieldCompact: { width: '100%', minWidth: 0, flexGrow: 0, flexShrink: 1, gap: 2 },
   assignLabel: { color: '#44516A', fontSize: 9, fontWeight: '900' },
   assignInput: { height: 42, paddingHorizontal: 12, borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, color: '#172033', fontSize: 11, fontWeight: '700', backgroundColor: '#FFFFFF' },
   assignDatePicker: { height: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderWidth: 1, borderColor: '#D9DFE9', borderRadius: 9, backgroundColor: '#FFFFFF' },
@@ -198,7 +198,7 @@ export const styles = StyleSheet.create({
   mobileMeeting: { minWidth: 90, flex: 1 },
   mobileAction: { width: 30, height: 32, borderRadius: 8, backgroundColor: '#E9EEFF', alignItems: 'center', justifyContent: 'center' },
   page: { flex: 1, minHeight: 0, gap: 8, paddingHorizontal: 18, paddingVertical: 10, backgroundColor: '#F7F8FA' },
-  pageCompact: { gap: 7, padding: 8 },
+  pageCompact: { gap: 7, marginTop: -12, marginBottom: -10, paddingHorizontal: 0, paddingVertical: 0, marginHorizontal: -8, minWidth: 0 },
   topSection: { flexShrink: 0, gap: 6 },
   refreshText: { color: '#3156C8', fontSize: 9, fontWeight: '900' },
   pressed: { opacity: 0.7 },
