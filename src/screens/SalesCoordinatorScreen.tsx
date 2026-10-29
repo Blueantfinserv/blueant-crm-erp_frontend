@@ -30,7 +30,7 @@ type ClientVerificationForm = {
   personName: string; position: string; businessGenerated: string;
   businessItems: ClientBusinessItemForm[]; remarks: string; nextFollowupDate: string; meetingDate: string; blueantAppLocked: boolean;
 };
-type MeetingColumnFilter = Partial<Record<'clientName' | 'meetingTitle' | 'employeeName' | 'employeeRole' | 'leadStatus' | 'meetingDate' | 'nextMeetingDate' | 'aloneWith' | 'verifiedBy', string>>;
+type MeetingColumnFilter = Partial<Record<'clientName' | 'meetingTitle' | 'employeeName' | 'employeeRole' | 'leadStatus' | 'meetingDate' | 'nextMeetingDate' | 'aloneWith' | 'meetingConducted' | 'verifiedBy', string>>;
 type AssignedDateRange = { from: string; to: string };
 type VerificationPage = { content?: { meetingCode?: string; verificationStatus?: string }[]; totalPages?: number };
 
@@ -39,6 +39,9 @@ type VerificationPage = { content?: { meetingCode?: string; verificationStatus?:
 const VERIFIED_CLIENT_MEETINGS_STORAGE_PREFIX = 'blueant.pc.verifiedClientMeetings';
 const VERIFIED_CLIENT_MEETINGS_GLOBAL_KEY = `${VERIFIED_CLIENT_MEETINGS_STORAGE_PREFIX}.all`;
 const PAGE_SIZE = 100;
+// Popup sirf real mobile width par stack hota hai. Browser zoom se layout nahi badalna chahiye.
+const POPUP_STACK_WIDTH = 760;
+const POPUP_MIN_HEIGHT_FOR_NO_SCROLL = 650;
 const TABS: readonly { key: Tab; label: string; icon: string }[] = [
   { key: 'today', label: 'Today Meetings', icon: 'calendar-check-outline' },
   { key: 'responses', label: 'Verified Meetings', icon: 'clipboard-check-outline' },
@@ -109,6 +112,7 @@ const COORDINATOR_SALES_TEAM: Readonly<Record<string, readonly string[]>> = {
 const FILTER_COLUMNS: { key: keyof MeetingColumnFilter; label: string }[] = [
   { key: 'clientName', label: 'CLIENT NAME' }, { key: 'meetingTitle', label: 'MEETING TYPE' }, { key: 'employeeName', label: 'ASSIGNED TO' }, { key: 'employeeRole', label: 'ROLE' },
   { key: 'leadStatus', label: 'LEAD STATUS' }, { key: 'meetingDate', label: 'MEETING DATE' }, { key: 'nextMeetingDate', label: 'NEXT PLAN DATE' }, { key: 'aloneWith', label: 'JOINED' },
+  { key: 'meetingConducted', label: 'CONDUCTED' },
 ];
 
 /* ───────────────────────── Small helpers ───────────────────────── */
@@ -310,6 +314,7 @@ const filterMeetingRecords = (items: readonly MeetingResponse[], filters: Meetin
   const current = String(key === 'meetingTitle' ? meeting.meetingTitle ?? meeting.meetingType ?? '' : key === 'employeeRole' ? meetingRole(meeting) : meeting[key as keyof MeetingResponse] ?? '').toLowerCase();
   return !choices.length || choices.some((choice) => {
     const selected = choice.toLowerCase();
+    if (key === 'meetingConducted') return current === selected;
     return key === 'employeeName' ? current === selected || current.startsWith(`${selected} `) || selected.startsWith(`${current} `) : current.includes(selected);
   });
 }));
@@ -430,8 +435,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
           latestMeeting?.id, lead.leadId,
         ];
       });
-      const headers = ['Client Name', 'Mobile Number', 'Speciality', 'Location', 'Clinic Address', 'Sales Person', 'Sales Coordinator', 'Assigned Date', 'Current Lead Status', 'SC Age Group', 'SC Prior Investment', 'SC Profession', 'SC Firm / Clinic', 'SC Best Time', 'Latest Meeting Type', 'Latest Meeting Status', 'Latest Meeting Date', 'Latest Meeting Time', 'Latest Meeting Mode', 'Latest Meeting Lead Status', 'Latest Meeting Joined With', 'Latest Meeting Person Name', 'Latest Meeting Person Position', 'Latest Meeting Remarks', 'Latest Next Plan Date'];
-      headers.push('Meeting ID', 'Lead ID');
+      const headers = ['Client Name', 'Mobile Number', 'Speciality', 'Location', 'Clinic Address', 'Sales Person', 'Sales Coordinator', 'Assigned Date', 'Current Lead Status', 'SC Age Group', 'SC Prior Investment', 'SC Profession', 'SC Firm / Clinic', 'SC Best Time', 'Latest Meeting Type', 'Latest Meeting Status', 'Latest Meeting Date', 'Latest Meeting Time', 'Latest Meeting Mode', 'Latest Meeting Lead Status', 'Latest Meeting Joined With', 'Latest Meeting Person Name', 'Latest Meeting Person Position', 'Latest Meeting Remarks', 'Latest Next Plan Date', 'Meeting ID', 'Lead ID'];
       const from = exportDatePart(assignedDateRange.from);
       const to = exportDatePart(assignedDateRange.to);
       const dateRangeName = from && to ? `${from}-to-${to}` : from ? `from-${from}` : to ? `to-${to}` : 'all-dates';
@@ -665,7 +669,6 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
       return (requiresAmount || item.amount.trim()) && !isValidAmount(item.amount);
     });
     if (invalidBusinessItem) { setSubmitError(`Enter a valid amount (0 or more) for ${clientBusinessDefinition(invalidBusinessItem.businessType).label}.`); return; }
-    // Reference is represented by its concrete backend business types: INSURANCE, SHARES and LOAN.
     submittingRef.current = true; setSubmitting(true); setSubmitError(null); dataGeneration.current += 1;
     try {
       const remarks = clientForm.remarks.trim() || undefined;
@@ -822,7 +825,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
         {loading ? <State loading progress={loadingProgress} message="Loading coordinator workspace..." /> : tabLoading === 'assignedLeads' ? <State loading progress={tabLoadingProgress} message="Loading assigned leads..." /> : error ? <State message={error} /> : null}
         {!loading && !error && tab === 'today' ? <Cards hideMeetingDate items={visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
-        {!loading && !error && tab === 'responses' ? <Cards items={visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="View Response" onOpen={setSelected} verified /> : null}
+        {!loading && !error && tab === 'responses' ? <Cards items={visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="Details" onOpen={setSelected} verified /> : null}
         {!loading && !error && tab === 'assign' ? <AssignLeadForm compact={compact} form={assignForm} setForm={setAssignForm} assigning={assigning} message={assignMessage} salesPersonNamesByCode={salesPersonNamesByCode} onSubmit={() => void assignLead()} /> : null}
         {!loading && tabLoading !== 'assignedLeads' && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} onOpen={openLeadHistory} /><Pagination page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /></> : null}
       </ScrollView>}
@@ -836,13 +839,7 @@ export function SalesCoordinatorScreen({ permissions }: { permissions?: readonly
         {selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} /> : null}
         {tab === 'responses' && selected ? selected.isClientMeeting ? <ClientVerificationDetails meeting={selected} /> : <VerificationDetails meeting={selected} />
           : selected?.isClientMeeting ? <ClientVerificationFields meeting={selected} form={clientForm} setForm={setClientForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} />
-          : selected ? <View style={[styles.formSection, verificationStyles.section]}>
-            <Text style={styles.sectionTitle}>{isNotConductedMeeting(selected) ? 'Verify Location Visit' : 'PC Additional Information'}</Text>
-            {isNotConductedMeeting(selected) ? <Text style={styles.help}>Confirm only the date and time of this visited-but-not-met record.</Text> : null}
-            <View style={styles.formGrid}>{(isNotConductedMeeting(selected) ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>
-            {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
-            <SubmitButton submitting={submitting} onPress={() => void verify()} label={isNotConductedMeeting(selected) ? 'Verify Visit' : 'Verify Meeting'} />
-          </View> : null}
+          : null}
       </ScrollView>
       </>}
     </View></View></Modal>
@@ -882,10 +879,13 @@ function LeadVerificationPopup({ meeting, form, setForm, submitError, submitting
   submitError: string | null; submitting: boolean; onSubmit: () => void; onClose: () => void;
 }) {
   const { width, height } = useWindowDimensions();
-  const stacked = width < 960 || height < 650;
-  const Container = stacked ? ScrollView : View;
+  // Browser zoom viewport ko chhota karta hai. Isliye layout sirf real mobile width par stack hota hai.
+  // Height kam ho to 2 columns rahte hain, bas poora popup scroll hota hai.
+  const stacked = width < POPUP_STACK_WIDTH;
+  const scrollable = stacked || height < POPUP_MIN_HEIGHT_FOR_NO_SCROLL;
+  const Container = scrollable ? ScrollView : View;
   const visitOnly = isNotConductedMeeting(meeting);
-  return <Container nativeID="blueant-verification-popup" style={stacked ? popupStyles.scroll : popupStyles.layout} {...(stacked ? { contentContainerStyle: [popupStyles.layout, popupStyles.stacked], keyboardShouldPersistTaps: 'handled' as const } : {})}>
+  return <Container nativeID="blueant-verification-popup" style={scrollable ? popupStyles.scroll : popupStyles.layout} {...(scrollable ? { contentContainerStyle: [popupStyles.layout, stacked && popupStyles.stacked], keyboardShouldPersistTaps: 'handled' as const } : {})}>
     {Platform.OS === 'web' ? createElement('style', null, verificationPopupCss) : null}
     <View style={[popupStyles.sidebar, stacked && popupStyles.sidebarStacked]}>
       <View style={popupStyles.status}><View style={popupStyles.statusDot} /><Text style={popupStyles.statusText}>PENDING VERIFICATION</Text></View>
@@ -903,7 +903,7 @@ function LeadVerificationPopup({ meeting, form, setForm, submitError, submitting
         <View style={popupStyles.formCard}>
           <View style={popupStyles.formHeading}><Icon source="file-document-outline" size={20} color="#2563EB" /><Text style={popupStyles.formTitle}>{visitOnly ? 'Verify Location Visit' : 'PC Additional Information'}</Text></View>
           {visitOnly ? <Text style={styles.help}>Confirm only the date and time of this visited-but-not-met record.</Text> : null}
-          <View nativeID="blueant-verification-fields" style={[styles.formGrid, popupStyles.formGrid]}>{(visitOnly ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} layoutStyle={popupStyles.formField} />)}</View>
+          <View nativeID="blueant-verification-fields" style={[styles.formGrid, popupStyles.formGrid]}>{(visitOnly ? NOT_CONDUCTED_FIELDS : FIELDS).map((field) => <VerificationFormField key={field.key} field={field} form={form} setForm={setForm} />)}</View>
           {submitError ? <Text style={styles.error}>{submitError}</Text> : null}
         </View>
         <View style={popupStyles.footer}>
@@ -1047,18 +1047,19 @@ function ClientVerificationFields({ meeting, form, setForm, submitError, submitt
     <SubmitButton submitting={submitting} onPress={onSubmit} label="Verify Client Meeting" />
   </View>;
 }
-function VerificationFormField({ field, form, setForm, layoutStyle }: { field: typeof FIELDS[number]; form: VerificationForm; setForm: React.Dispatch<React.SetStateAction<VerificationForm>>; layoutStyle?: object }) {
+function VerificationFormField({ field, form, setForm }: { field: typeof FIELDS[number]; form: VerificationForm; setForm: React.Dispatch<React.SetStateAction<VerificationForm>> }) {
   const update = (value: string) => setForm((current) => ({
     ...current,
     [field.key]: value,
     ...(field.key === 'meetingWith' && value === 'SELF' ? { personName: '', position: '' } : {}),
   }));
   const tone = field.key === 'meetingTiming' || field.key === 'ageGroup' ? styles.fieldToneBlue : field.key === 'existingSip' || field.key === 'profession' ? styles.fieldToneTeal : field.key === 'professionDetail' || field.key === 'bestTimeForMeeting' ? styles.fieldToneViolet : styles.fieldToneAmber;
+  const layoutStyle = popupStyles.formField;
 
   if (!isVerificationFieldVisible(field.key, form.meetingWith)) return null;
 
   if (field.key === 'meetingDate') {
-    return <DatePickerField label={field.label} value={form.meetingDate} placeholder={field.placeholder} maxDate={localToday()} onSelect={update} style={[verificationStyles.field, layoutStyle]} tone={tone} controlStyle={layoutStyle ? popupStyles.control : undefined} />;
+    return <DatePickerField label={field.label} value={form.meetingDate} placeholder={field.placeholder} maxDate={localToday()} onSelect={update} style={[verificationStyles.field, layoutStyle]} tone={tone} controlStyle={popupStyles.control} />;
   }
   if (field.key === 'meetingTiming') {
     const [selectedHour = ''] = form.meetingTiming.split(':');
@@ -1068,9 +1069,9 @@ function VerificationFormField({ field, form, setForm, layoutStyle }: { field: t
         <View style={styles.timePickerRow}>
           <View style={[styles.timePicker, { minWidth: 0 }]}><VerificationDropdown label={field.label} value={selectedHour} onChange={(hour) => update(hour ? `${hour}:00:00` : '')} options={[{ label: 'Hour', value: '' }, ...HOURS.map((hour) => ({ label: hour, value: hour }))]} /></View>
           <Text style={styles.timeSeparator}>:</Text>
-          <View style={[styles.secondsBox, verificationStyles.control, layoutStyle && popupStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
+          <View style={[styles.secondsBox, verificationStyles.control, popupStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
           <Text style={styles.timeSeparator}>:</Text>
-          <View style={[styles.secondsBox, verificationStyles.control, layoutStyle && popupStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
+          <View style={[styles.secondsBox, verificationStyles.control, popupStyles.control]}><Text style={styles.secondsValue}>00</Text></View>
         </View>
       </View>
     );
@@ -1092,7 +1093,7 @@ function VerificationFormField({ field, form, setForm, layoutStyle }: { field: t
       </View>
     );
   }
-  return <View style={[styles.field, tone, verificationStyles.field, layoutStyle]}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={[styles.input, verificationStyles.input, layoutStyle && popupStyles.control]} /></View>;
+  return <View style={[styles.field, tone, verificationStyles.field, layoutStyle]}><Text style={styles.fieldLabel}>{field.label}</Text><TextInput value={form[field.key]} onChangeText={update} placeholder={field.placeholder} style={[styles.input, verificationStyles.input, popupStyles.control]} /></View>;
 }
 
 /* ───────────────────────── Table header with column filters ───────────────────────── */
@@ -1103,9 +1104,9 @@ function MeetingTableHeader({ verified = false, taskOnly = false, hideMeetingDat
   const [dateRange, setDateRange] = useState({ from: '', to: '' });
   const [dateTarget, setDateTarget] = useState<'from' | 'to' | null>(null);
   const columns = (taskOnly ? FILTER_COLUMNS.filter((column) => ['clientName', 'meetingTitle', 'employeeName', 'employeeRole', 'meetingDate'].includes(column.key)) : verified ? [...FILTER_COLUMNS, { key: 'verifiedBy' as const, label: 'VERIFIED BY' }] : FILTER_COLUMNS).filter((column) => !hideMeetingDate || column.key !== 'meetingDate');
-  const dropdownKeys: (keyof MeetingColumnFilter)[] = taskOnly ? ['employeeName', 'employeeRole'] : verified
-    ? ['employeeName', 'employeeRole', 'verifiedBy', 'meetingTitle', 'leadStatus', 'meetingDate']
-    : ['employeeName', 'employeeRole', 'meetingTitle', 'leadStatus'];
+    const dropdownKeys: (keyof MeetingColumnFilter)[] = taskOnly ? ['employeeName', 'employeeRole'] : verified
+    ? ['employeeName', 'employeeRole', 'verifiedBy', 'meetingTitle', 'leadStatus', 'meetingConducted', 'meetingDate']
+    : ['employeeName', 'employeeRole', 'meetingTitle', 'leadStatus', 'meetingConducted'];
   const optionsFor = (key: keyof MeetingColumnFilter) => {
     const values = [...new Set(records.map((record) => String(key === 'meetingTitle' ? record.meetingTitle ?? record.meetingType ?? '' : key === 'employeeRole' ? meetingRole(record) : record[key as keyof MeetingResponse] ?? '')).filter(Boolean))].sort();
     if (key !== 'employeeName') return values;
@@ -1119,13 +1120,13 @@ function MeetingTableHeader({ verified = false, taskOnly = false, hideMeetingDat
   const dateFilterOpen = openFilter === 'meetingDate' && verified;
   return <>
     <View style={[styles.listHeader, styles.verifiedListHeader, styles.desktopRow]}>
-      {columns.map((column, index) => <View key={column.key} style={[styles.headerColumn, styles.fluidColumn, index === 0 && styles.clientColumn, column.key === 'leadStatus' && styles.leadStatusColumn]}>
+      {columns.map((column, index) => <View key={column.key} style={[styles.headerColumn, styles.fluidColumn, index === 0 && styles.clientColumn, column.key === 'leadStatus' && styles.leadStatusColumn, verified && column.key === 'meetingConducted' && styles.verifiedConductedColumn]}>
         {dropdownKeys.includes(column.key)
           ? <View style={styles.headerFilterWrap}><Pressable onPress={() => openChoices(column.key)} style={styles.headerFilterButton}><Text numberOfLines={1} style={[styles.headerFilterText, filters[column.key] && styles.columnLabelFiltered]}>{column.label}</Text><View style={[styles.headerFilterIcon, filters[column.key] && styles.headerFilterIconActive]}><Icon source="filter-variant" size={10} color={filters[column.key] ? '#FFFFFF' : '#536B9F'} /></View></Pressable></View>
           : <Text numberOfLines={1} style={styles.columnLabel}>{column.label}</Text>}
       </View>)}
       {taskOnly && (filters.employeeName || filters.employeeRole) ? <Pressable accessibilityLabel="Clear assignment filters" onPress={() => onFiltersChange((current) => ({ ...current, employeeName: '', employeeRole: '' }))} style={styles.taskFilterClear}><Text style={styles.clearFiltersText}>Clear</Text></Pressable> : null}
-      {!taskOnly ? <Pressable onPress={() => onFiltersChange({})} style={styles.clearFilters}><Text style={styles.clearFiltersText}>Clear</Text></Pressable> : null}
+      {!taskOnly ? <Pressable onPress={() => onFiltersChange({})} style={[styles.clearFilters, verified && styles.verifiedActionColumn]}><Text style={styles.clearFiltersText}>Clear</Text></Pressable> : null}
     </View>
     {openFilter ? <Modal transparent visible animationType="fade" onRequestClose={() => setOpenFilter(null)}><Pressable style={styles.filterBackdrop} onPress={() => setOpenFilter(null)}><Pressable style={styles.filterPopover} onPress={() => undefined}>
       <View style={styles.filterPopoverTitle}><View><Text style={styles.filterPopoverTitleText}>{dateFilterOpen ? 'MEETING DATE RANGE' : columns.find((column) => column.key === openFilter)?.label}</Text><Text style={styles.filterPopoverHint}>{dateFilterOpen ? 'Choose a start and end date' : 'Select one or more values'}</Text></View><Pressable onPress={() => setOpenFilter(null)}><Icon source="close" size={18} color="#64748B" /></Pressable></View>
@@ -1159,12 +1160,13 @@ function Cards({ items, empty, action, onOpen, verified = false, taskOnly = fals
     ['MEETING DATE', (m: MeetingResponse) => m.meetingDate],
     ['NEXT PLAN DATE', (m: MeetingResponse) => m.nextMeetingDate],
     ['JOINED', (m: MeetingResponse) => m.aloneWith],
+    ['CONDUCTED', (m: MeetingResponse) => m.meetingConducted],
     ...(verified ? [['VERIFIED BY', (m: MeetingResponse) => m.verifiedBy] as const] : []),
   ]).filter(([label]) => !hideMeetingDate || label !== 'MEETING DATE') as unknown as readonly [string, (m: MeetingResponse) => unknown][];
   return <View style={styles.desktopTable}>{items.map((m, i) => <View key={m.meetingCode ?? m.id ?? i} style={[styles.listRow, styles.desktopRow, i % 2 === 1 && styles.listRowAlternate]}>
-    <View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>
-    {columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn, label === 'LEAD STATUS' && styles.leadStatusColumn]}><Text numberOfLines={1} style={[styles.cellMain, label === 'LEAD STATUS' && styles.status, label === 'LEAD STATUS' && styles.leadStatusValue, label === 'LEAD STATUS' && m.leadStatus === 'CONVERTED_CLIENT' && styles.statusVerified, label === 'JOINED' && styles.joinedBadge, label === 'ROLE' && styles.roleBadge, label === 'ROLE' && meetingRole(m) === 'RM' && styles.roleBadgeRm, label === 'ROLE' && meetingRole(m) === 'SC' && styles.roleBadgeSc]}>{label === 'LEAD STATUS' ? show(value(m)).replace(/_/g, ' ') : show(value(m))}</Text></View>)}
-    {onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : taskOnly ? null : <View style={styles.desktopActionColumn} />}
+     <View style={[styles.personCell, styles.fluidColumn, styles.clientColumn]}><View style={styles.cellCopy}><Text numberOfLines={1} style={styles.client}>{show(m.clientName)}</Text></View></View>
+    {columns.map(([label, value]) => <View key={label} style={[styles.cell, styles.fluidColumn, label === 'LEAD STATUS' && styles.leadStatusColumn, verified && label === 'CONDUCTED' && styles.verifiedConductedColumn]}><Text numberOfLines={1} style={[styles.cellMain, label === 'LEAD STATUS' && styles.status, label === 'LEAD STATUS' && styles.leadStatusValue, label === 'LEAD STATUS' && m.leadStatus === 'CONVERTED_CLIENT' && styles.statusVerified, label === 'JOINED' && styles.joinedBadge, label === 'CONDUCTED' && styles.conductedBadge, label === 'CONDUCTED' && m.meetingConducted === 'NOT_CONDUCTED' && styles.notConductedBadge, label === 'ROLE' && styles.roleBadge, label === 'ROLE' && meetingRole(m) === 'RM' && styles.roleBadgeRm, label === 'ROLE' && meetingRole(m) === 'SC' && styles.roleBadgeSc]}>{label === 'LEAD STATUS' || label === 'CONDUCTED' ? show(value(m)).replace(/_/g, ' ') : show(value(m))}</Text></View>)}
+    {onOpen ? <Pressable onPress={() => onOpen(m)} style={({ pressed }) => [styles.rowAction, styles.desktopActionColumn, verified && styles.verifiedActionColumn, verified && styles.verifiedRowAction, pressed && styles.rowActionPressed]}><Text numberOfLines={1} style={styles.rowActionText}>{action}</Text><Icon source="chevron-right" size={13} color="#3156C8" /></Pressable> : taskOnly ? null : <View style={styles.desktopActionColumn} />}
   </View>)}</View>;
 }
 function Details({ meeting: m, visitOnly = false, presentation }: { meeting: MeetingResponse; visitOnly?: boolean; presentation?: 'sidebar' | 'summary' }) {
@@ -1182,12 +1184,13 @@ function Details({ meeting: m, visitOnly = false, presentation }: { meeting: Mee
     contactFields.push(['Joined With', m.aloneWith]);
     if (clientDetails) contactFields.push(['Client Details', clientDetails]);
   }
-  if (presentation === 'summary') return <View style={popupStyles.summaryGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[popupStyles.summaryCard, index === 3 && popupStyles.summaryStatus]}><Icon source={index === 3 ? 'chart-timeline-variant' : 'calendar-outline'} size={20} color="#2563EB" /><View style={popupStyles.summaryCopy}><Text style={popupStyles.label}>{label}</Text><Text numberOfLines={index === 3 ? 1 : undefined} adjustsFontSizeToFit={index === 3} minimumFontScale={0.8} style={[popupStyles.value, index === 3 && popupStyles.statusValue]}>{show(field)}</Text></View></View>)}</View>;
+  if (presentation === 'summary') return <View style={popupStyles.sidebarCards}><View style={popupStyles.summaryGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[popupStyles.summaryCard, index === 3 && popupStyles.summaryStatus]}><Icon source={index === 3 ? 'chart-timeline-variant' : 'calendar-outline'} size={20} color="#2563EB" /><View style={popupStyles.summaryCopy}><Text style={popupStyles.label}>{label}</Text><Text numberOfLines={index === 3 ? 1 : undefined} adjustsFontSizeToFit={index === 3} minimumFontScale={0.8} style={[popupStyles.value, index === 3 && popupStyles.statusValue]}>{show(field)}</Text></View></View>)}</View>
+    {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={popupStyles.remarks}><View style={popupStyles.formHeading}><Icon source="comment-text-outline" size={18} color="#A16207" /><Text style={popupStyles.cardTitle}>Remarks</Text></View><Text style={popupStyles.bodyText}>{show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)}</Text></View> : null}
+  </View>;
   if (presentation === 'sidebar') return <View style={popupStyles.sidebarCards}>
     <View style={popupStyles.infoCard}><View style={popupStyles.formHeading}><Icon source="account-box-outline" size={20} color="#2563EB" /><Text style={popupStyles.cardTitle}>Client Information</Text></View>
       {contactFields.map(([label, field]) => <View key={label} style={popupStyles.contactRow}><Text style={popupStyles.contactLabel}>{label}</Text><Text style={popupStyles.contactValue}>{show(field)}</Text></View>)}
     </View>
-    {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={popupStyles.remarks}><View style={popupStyles.formHeading}><Icon source="comment-text-outline" size={18} color="#A16207" /><Text style={popupStyles.cardTitle}>Remarks</Text></View><Text style={popupStyles.bodyText}>{show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)}</Text></View> : null}
     {meetingPlace || mapUrl ? <View style={popupStyles.locationCard}>
       {meetingPlace ? <><View style={popupStyles.formHeading}><Icon source="map-marker-outline" size={20} color="#2563EB" /><Text style={popupStyles.cardTitle}>{m.isClientMeeting ? 'Client Location' : 'Meeting Location'}</Text></View><Text style={popupStyles.bodyText}>{show(meetingPlace)}</Text></> : null}
       {mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={popupStyles.mapButton}><Icon source="google-maps" size={18} color="#2563EB" /><Text style={popupStyles.mapText}>Open in Google Maps</Text></Pressable> : null}

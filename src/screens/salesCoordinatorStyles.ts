@@ -133,6 +133,8 @@ export const styles = StyleSheet.create({
   mobileTabRow: { width: '100%', flexDirection: 'row', gap: 4 },
   workspaceHeaderCompact: { flexDirection: 'column', alignItems: 'stretch' },
   joinedBadge: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, color: '#0F766E', backgroundColor: '#DFF5EF', fontSize: 8, fontWeight: '700' },
+  conductedBadge: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, color: '#15803D', backgroundColor: '#DCFCE7', fontSize: 8, fontWeight: '700' },
+  notConductedBadge: { color: '#B91C1C', backgroundColor: '#FEE2E2' },
   roleBadge: { alignSelf: 'flex-start', overflow: 'hidden', paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6, color: '#1D4ED8', backgroundColor: '#DBEAFE', fontSize: 8, fontWeight: '900' },
   roleBadgeRm: { color: '#6D28D9', backgroundColor: '#EDE9FE' },
   roleBadgeSc: { color: '#B45309', backgroundColor: '#FEF3C7' },
@@ -188,6 +190,9 @@ export const styles = StyleSheet.create({
   fluidColumn: { width: 'auto', minWidth: 0, flex: 1 },
   clientColumn: { flex: 1.38 },
   desktopActionColumn: { width: 128, flexShrink: 0 },
+  verifiedActionColumn: { width: 96, flexShrink: 0 },
+  verifiedRowAction: { paddingVertical: 5, paddingHorizontal: 8 },
+  verifiedConductedColumn: { marginRight: 18 },
   desktopTable: { width: '100%' },
   mobileRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#DAE1F3', backgroundColor: '#EEF0FF' },
   mobileMeeting: { minWidth: 90, flex: 1 },
@@ -303,7 +308,6 @@ export const styles = StyleSheet.create({
   submit: { zIndex: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 13, borderRadius: 11, backgroundColor: '#4F46E5' },
   disabled: { opacity: .6 },
   submitText: { color: '#fff', fontWeight: '900' },
-
 });
 
 export const historyStyles = StyleSheet.create({
@@ -339,7 +343,6 @@ export const historyStyles = StyleSheet.create({
   meetingTagText: { fontSize: 8, fontWeight: '800' },
   meetingRemarkBlock: { gap: 3, padding: 9, borderRadius: 9, backgroundColor: '#FFF8E8' },
   meetingRemarkText: { color: '#334155', fontSize: 9.5, fontWeight: '600', lineHeight: 14 },
-
 });
 
 export const verificationStyles = StyleSheet.create({
@@ -368,9 +371,7 @@ export const verificationStyles = StyleSheet.create({
   referenceTypeSelected: { borderColor: '#3156C8', backgroundColor: '#3156C8' },
   referenceTypeText: { color: '#3156C8', fontSize: 9, fontWeight: '900' },
   referenceTypeTextSelected: { color: '#FFFFFF' },
-
 });
-
 
 export const popupStyles = StyleSheet.create({
   modal: { maxWidth: 1100, minWidth: 0, alignSelf: 'center' },
@@ -413,7 +414,6 @@ export const popupStyles = StyleSheet.create({
   formTitle: { color: '#172B50', fontSize: 15, fontWeight: '800', flex: 1 },
   formGrid: { columnGap: 8, rowGap: 8, elevation: 0, zIndex: 1 },
   control: { height: 40, minHeight: 40, borderRadius: 9, minWidth: 0 },
-  picker: { height: 40, minHeight: 40 },
   formField: { width: undefined, minWidth: 0, flexBasis: 195, flexGrow: 1, flexShrink: 1, padding: 0, backgroundColor: 'transparent' },
   footer: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   submitWrap: { width: '100%', flexGrow: 1, minWidth: 0 },
