@@ -1,6 +1,6 @@
 import { VerificationDropdown } from '../../../components/VerificationDropdown';
 import { useEffect,useRef,useState,type MutableRefObject } from 'react';
-import { ActivityIndicator,Animated,Pressable,Text,TextInput,useWindowDimensions,View } from 'react-native';
+import { ActivityIndicator,Animated,Easing,Pressable,Text,TextInput,useWindowDimensions,View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { popupStyles,styles } from '../../salesCoordinatorStyles';
 import { PAGE_SIZE } from '../coordinatorConstants';
@@ -51,20 +51,50 @@ export function TaskToolbar({ search, onSearch, status, onStatus }: { search: st
   return <View style={[styles.taskToolbar, styles.taskToolbarHeader, compact && { width: '100%', alignItems: 'stretch', flexDirection: 'column', gap: 8 }]}><TextInput value={search} onChangeText={onSearch} placeholder="Search lead name or number" placeholderTextColor="#94A3B8" style={[styles.filterInput, compact && { width: '100%', minHeight: 40, fontSize: 13 }]} /><View style={[styles.chips, compact && { width: '100%' }]}>{(['ALL', 'TODAY', 'PENDING'] as const).map((value) => <Pressable key={value} onPress={() => onStatus(value)} style={[styles.chip, compact && { flex: 1, minHeight: 36, alignItems: 'center', justifyContent: 'center' }, status === value && styles.chipActive]}><Text style={[styles.chipText, status === value && styles.chipTextActive]}>{value === 'ALL' ? 'ALL TASKS' : `${value} TASKS`}</Text></Pressable>)}</View></View>;
 }
 
-export function State({ message, loading = false, progress = 10 }: { message: string; loading?: boolean; progress?: number }) {
+export function State({ message, loading = false, progress = 0, percentageStep = 1, onProgressComplete }: { message: string; loading?: boolean; progress?: number; percentageStep?: number; onProgressComplete?: () => void }) {
   return <View style={styles.state}>
-    {loading ? <LoadingProgressBar progress={progress} /> : <Icon source="clipboard-text-outline" size={34} color="#94A3B8" />}
-    <Text style={styles.stateText}>{message}</Text>
+    {loading ? <><LoadingProgressBar progress={progress} percentageStep={percentageStep} onComplete={onProgressComplete} /></> : <Icon source="clipboard-text-outline" size={34} color="#94A3B8" />}
+    {message ? <Text style={styles.stateText}>{message}</Text> : null}
   </View>;
 }
 
-export function LoadingProgressBar({ progress }: { progress: number }) {
-  const animatedProgress = useRef(new Animated.Value(progress)).current;
+export function LoadingProgressBar({ progress, onComplete }: { progress: number; percentageStep?: number; onComplete?: () => void }) {
+  const onCompleteRef = useRef(onComplete);
+  const [displayedProgress, setDisplayedProgress] = useState(10);
+  onCompleteRef.current = onComplete;
+  const ready = Number.isFinite(progress) && progress >= 100;
   useEffect(() => {
-    const animation = Animated.timing(animatedProgress, { toValue: progress, duration: 240, useNativeDriver: false });
+    if (displayedProgress === 100) {
+      const completeTimer = setTimeout(() => onCompleteRef.current?.(), 220);
+      return () => clearTimeout(completeTimer);
+    }
+    // Presentation steps are intentional, not an estimate of downloaded bytes.
+    // Never show completion before the caller confirms data is ready.
+    if (displayedProgress >= 90 && !ready) return;
+    const timer = setTimeout(() => setDisplayedProgress(value => Math.min(ready ? 100 : 90, value + 10)), 700);
+    return () => clearTimeout(timer);
+  }, [displayedProgress, ready]);
+  return <View accessibilityRole="progressbar" accessibilityLabel="Preparing coordinator data" accessibilityValue={{ min: 0, max: 100, now: displayedProgress }} style={styles.loaderStage}>
+    <View style={styles.loaderOrbitFrame}>
+      <LoaderOrbit />
+      <View style={styles.loaderCore}><Text style={styles.loaderPercent}>{displayedProgress}<Text style={styles.loaderPercentSign}>%</Text></Text><View style={[styles.loaderCoreLine, displayedProgress === 100 && { backgroundColor: '#14B8A6' }]} /></View>
+    </View>
+    <View style={styles.loaderSteps}>{Array.from({ length: 10 }, (_, index) => <View key={index} style={[styles.loaderStep, displayedProgress >= (index + 1) * 10 && styles.loaderStepActive, displayedProgress === 100 && styles.loaderStepComplete]} />)}</View>
+  </View>;
+}
+
+function LoaderOrbit() {
+  const rotation = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const animation = Animated.loop(Animated.timing(rotation, { toValue: 1, duration: 2800, easing: Easing.linear, useNativeDriver: false }), { resetBeforeIteration: true });
     animation.start();
     return () => animation.stop();
-  }, [animatedProgress, progress]);
-  const width = animatedProgress.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
-  return <View style={styles.loadingProgressWrap}><View style={styles.loadingProgressTrack}><Animated.View style={[styles.loadingProgressFill, { width }]} /></View><Text style={styles.loadingProgressValue}>{progress}%</Text></View>;
+  }, [rotation]);
+  const clockwise = rotation.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const counterclockwise = rotation.interpolate({ inputRange: [0, 1], outputRange: ['360deg', '0deg'] });
+  return <View accessible={false} style={styles.loaderOrbitFrame}>
+    <View style={styles.loaderHalo} />
+    <Animated.View style={[styles.loaderOuterRing, { transform: [{ rotate: clockwise }] }]}><View style={styles.loaderOrbitDot} /></Animated.View>
+    <Animated.View style={[styles.loaderInnerRing, { transform: [{ rotate: counterclockwise }] }]} />
+  </View>;
 }

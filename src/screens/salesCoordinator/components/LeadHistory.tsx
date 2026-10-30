@@ -6,7 +6,7 @@ import type { LeadResponse } from '../../../types/lead';
 import type { MeetingResponse } from '../../../types/meeting';
 import { prospectInfoFields } from '../../../utils/prospectDetails';
 import { historyStyles,styles } from '../../salesCoordinatorStyles';
-import { mapUrlFor,maskedMobile,show } from '../coordinatorUtils';
+import { mapUrlFor,show } from '../coordinatorUtils';
 import { State } from './CoordinatorControls';
 
 export function MeetingHistoryRow({ meeting, alternate }: { meeting: MeetingResponse; alternate: boolean }) {
@@ -37,20 +37,18 @@ export function LiveLocationButton({ url }: { url: string | null | undefined }) 
   return <Pressable disabled={!url} onPress={() => { if (url) void Linking.openURL(url); }} style={[historyStyles.liveLocationButton, !url && historyStyles.liveLocationDisabled]}><Icon source="map-marker-radius" size={16} color={sourceColor} /><Text style={[historyStyles.liveLocationText, isDark && Platform.OS === 'web' && styles.darkModeWhiteSource]}>Live location</Text></Pressable>;
 }
 
-export function LeadHistoryContent({ lead, meetings, loading, progress, error }: { lead: LeadResponse; meetings: MeetingResponse[]; loading: boolean; progress: number; error: string | null }) {
+export function LeadHistoryContent({ lead, meetings, loading, progress, error, onProgressComplete }: { lead: LeadResponse; meetings: MeetingResponse[]; loading: boolean; progress: number; error: string | null; onProgressComplete?: () => void }) {
   const compact = useWindowDimensions().width < 760;
-  const isDone = (m: MeetingResponse) => ['COMPLETED', 'VERIFIED'].includes(String(m.meetingStatus ?? m.verificationStatus ?? '').toUpperCase());
   const verifiedMeeting = meetings.find((m) => m.verificationStatus === 'VERIFIED' || Boolean(m.verifiedBy) || Boolean(m.meetingVerificationDate) || Boolean(m.ageGroup) || Boolean(m.profession));
-  const latest = meetings.find((m) => isDone(m) && (m.remarks || m.meetingRemarks || m.discussion));
-  const latestRemarks = latest?.remarks ?? latest?.meetingRemarks ?? latest?.discussion ?? lead.remarks;
   const liveLocationUrl = meetings.map(mapUrlFor).find(Boolean);
-  const leadFields = prospectInfoFields(lead).map(({ label, value }) => [label, label === 'Mobile Number' || label === 'Alternate Mobile' ? maskedMobile(value) : value]);
-  const assignmentFields = [['Sales person', lead.assignedEmployeeName], ['Sales person ID', lead.assignedEmployeeCode], ['Sales coordinator', lead.assignedByEmployeeName], ['SC ID', lead.assignedByEmployeeCode], ['Assigned date', lead.assignedAt], ['Current status', lead.leadStatus?.replace(/_/g, ' ')]];
+  const hiddenLeadFields = new Set(['Prospect ID', 'Mobile Number', 'Alternate Mobile', 'Email', 'Company Name', 'Best Time to Meet', 'Prospect Source', 'Assignment Date', 'Assignment Source', 'Assigned By', 'Assigned By Code']);
+  const leadFields = prospectInfoFields(lead).filter(({ label }) => !hiddenLeadFields.has(label)).map(({ label, value }) => [label, value]);
+  const assignmentFields = [['Sales person', lead.assignedEmployeeName], ['Sales person ID', lead.assignedEmployeeCode], ['Current status', lead.leadStatus?.replace(/_/g, ' ')]];
   const scFields = verifiedMeeting ? [['Verified by', verifiedMeeting.verifiedBy], ['Verification date', verifiedMeeting.meetingVerificationDate], ['Verification remarks', verifiedMeeting.verificationRemarks], ['Age group', verifiedMeeting.ageGroup], ['Prior investment', verifiedMeeting.existingSip], ['Profession', verifiedMeeting.profession], ['Firm / clinic', verifiedMeeting.professionDetail], ['Best time', verifiedMeeting.bestTimeForMeeting], ['Meeting date', verifiedMeeting.meetingDate], ['Meeting time', verifiedMeeting.meetingTiming], ['Alone / accompanied', verifiedMeeting.aloneWith], ['Meeting with', verifiedMeeting.meetingWith], ['Joined person', verifiedMeeting.personName], ['Position', verifiedMeeting.position]].filter(([, value]) => value !== undefined && value !== null && value !== '') : [];
   const section = (title: string, fields: (string | undefined)[][], tone: 'lead' | 'assignment' | 'verification') => <View style={[historyStyles.section, tone === 'lead' ? historyStyles.leadSection : tone === 'assignment' ? historyStyles.assignmentSection : historyStyles.verificationSection]}>
     {!compact ? <Text style={historyStyles.sectionTitle}>{title}</Text> : null}
     <View style={styles.compactDetailGrid}>{fields.map(([label, value]) => <View key={label} style={[styles.detail, styles.compactDetail, historyStyles.detail, compact && { width: '47%', flexBasis: '47%', minWidth: 0, paddingHorizontal: 7, paddingVertical: 6 }]}><Text style={styles.label}>{label}</Text><Text style={styles.detailValue}>{show(value)}</Text></View>)}</View>
-    {tone === 'lead' ? <View style={historyStyles.latestRow}><View style={historyStyles.latestRemarks}><Text style={styles.label}>LATEST REMARKS</Text><Text numberOfLines={2} style={styles.detailValue}>{show(latestRemarks)}</Text></View><LiveLocationButton url={liveLocationUrl} /></View> : null}
+    {tone === 'lead' ? <LiveLocationButton url={liveLocationUrl} /> : null}
   </View>;
   return <View style={styles.historyWrap}>
     {compact ? <MobileDetailSection title="Lead details" initiallyOpen>{section('Lead details', leadFields, 'lead')}</MobileDetailSection> : section('Lead details', leadFields, 'lead')}
@@ -58,6 +56,6 @@ export function LeadHistoryContent({ lead, meetings, loading, progress, error }:
     {compact ? <MobileDetailSection title="PC verification details">{section('PC verification details', scFields, 'verification')}</MobileDetailSection> : section('PC verification details', scFields, 'verification')}
     <View style={styles.historyTitleRow}><Text style={styles.sectionTitle}>Meeting history</Text><Text style={styles.historyCount}>{loading ? 'Loading...' : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}`}</Text></View>
     {error ? <Text style={styles.error}>{error}</Text> : null}
-    {loading ? <State loading progress={progress} message="Loading lead history..." /> : meetings.length ? <View style={historyStyles.meetingList}>{meetings.map((meeting, index) => <MeetingHistoryRow key={meeting.meetingCode ?? `${meeting.id ?? index}`} meeting={meeting} alternate={index % 2 === 1} />)}</View> : <State message="No meeting history is available for this lead yet." />}
+    {loading ? <State loading progress={progress} message="Loading lead history..." onProgressComplete={onProgressComplete} /> : meetings.length ? <View style={historyStyles.meetingList}>{meetings.map((meeting, index) => <MeetingHistoryRow key={meeting.meetingCode ?? `${meeting.id ?? index}`} meeting={meeting} alternate={index % 2 === 1} />)}</View> : <State message="No meeting history is available for this lead yet." />}
   </View>;
 }

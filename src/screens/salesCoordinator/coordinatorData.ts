@@ -6,6 +6,22 @@ import type { MeetingResponse } from '../../types/meeting';
 import type { VerificationPage } from './coordinatorTypes';
 import { clientMeetingTime,digitsOnly,employeeRole } from './coordinatorUtils';
 
+export type LoadingProgress = (progress: number) => void;
+
+const loadBatch = async <T,>(requests: Promise<T>[], onProgress: (progress: number) => void) => {
+  let completed = 0;
+  const total = requests.length;
+  if (total === 0) {
+    onProgress(1);
+    return [];
+  }
+  return Promise.all(requests.map((request) => request.then((result) => {
+    completed += 1;
+    onProgress(completed / total);
+    return result;
+  })));
+};
+
 export const assignedSalesPersonForMobile = async (mobileNumber: string) => {
   const response = await leadSearchApi.search({ keyword: mobileNumber, page: 0, size: 25 });
   const matchedLead = response.data?.content?.find((lead) => digitsOnly(lead.mobileNumber) === digitsOnly(mobileNumber));
@@ -54,35 +70,69 @@ export const clientMeetingAsCoordinatorRecord = (meeting: Awaited<ReturnType<typ
   isClientMeeting: true,
 });
 
-export const loadClientMeetings = async (fetchPage: (page?: number) => Promise<VerificationPage>, { pendingOnly = false, markVerified = false } = {}): Promise<MeetingResponse[]> => {
+export const loadClientMeetings = async (
+  fetchPage: (page?: number) => Promise<VerificationPage>,
+  { pendingOnly = false, markVerified = false }: { pendingOnly?: boolean; markVerified?: boolean } = {},
+  onProgress: LoadingProgress = () => undefined,
+): Promise<MeetingResponse[]> => {
   const firstPage = await fetchPage();
-  const remainingPages = await Promise.all(Array.from({ length: Math.max(0, (firstPage.totalPages ?? 1) - 1) }, (_, index) => fetchPage(index + 1)));
+  const totalPages = Math.max(1, firstPage.totalPages ?? 1);
+  let completedPages = 1;
+  onProgress((completedPages / totalPages) / 3);
+  const remainingPages = await loadBatch(
+    Array.from({ length: totalPages - 1 }, (_, index) => fetchPage(index + 1)),
+    (completed) => onProgress(((completedPages + completed * (totalPages - 1)) / totalPages) / 3),
+  );
+  completedPages = totalPages;
+  onProgress((completedPages / totalPages) / 3);
   const codes = [firstPage, ...remainingPages].flatMap((page) => page.content ?? [])
     .filter((item) => !pendingOnly || !item.verificationStatus || item.verificationStatus === 'PENDING')
     .map((item) => item.meetingCode?.trim())
     .filter((code): code is string => Boolean(code));
-  const records = await Promise.all(codes.map((meetingCode) => clientMeetingApi.getMeeting(meetingCode)));
-  const profiles = await Promise.all(records.map((meeting) => meeting.clientCode ? clientMeetingApi.getProfile(meeting.clientCode).catch(() => null) : Promise.resolve(null)));
+  const records = await loadBatch(
+    codes.map((meetingCode) => clientMeetingApi.getMeeting(meetingCode)),
+    (completed) => onProgress((1 + completed) / 3),
+  );
+  const profiles = await loadBatch(
+    records.map((meeting) => meeting.clientCode ? clientMeetingApi.getProfile(meeting.clientCode).catch(() => null) : Promise.resolve(null)),
+    (completed) => onProgress((2 + completed) / 3),
+  );
   return records.map((meeting, index) => {
     const record = clientMeetingAsCoordinatorRecord(meeting, profiles[index]);
     return markVerified ? { ...record, verificationStatus: 'VERIFIED' as const } : record;
   });
 };
 
-export const loadPendingClientMeetings = () => loadClientMeetings((page) => clientMeetingApi.getPendingVerification(page), { pendingOnly: true });
+export const loadPendingClientMeetings = (onProgress?: LoadingProgress) => loadClientMeetings(
+  (page) => clientMeetingApi.getPendingVerification(page),
+  { pendingOnly: true },
+  onProgress,
+);
 
-export const loadVerifiedClientMeetings = () => loadClientMeetings((page) => clientMeetingApi.getVerifiedVerification(page), { markVerified: true });
+export const loadVerifiedClientMeetings = (onProgress?: LoadingProgress) => loadClientMeetings(
+  (page) => clientMeetingApi.getVerifiedVerification(page),
+  { markVerified: true },
+  onProgress,
+);
 
-export const loadCoordinatorAssignedLeads = async () => {
+export const loadCoordinatorAssignedLeads = async (onProgress?: LoadingProgress) => {
   const search = (page: number) => leadSearchApi.search({ page, size: 100, sortBy: 'assignedAt', sortDirection: 'DESC' });
   const firstPage = await search(0);
   const leads = [...(firstPage.data?.content ?? [])];
-  const totalPages = firstPage.data?.totalPages ?? 1;
-  for (let page = 1; page < totalPages; page += 1) leads.push(...((await search(page)).data?.content ?? []));
+  const totalPages = Math.max(1, firstPage.data?.totalPages ?? 1);
+  let completedPages = 1;
+  onProgress?.(completedPages / totalPages);
+  for (let page = 1; page < totalPages; page += 1) {
+    leads.push(...((await search(page)).data?.content ?? []));
+    completedPages += 1;
+    onProgress?.(completedPages / totalPages);
+  }
   // Coordinator ownership is determined by the backend assignment flow. Do not include
   // direct/historical assignments here, otherwise one sales person appears under coordinators
   // who do not own that assignment.
-  return leads
+  const assignedLeads = leads
     .map((lead) => ({ ...lead, assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt }))
     .filter((lead) => lead.assignmentSource === 'SALES_COORDINATOR' || lead.assignedByCoordinator);
+  onProgress?.(1);
+  return assignedLeads;
 };

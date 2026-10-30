@@ -19,7 +19,15 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 - React Native Paper
 - Web, Android, and iOS targets
 
-## Latest updates - 29 October 2026
+## Latest updates - 30 October 2026
+
+- Added an indigo/teal orbit loader with a central percentage and ten progress markers. Every 10% step is displayed at the current 700ms interval; it waits at 90% until data is ready, shows 100%, then reveals content after 220ms. These are visual preparation steps, not download percentages.
+- Today and Verified meeting requests run in parallel and publish together, with verified history committed first for Today autofill. Assign Lead opens without the workspace loader.
+- Added staged API/page loading callbacks, per-tab loading/error handling, and history completion callbacks. Removed the Loading coordinator workspace message.
+- Simplified Lead History by hiding prospect/contact/company/source/assignment metadata, coordinator name/ID, and duplicate latest remarks. Best time remains in PC verification details; original prospect remarks and meeting history remain available.
+- Added loader regression tests for visible steps, slow responses and timer cleanup, plus additional loading-stage tests.
+
+## Previous updates - 29 October 2026
 
 ### PC mobile workspace improvements
 

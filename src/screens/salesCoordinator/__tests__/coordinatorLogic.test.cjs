@@ -83,9 +83,10 @@ test('verified meeting storage merges without erasing profile fields', async () 
   await storage.saveStoredVerifiedClientMeetings(merged, 'PC1');
   assert.deepEqual(await storage.loadStoredVerifiedClientMeetings('PC1'), merged);
 });
-test('client loading visits all pages, filters pending and tolerates profile failure', async () => {
+test('client loading reports completed pages and request stages and tolerates optional profile failure', async () => {
   const requested = [];
   const pages = [];
+  const progress = [];
   const data = createLoader({ '/clientMeeting': { clientMeetingApi: {
     getMeeting: async code => { requested.push(code); return { meetingCode: code, clientCode: 'C1', meetingDate: '2026-10-20', assignedEmployeeCode: 'DV0101' }; },
     getProfile: async () => { throw Error('profile unavailable'); },
@@ -93,17 +94,49 @@ test('client loading visits all pages, filters pending and tolerates profile fai
   const result = await data.loadClientMeetings(async (page = 0) => {
     pages.push(page);
     return page === 0 ? { totalPages: 2, content: [{ meetingCode: ' M1 ', verificationStatus: 'PENDING' }, { meetingCode: 'M2', verificationStatus: 'VERIFIED' }] } : { content: [{ meetingCode: 'M3' }] };
-  }, { pendingOnly: true });
+  }, { pendingOnly: true }, value => progress.push(value));
   assert.deepEqual(pages, [0, 1]);
   assert.deepEqual(requested, ['M1', 'M3']);
   assert.equal(result.length, 2);
   assert.equal(result[0].employeeRole, 'SALES_COORDINATOR');
   assert.equal(result[0].isClientMeeting, true);
+  assert.equal(progress.at(-1), 1);
+  assert.ok(progress.every((value, index) => index === 0 || value >= progress[index - 1]));
   const verified = await data.loadClientMeetings(async () => ({ content: [{ meetingCode: 'M4' }] }), { markVerified: true });
   assert.equal(verified[0].verificationStatus, 'VERIFIED');
 });
+test('empty client results complete all required loading stages', async () => {
+  const progress = [];
+  const data = createLoader({ '/clientMeeting': { clientMeetingApi: {} }, '/leadSearch': { leadSearchApi: {} }, '/lead': { leadApi: {} } })('coordinatorData');
+  const result = await data.loadClientMeetings(async () => ({ totalPages: 1, content: [] }), {}, value => progress.push(value));
+  assert.deepEqual(result, []);
+  assert.equal(progress.at(-1), 1);
+});
+test('parallel client detail requests only complete their stage after the slow request resolves', async () => {
+  const progress = [];
+  let releaseSlowRequest;
+  const slowRequest = new Promise(resolve => { releaseSlowRequest = resolve; });
+  const data = createLoader({ '/clientMeeting': { clientMeetingApi: {
+    getMeeting: async code => code === 'M1'
+      ? { meetingCode: code }
+      : slowRequest,
+  } }, '/leadSearch': { leadSearchApi: {} }, '/lead': { leadApi: {} } })('coordinatorData');
+  const loading = data.loadClientMeetings(async () => ({ content: [{ meetingCode: 'M1' }, { meetingCode: 'M2' }] }), {}, value => progress.push(value));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(progress.at(-1), 0.5);
+  releaseSlowRequest({ meetingCode: 'M2' });
+  assert.equal((await loading).length, 2);
+  assert.equal(progress.at(-1), 1);
+});
+test('failed required client meeting detail requests do not report completion', async () => {
+  const progress = [];
+  const data = createLoader({ '/clientMeeting': { clientMeetingApi: { getMeeting: async () => { throw Error('meeting detail unavailable'); } } }, '/leadSearch': { leadSearchApi: {} }, '/lead': { leadApi: {} } })('coordinatorData');
+  await assert.rejects(data.loadClientMeetings(async () => ({ content: [{ meetingCode: 'M1' }] }), {}, value => progress.push(value)), /meeting detail unavailable/);
+  assert.ok(progress.every(value => value < 1));
+});
 test('assigned leads retain coordinator ownership and assignment-date precedence', async () => {
   const pages = [];
+  const progress = [];
   const data = createLoader({ '/leadSearch': { leadSearchApi: { search: async ({ page }) => {
     pages.push(page);
     return { data: { totalPages: 2, content: page === 0 ? [
@@ -111,10 +144,20 @@ test('assigned leads retain coordinator ownership and assignment-date precedence
       { leadId: 2, assignmentSource: 'DIRECT' },
     ] : [{ leadId: 3, assignedByCoordinator: true }] } };
   } } }, '/lead': { leadApi: {} }, '/clientMeeting': { clientMeetingApi: {} } })('coordinatorData');
-  const result = await data.loadCoordinatorAssignedLeads();
+  const result = await data.loadCoordinatorAssignedLeads(value => progress.push(value));
   assert.deepEqual(pages, [0, 1]);
   assert.deepEqual(result.map(r => r.leadId), [1, 3]);
   assert.equal(result[0].assignedAt, '2026-10-01');
+  assert.deepEqual(progress, [0.5, 1, 1]);
+});
+test('failed assigned-lead page requests do not report completion', async () => {
+  const progress = [];
+  const data = createLoader({ '/leadSearch': { leadSearchApi: { search: async ({ page }) => {
+    if (page) throw Error('assigned lead page unavailable');
+    return { data: { totalPages: 2, content: [] } };
+  } } }, '/lead': { leadApi: {} }, '/clientMeeting': { clientMeetingApi: {} } })('coordinatorData');
+  await assert.rejects(data.loadCoordinatorAssignedLeads(value => progress.push(value)), /assigned lead page unavailable/);
+  assert.ok(progress.every(value => value < 1));
 });
 test('CSV escaping and phone masking preserve exported/displayed values', () => {
   const csv = pure('coordinatorExport');

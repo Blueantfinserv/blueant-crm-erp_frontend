@@ -28,6 +28,8 @@ import { belongsToCoordinatorTeam,clientMeetingTime,digitsOnly,isAlreadyAssigned
 import { loadStoredVerifiedClientMeetings,mergeVerifiedMeetings,saveStoredVerifiedClientMeetings } from './salesCoordinator/verifiedMeetingStorage';
 import { popupStyles,styles } from './salesCoordinatorStyles';
 
+type DeferredLoadingTab = 'tasks' | 'assignedLeads';
+
 export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: { permissions?: readonly string[] | null; activeTab?: Tab; onTabChange?: (tab: Tab) => void }) {
   const { isDark } = useAppTheme();
   const { width: windowWidth } = useWindowDimensions();
@@ -36,14 +38,25 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
   const [mobileMeetingPage, setMobileMeetingPage] = useState(0);
   const [localTab, setLocalTab] = useState<Tab>('today');
   const tab = activeTab ?? localTab;
+  const activeTabRef = useRef(tab);
+  activeTabRef.current = tab;
   const setTab = (value: Tab) => { setLocalTab(value); onTabChange?.(value); };
   const [pending, setPending] = useState<MeetingResponse[]>([]);
   const [verified, setVerified] = useState<MeetingResponse[]>([]);
+  const verifiedMeetingsRef = useRef<MeetingResponse[]>([]);
   const [meetings, setMeetings] = useState<MeetingResponse[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingProgress, setLoadingProgress] = useState(10);
-  const [tabLoading, setTabLoading] = useState<Tab | null>(null);
-  const [tabLoadingProgress, setTabLoadingProgress] = useState(10);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const [pendingLoadingProgress, setPendingLoadingProgress] = useState(0);
+  const [pendingLoadError, setPendingLoadError] = useState<string | null>(null);
+  const [verifiedLoading, setVerifiedLoading] = useState(true);
+  const [verifiedLoadingProgress, setVerifiedLoadingProgress] = useState(0);
+  const [verifiedLoadError, setVerifiedLoadError] = useState<string | null>(null);
+  const [tabLoading, setTabLoading] = useState<Partial<Record<DeferredLoadingTab, boolean>>>({});
+  const [tabLoadingProgress, setTabLoadingProgress] = useState<Record<DeferredLoadingTab, number>>({ tasks: 0, assignedLeads: 0 });
+  const [tabLoadingError, setTabLoadingError] = useState<Partial<Record<DeferredLoadingTab, string | null>>>({});
+  const tabLoadInFlight = useRef(new Set<DeferredLoadingTab>());
   const [refreshing, setRefreshing] = useState(false);
   const nextRefreshAt = useRef(Date.now() + 10_000);
   const nextVerifiedRefreshAt = useRef(Date.now() + 5 * 60_000);
@@ -85,8 +98,14 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
   const [historyLead, setHistoryLead] = useState<LeadResponse | null>(null);
   const [historyMeetings, setHistoryMeetings] = useState<MeetingResponse[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyLoadingProgress, setHistoryLoadingProgress] = useState(10);
+  const [historyLoadingProgress, setHistoryLoadingProgress] = useState(0);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const historyGeneration = useRef(0);
+
+  const commitVerifiedMeetings = (records: MeetingResponse[]) => {
+    verifiedMeetingsRef.current = records;
+    setVerified(records);
+  };
   const [exportingAssignedLeads, setExportingAssignedLeads] = useState(false);
 
   const salesPersonNamesByCode = useMemo(() => {
@@ -145,23 +164,118 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
     if (loadInFlight.current || submittingRef.current) return;
     loadInFlight.current = true;
     const generation = dataGeneration.current;
-    if (!hasLoaded.current) { setLoadingProgress(10); setLoading(true); }
+    const operationCount = includeDeferredData ? 7 : 5;
+    const operationProgress = Array.from({ length: operationCount }, () => 0);
+    let progressActive = true;
+    let succeeded = false;
+    const updateProgress = (index: number, progress: number) => {
+      if (!progressActive || generation !== dataGeneration.current) return;
+      operationProgress[index] = Math.max(operationProgress[index], Math.min(1, Math.max(0, progress)));
+      const completedFraction = operationProgress.reduce((total, value) => total + value, 0) / operationCount;
+      setLoadingProgress(Math.floor(completedFraction * 100));
+    };
+    const toTenPercentStep = (fraction: number) => fraction >= 1 ? 100 : Math.floor(fraction * 10) * 10;
+    const createTabProgress = (
+      stages: number,
+      setProgress: (progress: number) => void,
+      onProgress?: (progress: number) => void,
+    ) => {
+      const completedStages = Array.from({ length: stages }, () => 0);
+      return (index: number, progress: number) => {
+        if (!progressActive || generation !== dataGeneration.current) return;
+        const safeProgress = Number.isFinite(progress) ? Math.min(1, Math.max(0, progress)) : 0;
+        completedStages[index] = Math.max(completedStages[index], safeProgress);
+        const completedFraction = completedStages.reduce((total, value) => total + value, 0) / stages;
+        setProgress(toTenPercentStep(completedFraction));
+        onProgress?.(completedFraction);
+      };
+    };
+    const updateTodayProgress = createTabProgress(2, (value) => setPendingLoadingProgress(Math.min(90, value)));
+    const updateVerifiedProgress = createTabProgress(4, (value) => setVerifiedLoadingProgress(Math.min(90, value)));
+    setLoadingProgress(0);
+    setLoading(true);
+    setPendingLoading(true);
+    setPendingLoadingProgress(0);
+    setPendingLoadError(null);
+    setVerifiedLoading(true);
+    setVerifiedLoadingProgress(0);
+    setVerifiedLoadError(null);
     setRefreshing(true);
     try {
-      const [leadPending, clientPending, leadVerified, clientVerified, deferred] = await Promise.all([
-        meetingService.getVerificationMeetings('PENDING').then((result) => { setLoadingProgress(40); return result; }),
-        loadPendingClientMeetings().catch(() => []),
-        meetingService.getVerificationMeetings('VERIFIED').then((result) => { setLoadingProgress(70); return result; }),
-        loadVerifiedClientMeetings().catch(() => []),
-        includeDeferredData ? Promise.all([meetingService.getAllMeetingRecords(), loadCoordinatorAssignedLeads()]).then((result) => { setLoadingProgress(90); return result; }) : Promise.resolve(null),
-      ]);
+      const todayLoad = Promise.all([
+        meetingService.getVerificationMeetings('PENDING').then((result) => {
+          updateProgress(0, 1);
+          updateTodayProgress(0, 1);
+          return result;
+        }),
+        loadPendingClientMeetings((progress) => {
+          updateProgress(1, progress);
+          updateTodayProgress(1, progress);
+        }),
+      ]).then(([leadPending, clientPending]) => {
+        if (generation !== dataGeneration.current) return null;
+        const loaded = [...leadPending, ...clientPending];
+        return loaded;
+      }).catch((e: unknown) => {
+        if (generation !== dataGeneration.current) return null;
+        setPendingLoadError(e instanceof Error ? e.message : 'Pending meetings could not be loaded.');
+        setPendingLoading(false);
+        return null;
+      });
+      const verifiedLoad = Promise.all([
+        meetingService.getVerificationMeetings('VERIFIED').then((result) => {
+          updateProgress(2, 1);
+          updateVerifiedProgress(0, 1);
+          return result;
+        }),
+        loadVerifiedClientMeetings((progress) => {
+          updateProgress(3, progress);
+          updateVerifiedProgress(1, progress);
+        }),
+        SecureStorageService.getUserData().then((currentUser) => {
+          updateVerifiedProgress(2, 1);
+          return loadStoredVerifiedClientMeetings(currentUser?.employeeId);
+        }).then((locallyVerifiedClients) => {
+          updateProgress(4, 1);
+          updateVerifiedProgress(3, 1);
+          return locallyVerifiedClients;
+        }),
+      ]).then(([leadVerified, clientVerified, locallyVerifiedClients]): MeetingResponse[] | null => {
+        if (generation !== dataGeneration.current) return null;
+        const loadedVerifiedMeetings = mergeVerifiedMeetings(leadVerified, clientVerified, locallyVerifiedClients);
+        return loadedVerifiedMeetings;
+      }).catch((e: unknown) => {
+        if (generation !== dataGeneration.current) return null;
+        setVerifiedLoadError(e instanceof Error ? e.message : 'Verified meetings could not be loaded.');
+        setVerifiedLoading(false);
+        return null;
+      });
+      // Publish one complete snapshot: Today autofill depends on verified history.
+      const meetingLoads = Promise.all([todayLoad, verifiedLoad]).then(([pendingRecords, verifiedRecords]) => {
+        if (generation !== dataGeneration.current) return false;
+        if (pendingRecords === null || verifiedRecords === null) {
+          setPendingLoading(false);
+          setVerifiedLoading(false);
+          return false;
+        }
+        commitVerifiedMeetings(verifiedRecords);
+        setPending(pendingRecords);
+        setPendingLoadingProgress(100);
+        setVerifiedLoadingProgress(100);
+        return true;
+      });
+      const deferredLoad = includeDeferredData ? Promise.all([
+          meetingService.getAllMeetingRecords().then((result) => { updateProgress(5, 1); return result; }),
+          loadCoordinatorAssignedLeads((progress) => updateProgress(6, progress)),
+        ]) : Promise.resolve(null);
+      const [meetingsReady, deferred] = await Promise.all([meetingLoads, deferredLoad]);
       if (generation !== dataGeneration.current) return;
-      const currentUser = await SecureStorageService.getUserData();
-      const locallyVerifiedClients = await loadStoredVerifiedClientMeetings(currentUser?.employeeId);
-      setLoadingProgress(100); setPending([...leadPending, ...clientPending]); setVerified(mergeVerifiedMeetings(leadVerified, clientVerified, locallyVerifiedClients));
       if (deferred) { setMeetings(deferred[0]); setAssignedLeads(deferred[1]); hasTaskData.current = true; hasAssignedLeadsData.current = true; }
-      hasLoaded.current = true;
-      setError(null); setRefreshError(null);
+      if (meetingsReady) {
+        hasLoaded.current = true;
+        setError(null); setRefreshError(null);
+        succeeded = true;
+      }
     } catch (e) {
       if (generation !== dataGeneration.current) return;
       const message = e instanceof Error ? e.message : 'Coordinator data could not be loaded.';
@@ -169,40 +283,61 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
       else setError(message);
     }
     finally {
-      loadInFlight.current = false; setLoading(false); setRefreshing(false);
-      nextRefreshAt.current = Date.now() + 10_000;
-      nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000;
-      nextTaskRefreshAt.current = Date.now() + 60 * 60_000;
-      nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000;
+      progressActive = false;
+      loadInFlight.current = false;
+      if (generation === dataGeneration.current) {
+        if (!succeeded || activeTabRef.current === 'today' || activeTabRef.current === 'responses') {
+          setLoading(false);
+          setRefreshing(false);
+        }
+        nextRefreshAt.current = Date.now() + 10_000;
+        nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000;
+        nextTaskRefreshAt.current = Date.now() + 60 * 60_000;
+        nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000;
+      }
     }
   }, []);
   const refreshPendingMeetings = useCallback(async () => {
     if (loadInFlight.current || pendingRefreshInFlight.current || submittingRef.current) return;
     pendingRefreshInFlight.current = true;
     try {
-      const [leadPending, clientPending] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), loadPendingClientMeetings().catch(() => [])]);
+      const [leadPending, clientPending] = await Promise.all([meetingService.getVerificationMeetings('PENDING'), loadPendingClientMeetings()]);
       setPending([...leadPending, ...clientPending]);
+    } catch (e) {
+      setRefreshError(e instanceof Error ? e.message : 'Pending meetings could not be refreshed.');
     } finally { pendingRefreshInFlight.current = false; nextRefreshAt.current = Date.now() + 10_000; }
   }, []);
   const refreshVerifiedMeetings = useCallback(async () => {
     if (loadInFlight.current || verifiedRefreshInFlight.current || submittingRef.current) return;
     verifiedRefreshInFlight.current = true;
-    try {
-      const [leadVerified, clientVerified, currentUser] = await Promise.all([meetingService.getVerificationMeetings('VERIFIED'), loadVerifiedClientMeetings().catch(() => []), SecureStorageService.getUserData()]);
+    const refresh = Promise.all([
+      meetingService.getVerificationMeetings('VERIFIED'),
+      loadVerifiedClientMeetings(),
+      SecureStorageService.getUserData(),
+    ]).then(async ([leadVerified, clientVerified, currentUser]) => {
       const locallyVerifiedClients = await loadStoredVerifiedClientMeetings(currentUser?.employeeId);
-      setVerified(mergeVerifiedMeetings(leadVerified, clientVerified, locallyVerifiedClients));
-    } finally { verifiedRefreshInFlight.current = false; nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000; }
+      const loadedVerifiedMeetings = mergeVerifiedMeetings(leadVerified, clientVerified, locallyVerifiedClients);
+      commitVerifiedMeetings(loadedVerifiedMeetings);
+      return loadedVerifiedMeetings;
+    }).catch((e: unknown) => {
+      setRefreshError(e instanceof Error ? e.message : 'Verified meetings could not be refreshed.');
+      return null;
+    });
+    try { await refresh; }
+    finally { verifiedRefreshInFlight.current = false; nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000; }
   }, []);
   const refreshTaskMeetings = useCallback(async () => {
     if (!hasTaskData.current || loadInFlight.current || taskRefreshInFlight.current || submittingRef.current) return;
     taskRefreshInFlight.current = true;
     try { setMeetings(await meetingService.getAllMeetingRecords()); }
+    catch (e) { setRefreshError(e instanceof Error ? e.message : 'Sales person tasks could not be refreshed.'); }
     finally { taskRefreshInFlight.current = false; nextTaskRefreshAt.current = Date.now() + 60 * 60_000; }
   }, []);
   const refreshAssignedLeads = useCallback(async () => {
     if (!hasAssignedLeadsData.current || loadInFlight.current || assignedLeadsRefreshInFlight.current || submittingRef.current) return;
     assignedLeadsRefreshInFlight.current = true;
     try { setAssignedLeads(await loadCoordinatorAssignedLeads()); }
+    catch (e) { setRefreshError(e instanceof Error ? e.message : 'Assigned leads could not be refreshed.'); }
     finally { assignedLeadsRefreshInFlight.current = false; nextAssignedLeadsRefreshAt.current = Date.now() + 30 * 60_000; }
   }, []);
   useEffect(() => {
@@ -214,24 +349,65 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
     return () => { clearInterval(todayTimer); clearInterval(verifiedTimer); clearInterval(taskTimer); clearInterval(assignedTimer); dataGeneration.current += 1; };
   }, [load, refreshAssignedLeads, refreshPendingMeetings, refreshTaskMeetings, refreshVerifiedMeetings]);
   useEffect(() => {
-    if (tab === 'tasks' && !hasTaskData.current && tabLoading !== 'tasks') {
-      setTabLoadingProgress(10); setTabLoading('tasks');
-      void Promise.all([
-        meetingService.getAllMeetingRecords().then((result) => { setTabLoadingProgress(50); return result; }),
-        (hasAssignedLeadsData.current ? Promise.resolve(assignedLeads) : loadCoordinatorAssignedLeads()).then((result) => { setTabLoadingProgress(90); return result; }),
-      ])
-        .then(([taskMeetings, leads]) => { setTabLoadingProgress(100); setMeetings(taskMeetings); if (!hasAssignedLeadsData.current) { setAssignedLeads(leads); hasAssignedLeadsData.current = true; } hasTaskData.current = true; })
-        .catch((e: unknown) => setRefreshError(e instanceof Error ? e.message : 'Sales person tasks could not be loaded.'))
-        .finally(() => setTabLoading(null));
-    }
-    if (tab === 'assignedLeads' && !hasAssignedLeadsData.current && tabLoading !== 'assignedLeads') {
-      setTabLoadingProgress(10); setTabLoading('assignedLeads');
-      void loadCoordinatorAssignedLeads()
-        .then((leads) => { setTabLoadingProgress(100); setAssignedLeads(leads); hasAssignedLeadsData.current = true; })
-        .catch((e: unknown) => setRefreshError(e instanceof Error ? e.message : 'Assigned leads could not be loaded.'))
-        .finally(() => setTabLoading(null));
-    }
-  }, [assignedLeads, tab, tabLoading]);
+    const generation = dataGeneration.current;
+    const startTabLoad = (target: DeferredLoadingTab) => {
+      const alreadyLoaded = target === 'tasks' ? hasTaskData.current : hasAssignedLeadsData.current;
+      if (alreadyLoaded || tabLoadInFlight.current.has(target)) return;
+      tabLoadInFlight.current.add(target);
+      const operationProgress = target === 'tasks' ? [0, 0] : [0];
+      let progressActive = true;
+      let succeeded = false;
+      setTabLoading((current) => ({ ...current, [target]: true }));
+      setTabLoadingProgress((current) => ({ ...current, [target]: 0 }));
+      setTabLoadingError((current) => ({ ...current, [target]: null }));
+      const updateProgress = (index: number, progress: number) => {
+        if (!progressActive || generation !== dataGeneration.current) return;
+        operationProgress[index] = Math.max(operationProgress[index], Math.min(1, Math.max(0, progress)));
+        const completedFraction = operationProgress.reduce((total, value) => total + value, 0) / operationProgress.length;
+        setTabLoadingProgress((current) => ({ ...current, [target]: Math.floor(completedFraction * 100) }));
+      };
+      void (async () => {
+        try {
+          if (target === 'tasks') {
+            const [taskMeetings, leads] = await Promise.all([
+              meetingService.getAllMeetingRecords().then((result) => { updateProgress(0, 1); return result; }),
+              hasAssignedLeadsData.current
+                ? Promise.resolve(assignedLeads).then((result) => { updateProgress(1, 1); return result; })
+                : loadCoordinatorAssignedLeads((progress) => updateProgress(1, progress)),
+            ]);
+            if (generation !== dataGeneration.current) return;
+            setMeetings(taskMeetings);
+            if (!hasAssignedLeadsData.current) {
+              setAssignedLeads(leads);
+              hasAssignedLeadsData.current = true;
+            }
+            hasTaskData.current = true;
+          } else {
+            const leads = await loadCoordinatorAssignedLeads((progress) => updateProgress(0, progress));
+            if (generation !== dataGeneration.current) return;
+            setAssignedLeads(leads);
+            hasAssignedLeadsData.current = true;
+          }
+          succeeded = true;
+        } catch (e) {
+          if (generation === dataGeneration.current) {
+            setTabLoadingError((current) => ({
+              ...current,
+              [target]: e instanceof Error ? e.message : target === 'tasks' ? 'Sales person tasks could not be loaded.' : 'Assigned leads could not be loaded.',
+            }));
+          }
+        } finally {
+          progressActive = false;
+          tabLoadInFlight.current.delete(target);
+          if (generation === dataGeneration.current && !succeeded) {
+            setTabLoading((current) => ({ ...current, [target]: false }));
+          }
+        }
+      })();
+    };
+    if (tab === 'tasks') startTabLoad('tasks');
+    if (tab === 'assignedLeads') startTabLoad('assignedLeads');
+  }, [assignedLeads, tab]);
 
   const taskStatus = (m: MeetingResponse): 'TODAY' | 'PENDING' | 'OTHER' => {
     const taskDate = String(m.nextMeetingDate ?? m.meetingDate ?? '').slice(0, 10);
@@ -334,22 +510,28 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
     finally { setAssigning(false); }
   };
 
-  const openVerify = (meeting: MeetingResponse) => {
-    setForm(createMeetingVerificationForm(meeting, verified));
-    const priorClientVerification = verified.find((item) => {
+  const getPriorClientVerification = (meeting: MeetingResponse, records: readonly MeetingResponse[]) => records.find((item) => {
       if (!item.isClientMeeting || !item.blueantAppUsed) return false;
       const currentMobile = digitsOnly(meeting.mobileNumber);
       const priorMobile = digitsOnly(item.mobileNumber);
       if (currentMobile && priorMobile) return currentMobile === priorMobile;
       return Boolean(meeting.clientName && item.clientName && meeting.clientName.trim().toLowerCase() === item.clientName.trim().toLowerCase());
     });
+  const closeVerification = () => {
+    setSelected(null);
+  };
+  const openVerify = (meeting: MeetingResponse) => {
+    const records = verifiedMeetingsRef.current;
+    setForm(createMeetingVerificationForm(meeting, records));
+    const priorClientVerification = getPriorClientVerification(meeting, records);
     const nextClientForm = emptyClientVerificationForm(meeting);
     if (priorClientVerification?.blueantAppUsed) {
       nextClientForm.blueantAppUsed = priorClientVerification.blueantAppUsed;
       nextClientForm.blueantAppLocked = true;
     }
     setClientForm(nextClientForm);
-    setSubmitError(null); setSelected(meeting);
+    setSubmitError(null);
+    setSelected(meeting);
   };
   const verifyClientMeeting = async (meeting: MeetingResponse & { meetingCode: string }) => {
     const isNotConducted = isNotConductedMeeting(meeting);
@@ -420,8 +602,8 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
       const currentUser = await SecureStorageService.getUserData();
       const locallyVerifiedClients = await loadStoredVerifiedClientMeetings(currentUser?.employeeId);
       await saveStoredVerifiedClientMeetings(mergeVerifiedMeetings([verifiedClientRecord], locallyVerifiedClients), currentUser?.employeeId);
-      setVerified((items) => mergeVerifiedMeetings([verifiedClientRecord], items));
-      setSelected(null);
+      commitVerifiedMeetings(mergeVerifiedMeetings([verifiedClientRecord], verifiedMeetingsRef.current));
+      closeVerification();
     } catch (e) { setSubmitError(e instanceof Error ? e.message : 'Client meeting verification failed.'); }
     finally { submittingRef.current = false; setSubmitting(false); }
   };
@@ -445,30 +627,63 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
     try {
       await meetingService.verifyMeeting(selected.meetingCode, payload);
       setPending((items) => items.filter((m) => m.meetingCode !== selected.meetingCode));
-      setSelected(null);
-      void meetingService.getVerificationMeetings('VERIFIED').then(setVerified).catch(() => undefined);
+      closeVerification();
+      void meetingService.getVerificationMeetings('VERIFIED').then(commitVerifiedMeetings).catch(() => undefined);
     } catch (e) { setSubmitError(e instanceof Error ? e.message : 'Meeting verification failed.'); }
     finally { submittingRef.current = false; setSubmitting(false); }
   };
 
   const openLeadHistory = async (lead: LeadResponse) => {
-    setHistoryLead(lead); setHistoryMeetings([]); setHistoryError(null); setHistoryLoadingProgress(10); setHistoryLoading(true);
+    const generation = ++historyGeneration.current;
+    let succeeded = false;
+    setHistoryLead(lead); setHistoryMeetings([]); setHistoryError(null); setHistoryLoadingProgress(0); setHistoryLoading(true);
     const leadIdentifier = lead.uniqueLeadId ?? (lead.leadId !== undefined ? String(lead.leadId) : '');
     const sameLead = (meeting: MeetingResponse) => (lead.leadId !== undefined && meeting.leadId === lead.leadId) || (Boolean(lead.leadCode) && meeting.leadCode === lead.leadCode);
     const localMeetings = meetings.filter(sameLead);
     const verifiedMeetings = verified.filter(sameLead);
+    const coreRequestCount = Number(Boolean(lead.uniqueLeadId)) + Number(Boolean(leadIdentifier));
+    let completedCoreRequests = 0;
+    const reportHistoryProgress = (progress: number) => {
+      if (generation === historyGeneration.current) {
+        setHistoryLoadingProgress((current) => Math.max(current, Math.min(100, Math.floor(progress))));
+      }
+    };
+    const completeCoreRequest = <T,>(result: T) => {
+      completedCoreRequests += 1;
+      reportHistoryProgress(coreRequestCount ? completedCoreRequests / coreRequestCount * 50 : 50);
+      return result;
+    };
+    if (!coreRequestCount) reportHistoryProgress(50);
     try {
       const [detailResult, historyResult] = await Promise.all([
-        lead.uniqueLeadId ? leadApi.getLeadDetails(lead.uniqueLeadId).then((result) => { setHistoryLoadingProgress(50); return result; }).catch(() => null) : Promise.resolve(null),
-        leadIdentifier ? meetingApi.getHistory(leadIdentifier).then((result) => { setHistoryLoadingProgress(80); return result; }).catch(() => null) : Promise.resolve(null),
+        lead.uniqueLeadId ? leadApi.getLeadDetails(lead.uniqueLeadId).then(completeCoreRequest) : Promise.resolve(null),
+        leadIdentifier ? meetingApi.getHistory(leadIdentifier).then(completeCoreRequest) : Promise.resolve(null),
       ]);
       const byCode = new Map<string, MeetingResponse>();
       [...(historyResult?.data ?? []), ...localMeetings, ...verifiedMeetings].forEach((meeting) => { const key = meeting.meetingCode ?? String(meeting.id ?? ''); if (key) byCode.set(key, { ...byCode.get(key), ...meeting }); });
-      const detailedMeetings = await Promise.all([...byCode.values()].map(async (meeting) => meeting.meetingCode ? meetingApi.getMeeting(meeting.meetingCode).then((result) => result.data ?? meeting).catch(() => meeting) : meeting));
-      setHistoryLoadingProgress(100); setHistoryLead(detailResult?.data ? { ...lead, ...detailResult.data } : lead);
+      const historyRecords = [...byCode.values()];
+      const detailRequestCount = historyRecords.filter((meeting) => Boolean(meeting.meetingCode)).length;
+      let completedDetailRequests = 0;
+      const detailedMeetings = await Promise.all(historyRecords.map((meeting) => meeting.meetingCode
+        ? meetingApi.getMeeting(meeting.meetingCode).then((result) => {
+          completedDetailRequests += 1;
+          reportHistoryProgress(50 + (detailRequestCount ? completedDetailRequests / detailRequestCount * 50 : 50));
+          return result.data ?? meeting;
+        })
+        : Promise.resolve(meeting)));
+      if (!detailRequestCount) reportHistoryProgress(100);
+      if (generation !== historyGeneration.current) return;
+      setHistoryLoadingProgress(100);
+      setHistoryLead(detailResult?.data ? { ...lead, ...detailResult.data } : lead);
       setHistoryMeetings(detailedMeetings.sort((a, b) => String(b.meetingDate ?? b.createdAt ?? '').localeCompare(String(a.meetingDate ?? a.createdAt ?? ''))));
-    } catch (e) { setHistoryError(e instanceof Error ? e.message : 'Lead history could not be loaded.'); setHistoryMeetings(localMeetings); }
-    finally { setHistoryLoading(false); }
+      succeeded = true;
+    } catch (e) {
+      if (generation !== historyGeneration.current) return;
+      setHistoryError(e instanceof Error ? e.message : 'Lead history could not be loaded.');
+      setHistoryMeetings(localMeetings);
+    } finally {
+      if (generation === historyGeneration.current && !succeeded) setHistoryLoading(false);
+    }
   };
 
   const renderTab = (item: typeof TABS[number]) => {
@@ -492,6 +707,9 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
   const mobilePageItems = mobileMeetings.slice(safeMobilePage * 25, (safeMobilePage + 1) * 25);
   const hasAssignedFilters = Boolean(assignedSearch || coordinatorFilter || assignedSalesPersonFilter || assignedDateRange.from || assignedDateRange.to);
   const clearAssignedFilters = () => { setAssignedSearch(''); setCoordinatorFilter(''); setAssignedSalesPersonFilter(''); setAssignedDateRange({ from: '', to: '' }); };
+  const contentLoading = tab === 'assign' ? false : tab === 'today' ? pendingLoading : tab === 'responses' ? verifiedLoading : loading;
+  const contentLoadingProgress = tab === 'today' ? pendingLoadingProgress : tab === 'responses' ? verifiedLoadingProgress : loadingProgress;
+  const contentError = tab === 'assign' ? null : tab === 'today' ? pendingLoadError ?? verifiedLoadError : tab === 'responses' ? verifiedLoadError ?? pendingLoadError : error;
 
   return <View style={[styles.page, compact && styles.pageCompact]}>
     <View style={styles.topSection}>
@@ -514,30 +732,30 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
           </View> : null}
         </View>
       </View>
-      {!compact && !loading && !error && tab === 'today' ? <MeetingTableHeader hideMeetingDate records={pending} filters={todayColumnFilters} onFiltersChange={setTodayColumnFilters} /> : null}
+      {!compact && !contentLoading && !contentError && tab === 'today' ? <MeetingTableHeader hideMeetingDate records={pending} filters={todayColumnFilters} onFiltersChange={setTodayColumnFilters} /> : null}
       {tab === 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator stickyHeaderIndices={[0]}>
-        <View style={styles.taskStickyHeader}>{!compact && !loading && !error && tabLoading !== 'tasks' ? <MeetingTableHeader taskOnly records={taskRecords} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}</View>
+        <View style={styles.taskStickyHeader}>{!compact && !loading && !error && !tabLoading.tasks ? <MeetingTableHeader taskOnly records={taskRecords} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}</View>
         <View>
           {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
-          {loading || tabLoading === 'tasks' ? <State loading progress={loading ? loadingProgress : tabLoadingProgress} message="Loading sales person tasks..." /> : error ? <State message={error} /> : null}
-          {!loading && tabLoading !== 'tasks' && !error ? <><Cards taskOnly items={pagedTasks} empty="No meeting tasks match these filters." />{!compact ? <Pagination page={taskPage} total={filteredTasks.length} onPageChange={setTaskPage} /> : null}</> : null}
+          {loading || tabLoading.tasks ? <State key={tab} loading progress={loading ? loadingProgress : tabLoadingProgress.tasks ?? 0} message="Loading sales person tasks..." onProgressComplete={loading ? () => { setLoading(false); setRefreshing(false); } : () => setTabLoading((current) => ({ ...current, tasks: false }))} /> : tabLoadingError.tasks ? <State message={tabLoadingError.tasks} /> : error ? <State message={error} /> : null}
+          {!loading && !tabLoading.tasks && !tabLoadingError.tasks && !error ? <><Cards taskOnly items={pagedTasks} empty="No meeting tasks match these filters." />{!compact ? <Pagination page={taskPage} total={filteredTasks.length} onPageChange={setTaskPage} /> : null}</> : null}
         </View>
       </ScrollView> : <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator={tab === 'responses'} stickyHeaderIndices={tab === 'responses' ? [0] : undefined}>
-        <View style={tab === 'responses' ? styles.verifiedStickyHeader : undefined}>{!compact && !loading && !error && tab === 'responses' ? <MeetingTableHeader verified records={verified} filters={responseColumnFilters} onFiltersChange={setResponseColumnFilters} /> : null}</View>
+        <View style={tab === 'responses' ? styles.verifiedStickyHeader : undefined}>{!compact && !contentLoading && !contentError && tab === 'responses' ? <MeetingTableHeader verified records={verified} filters={responseColumnFilters} onFiltersChange={setResponseColumnFilters} /> : null}</View>
         {permissions?.length ? <Text style={styles.permission}>API access uses the permission codes returned in this authenticated session.</Text> : null}
-        {loading ? <State loading progress={loadingProgress} message="Loading coordinator workspace..." /> : tabLoading === 'assignedLeads' ? <State loading progress={tabLoadingProgress} message="Loading assigned leads..." /> : error ? <State message={error} /> : null}
-        {!loading && !error && tab === 'today' ? <Cards hideMeetingDate items={compact ? mobilePageItems : visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
-        {!loading && !error && tab === 'responses' ? <Cards items={compact ? mobilePageItems : visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="Details" onOpen={setSelected} verified /> : null}
-        {!loading && !error && tab === 'assign' ? <AssignLeadForm compact={compact} form={assignForm} setForm={setAssignForm} assigning={assigning} message={assignMessage} salesPersonNamesByCode={salesPersonNamesByCode} onSubmit={() => void assignLead()} /> : null}
-        {!loading && tabLoading !== 'assignedLeads' && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} onOpen={openLeadHistory} />{!compact ? <Pagination page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /> : null}</> : null}
+        {contentLoading ? <State key={tab} loading progress={contentLoadingProgress} percentageStep={tab === 'today' || tab === 'responses' ? 10 : 1} message={tab === 'today' ? '' : tab === 'responses' ? 'Loading verified meetings...' : ''} onProgressComplete={tab === 'today' ? () => { setPendingLoading(false); setRefreshing(false); } : tab === 'responses' ? () => { setVerifiedLoading(false); setRefreshing(false); } : () => { setLoading(false); setRefreshing(false); }} /> : tab === 'assignedLeads' && tabLoading.assignedLeads ? <State key={tab} loading progress={tabLoadingProgress.assignedLeads ?? 0} message="Loading assigned leads..." onProgressComplete={() => setTabLoading((current) => ({ ...current, assignedLeads: false }))} /> : contentError ? <State message={contentError} /> : tab === 'assignedLeads' && tabLoadingError.assignedLeads ? <State message={tabLoadingError.assignedLeads} /> : null}
+        {!contentLoading && !contentError && tab === 'today' ? <Cards hideMeetingDate items={compact ? mobilePageItems : visibleTodayMeetings} empty="No meetings are pending Process Coordinator verification." action="Verify Details" onOpen={openVerify} /> : null}
+        {!contentLoading && !contentError && tab === 'responses' ? <Cards items={compact ? mobilePageItems : visibleVerifiedMeetings} empty="No meetings have been verified by the Sales Coordinator yet." action="Details" onOpen={setSelected} verified /> : null}
+        {!contentLoading && !contentError && tab === 'assign' ? <AssignLeadForm compact={compact} form={assignForm} setForm={setAssignForm} assigning={assigning} message={assignMessage} salesPersonNamesByCode={salesPersonNamesByCode} onSubmit={() => void assignLead()} /> : null}
+        {!loading && !tabLoading.assignedLeads && !tabLoadingError.assignedLeads && !error && tab === 'assignedLeads' ? <><AssignedLeadCards leads={pagedAssignedLeads} onOpen={openLeadHistory} />{!compact ? <Pagination page={assignedLeadsPage} total={visibleAssignedLeads.length} onPageChange={setAssignedLeadsPage} /> : null}</> : null}
       </ScrollView>}
       {compact && !loading && !error && tab !== 'assign' ? <Pagination compact pageSize={25} page={tab === 'tasks' ? taskPage : tab === 'assignedLeads' ? assignedLeadsPage : safeMobilePage} total={tab === 'tasks' ? filteredTasks.length : tab === 'assignedLeads' ? visibleAssignedLeads.length : mobileMeetings.length} onPageChange={tab === 'tasks' ? setTaskPage : tab === 'assignedLeads' ? setAssignedLeadsPage : setMobileMeetingPage} /> : null}
     </View>
-    <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={() => setSelected(null)}><View style={[styles.backdrop, compact && { padding: 10 }]}><View nativeID="blueant-workflow-modal" style={[styles.modal, selected && tab !== 'responses' && !selected.isClientMeeting && [popupStyles.modal, { width: Math.min(1100, Math.max(0, windowWidth - 48)) }]]}>
+    <Modal transparent visible={Boolean(selected)} animationType="fade" onRequestClose={closeVerification}><View style={[styles.backdrop, compact && { padding: 10 }]}><View nativeID="blueant-workflow-modal" style={[styles.modal, selected && tab !== 'responses' && !selected.isClientMeeting && [popupStyles.modal, { width: Math.min(1100, Math.max(0, windowWidth - 48)) }]]}>
       {selected && tab !== 'responses' && !selected.isClientMeeting ? (
-        <LeadVerificationPopup meeting={selected} form={form} setForm={setForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} onClose={() => setSelected(null)} />
+        <LeadVerificationPopup meeting={selected} form={form} setForm={setForm} submitError={submitError} submitting={submitting} onSubmit={() => void verify()} onClose={closeVerification} />
       ) : <>
-      <View style={[styles.modalHeader, compact && { paddingRight: 52 }]}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={() => setSelected(null)} style={[styles.close, compact && { position: 'absolute', top: 10, right: 10 }]}><Icon source="close" size={22} color="#334155" /></Pressable></View>
+      <View style={[styles.modalHeader, compact && { paddingRight: 52 }]}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>{tab === 'responses' ? 'VERIFIED RESPONSE' : 'PENDING VERIFICATION'}</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{selected?.clientName ?? selected?.meetingCode}</Text></View><Pressable onPress={closeVerification} style={[styles.close, compact && { position: 'absolute', top: 10, right: 10 }]}><Icon source="close" size={22} color="#334155" /></Pressable></View>
       <ScrollView contentContainerStyle={[styles.modalBody, compact && { padding: 10, gap: 9 }]}>
         {selected ? <Details meeting={selected} visitOnly={isNotConductedMeeting(selected)} hideMeetingDate={tab === 'today'} /> : null}
         {tab === 'responses' && selected ? selected.isClientMeeting ? <ClientVerificationDetails meeting={selected} /> : <VerificationDetails meeting={selected} />
@@ -548,7 +766,7 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
     </View></View></Modal>
     <Modal transparent visible={Boolean(historyLead)} animationType="fade" onRequestClose={() => setHistoryLead(null)}><View style={[styles.backdrop, compact && { padding: 10 }]}><View nativeID="blueant-workflow-modal" style={styles.modal}>
       <View style={[styles.modalHeader, compact && { paddingRight: 52 }]}><View style={styles.modalHeaderCopy}><View style={styles.modalEyebrowRow}><View style={styles.modalEyebrowDot} /><Text style={styles.modalEyebrow}>LEAD HISTORY</Text></View><Text numberOfLines={1} style={styles.modalTitle}>{historyLead?.clientName ?? 'Lead details'}</Text></View><Pressable onPress={() => setHistoryLead(null)} style={[styles.close, compact && { position: 'absolute', top: 10, right: 10 }]}><Icon source="close" size={22} color="#334155" /></Pressable></View>
-      <ScrollView contentContainerStyle={[styles.modalBody, compact && { padding: 10, gap: 9 }]}>{historyLead ? <LeadHistoryContent lead={historyLead} meetings={historyMeetings} loading={historyLoading} progress={historyLoadingProgress} error={historyError} /> : null}</ScrollView>
+      <ScrollView contentContainerStyle={[styles.modalBody, compact && { padding: 10, gap: 9 }]}>{historyLead ? <LeadHistoryContent lead={historyLead} meetings={historyMeetings} loading={historyLoading} progress={historyLoadingProgress} error={historyError} onProgressComplete={() => setHistoryLoading(false)} /> : null}</ScrollView>
     </View></View></Modal>
   </View>;
 }
