@@ -1,6 +1,6 @@
 import { SecureStorageService } from '../services/SecureStorageService';
 import { requestWithSessionRefresh } from './authenticatedRequest';
-import type { ClientRegistrationRequest, ClientRegistrationResponse, CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleFamilyHeadResponse, EligibleLeadPage, FamilyDetailResponse, FamilyHeadHistoryResponse, FamilyRelationship } from '../types/crm';
+import type { ClientProfileResponse, ClientRegistrationRequest, ClientRegistrationResponse, CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleFamilyHeadResponse, EligibleLeadPage, FamilyDetailResponse, FamilyHeadHistoryResponse, FamilyRelationship } from '../types/crm';
 
 // CRM endpoints are served by the same production API that issues and refreshes
 // the authenticated user token. Keeping one base URL prevents cross-deployment
@@ -68,6 +68,13 @@ const loadRoleTargets = async (role: 'RELATIONSHIP_MANAGER' | 'SALES_COORDINATOR
 };
 
 export const crmAssignmentApi = {
+  // CRM assignment history must survive browser/device storage changes.
+  getAssignedClients: async (): Promise<ClientProfileResponse[]> => {
+    type Page = { content?: ClientProfileResponse[]; totalPages?: number };
+    const first = await request<Page>('/v1/clients?page=0&size=100');
+    const rest = await Promise.all(Array.from({ length: Math.max(0, (first.totalPages ?? 1) - 1) }, (_, index) => request<Page>(`/v1/clients?page=${index + 1}&size=100`)));
+    return [first, ...rest].flatMap(page => page.content ?? []).filter(client => Boolean(client.assignedSalesPersonCode?.trim()));
+  },
   registerClient: (payload: ClientRegistrationRequest) => request<ClientRegistrationResponse>('/v1/clients/register', {
     method: 'POST',
     body: JSON.stringify(payload),

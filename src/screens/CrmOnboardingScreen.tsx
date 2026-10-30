@@ -279,10 +279,19 @@ export function CrmOnboardingScreen() {
     if (showLoader) setLoadingAssigned(true);
     setAssignedError(null);
     try {
-      const user = await SecureStorageService.getUserData();
-      const storageKey = `${ASSIGNED_CLIENTS_STORAGE_PREFIX}.${user?.employeeId ?? 'current'}`;
-      const stored = await SecureStorageService.getPersistentItem(storageKey);
-      setAssignedClients(parseStoredAssignedClients(stored));
+      const clients = await crmAssignmentApi.getAssignedClients();
+      setAssignedClients(clients.map((client): AssignedClient => ({
+        ...emptyForm(),
+        ...Object.fromEntries(Object.entries(client).filter(([, value]) => typeof value === 'string')),
+        id: String(client.id ?? client.clientCode ?? client.mobileNumber),
+        clientId: client.id, clientCode: client.clientCode,
+        clientName: client.clientName ?? '', mobileNumber: client.mobileNumber ?? '',
+        salesPersonEmployeeCode: client.assignedSalesPersonCode ?? '',
+        assignedEmployeeName: client.assignedSalesPersonName,
+        assignedEmployeeRole: roleCode(client.assignedSalesPersonRole) as CrmAssignmentTarget['role'],
+        assignedAt: client.assignedAt ?? client.assignmentDate ?? '',
+        status: 'ASSIGNED',
+      })));
       hasAssignedClientsData.current = true;
     } catch (error) { setAssignedError(messageFor(error)); }
     finally { assignedClientsLoadInFlight.current = false; if (showLoader) setLoadingAssigned(false); }
@@ -398,7 +407,7 @@ export function CrmOnboardingScreen() {
       const stored = await SecureStorageService.getPersistentItem(storageKey);
       const next = [client, ...parseStoredAssignedClients(stored).filter((item) => item.id !== client.id)];
       await SecureStorageService.setPersistentItem(storageKey, JSON.stringify(next));
-      setAssignedClients(next);
+      setAssignedClients(current => [client, ...current.filter(item => item.clientCode && client.clientCode ? item.clientCode !== client.clientCode : item.id !== client.id)]);
       skipNextClientDraftSave.current = true;
       setClientForm(emptyForm());
       await SecureStorageService.removePersistentItem(`${CLIENT_FORM_DRAFT_STORAGE_PREFIX}.${user?.employeeId ?? 'current'}`);

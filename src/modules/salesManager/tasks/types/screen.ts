@@ -5,6 +5,7 @@ export type SalesManagerTasksProps = {
   onCreateNewLead?: () => void;
   onUpdateMeeting?: (lead: SalesTask) => void;
   onOpenLeadDetails?: (lead: SalesTask) => void;
+  includeClientTasks?: boolean;
   initialTaskType?: TaskTypeFilter;
   allTaskMode?: boolean;
   taskToDoMode?: boolean;

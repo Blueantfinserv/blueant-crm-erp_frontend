@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import type { SalesTask } from '../types/tasks';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { leadSearchService } from '../../../../services/LeadSearchService';
 import { leadService } from '../../../../services/LeadService';
 import { meetingService } from '../../../../services/MeetingService';
@@ -12,7 +13,7 @@ import { meetingTitleOrder, mapLeadToSalesTask, mapMeetingToSalesTask } from '..
 import { getActionableTaskMeetings, isHiddenCompletedLead, isRemovedLead } from '../taskMeetingSelectors';
 import { filterSalesTasks, getTaskFilterCounts } from '../taskFilters';
 
-export function useSalesManagerTasks({ initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
+export function useSalesManagerTasks({ includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
   const [search, setSearch] = useState('');
   const [taskType, setTaskType] = useState<TaskTypeFilter>(initialTaskType);
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
@@ -25,6 +26,27 @@ export function useSalesManagerTasks({ initialTaskType = 'Today', allTaskMode = 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [leadState, setLeadState] = useState<LeadSearchState>(() => leadSearchService.getState());
   const [meetingState, setMeetingState] = useState<MeetingQueueState>(() => meetingService.getState());
+  const [clientTasks, setClientTasks] = useState<SalesTask[]>([]);
+  const [clientLoading, setClientLoading] = useState(includeClientTasks);
+  const [clientError, setClientError] = useState<string | null>(null);
+  const clientLoadId = useRef(0);
+  const loadClients = async () => {
+    if (!includeClientTasks) return;
+    const id = ++clientLoadId.current;
+    setClientLoading(true); setClientError(null);
+    try {
+      const { loadClientTaskQueue } = await import('../clientTaskData');
+      const records = await loadClientTaskQueue();
+      if (id === clientLoadId.current) setClientTasks(records);
+    } catch (error) {
+      if (id === clientLoadId.current) setClientError(error instanceof Error ? error.message : 'Client tasks could not be loaded.');
+    } finally { if (id === clientLoadId.current) setClientLoading(false); }
+  };
+  useEffect(() => {
+    if (includeClientTasks) void loadClients();
+    else { setClientTasks([]); setClientLoading(false); setClientError(null); }
+    return () => { clientLoadId.current += 1; };
+  }, [includeClientTasks]);
   const tasks = useMemo(
     () => {
       const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
@@ -131,9 +153,9 @@ export function useSalesManagerTasks({ initialTaskType = 'Today', allTaskMode = 
             verificationPending: hasPendingVerification(lead.leadId, lead.leadCode, lead.mobileNumber),
           };
         });
-      return [...leadTasks, ...meetingTasks];
+      return [...leadTasks, ...meetingTasks, ...(includeClientTasks ? clientTasks : [])];
     },
-    [leadState.leads, meetingState.meetings],
+    [leadState.leads, meetingState.meetings, clientTasks, includeClientTasks],
   );
   const allLeadTasks = useMemo(
     () => leadState.leads
@@ -158,8 +180,9 @@ export function useSalesManagerTasks({ initialTaskType = 'Today', allTaskMode = 
   const allTaskFilterOptions = useMemo(() => [
     'All Task',
     'Leads',
+    ...(includeClientTasks ? ['Clients'] : []),
     ...meetingFilterOptions.filter((option) => option !== 'All Meetings'),
-  ], [meetingFilterOptions]);
+  ], [meetingFilterOptions, includeClientTasks]);
   useEffect(() => {
     const unsubscribe = leadSearchService.subscribe(setLeadState);
     void leadSearchService.loadLeads();
@@ -170,7 +193,7 @@ export function useSalesManagerTasks({ initialTaskType = 'Today', allTaskMode = 
     if (isRefreshing) return;
     setIsRefreshing(true);
     try {
-      await Promise.all([leadSearchService.loadLeads(), meetingService.loadMeetings()]);
+      await Promise.all([leadSearchService.loadLeads(), meetingService.loadMeetings(), loadClients()]);
     } finally {
       setIsRefreshing(false);
     }
@@ -215,5 +238,5 @@ export function useSalesManagerTasks({ initialTaskType = 'Today', allTaskMode = 
 
   const filteredTasks = useMemo(() => filterSalesTasks({ allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, leadFilter, meetingFilter, pendingTaskMode, search, taskStage, taskToDoMode, taskType, tasks, todaysTaskMode }), [allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, leadFilter, meetingFilter, pendingTaskMode, search, taskStage, taskToDoMode, taskType, tasks, todaysTaskMode]);
 
-  return { search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks };
+  return { clientLoading, clientError, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks };
 }

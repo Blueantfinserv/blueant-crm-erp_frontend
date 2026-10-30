@@ -12,12 +12,12 @@ import type { SalesManagerTasksProps } from './types/screen';
 
 export { matchesAssignmentTaskFilter } from './taskDateUtils';
 
-export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
+export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
   const { isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
-  const { search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks } = useSalesManagerTasks({ initialTaskType, allTaskMode, taskToDoMode, todaysTaskMode, pendingTaskMode, future3DaysTaskMode, allLeadsMode });
+  const { clientLoading, clientError, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks } = useSalesManagerTasks({ includeClientTasks, initialTaskType, allTaskMode, taskToDoMode, todaysTaskMode, pendingTaskMode, future3DaysTaskMode, allLeadsMode });
 
   return (
     <View style={styles.page}>
@@ -278,16 +278,16 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
               {filteredTasks.length ? `${filteredTasks.length} tasks` : '0 tasks'}
             </Text>
           </View>
-          {leadState.isLoading || meetingState.isLoading ? (
+          {leadState.isLoading || meetingState.isLoading || clientLoading ? (
             <View style={styles.emptyState}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
               <Text style={styles.emptyTitle}>Loading tasks</Text>
             </View>
-          ) : leadState.error || meetingState.error ? (
+          ) : leadState.error || meetingState.error || clientError ? (
             <View style={styles.emptyState}>
               <Icon source="alert-circle-outline" size={30} color="#DC2626" />
               <Text style={styles.emptyTitle}>Tasks could not be loaded</Text>
-              <Text style={styles.emptyText}>{leadState.error ?? meetingState.error}</Text>
+              <Text style={styles.emptyText}>{leadState.error ?? meetingState.error ?? clientError}</Text>
             </View>
           ) : filteredTasks.length ? (
             <>

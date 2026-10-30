@@ -465,6 +465,7 @@ function AppShell() {
             <CrmOnboardingScreen />
           ) : isSalesWorkspaceExperience(experience) ? (
             <SalesManagerTasksScreen
+              includeClientTasks={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR'}
               key={salesTaskScreenKey}
               initialTaskType={salesTaskFilter}
               allTaskMode={salesTaskView === 'all-task'}

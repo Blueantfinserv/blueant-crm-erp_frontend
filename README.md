@@ -21,6 +21,11 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 
 ## Latest updates - 30 October 2026
 
+- Prospect Meeting Update forms across roles now offer only Work In Progress and Converted as Client. Removed Client Not Interested, Remove This Client, and Already Blueant Client from the dropdown; historical status mappings remain compatible.
+- Restored client task loading for RM and SC through an explicit role flag; SM continues to skip client APIs. Added role-specific mount/refresh regression checks.
+- CRM Assigned Clients now reads paginated backend client records instead of relying on browser-local assignment history, and preserves loaded records after a new assignment. Backend deployment prerequisite: the CRM session currently receives 403 from GET /api/v1/clients; the correct authorized endpoint or scoped permission must be confirmed. GET /api/v1/roles also returned 500 during verification. These server issues are not resolved by this frontend change.
+- Centered the PC orbit loader percentage and removed its small underline.
+
 - Added an indigo/teal orbit loader with a central percentage and ten progress markers. Every 10% step is displayed at the current 700ms interval; it waits at 90% until data is ready, shows 100%, then reveals content after 220ms. These are visual preparation steps, not download percentages.
 - Today and Verified meeting requests run in parallel and publish together, with verified history committed first for Today autofill. Assign Lead opens without the workspace loader.
 - Added staged API/page loading callbacks, per-tab loading/error handling, and history completion callbacks. Removed the Loading coordinator workspace message.

@@ -9,11 +9,12 @@ require.extensions['.ts'] = (module, filename) => module._compile(ts.transpileMo
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 },
 }).outputText, filename);
 
-test('SM mount and refresh load prospects and meetings without client APIs', async () => {
+for (const includeClientTasks of [false, true]) test(includeClientTasks ? 'RM mount and refresh load client tasks' : 'SM mount and refresh skip client APIs', async () => {
   const filename = path.join(__dirname, '../hooks/useSalesManagerTasks.ts');
   const localRequire = createRequire(filename);
   const calls = { leads: 0, meetings: 0, unsubscribed: 0 };
   const cleanup = [];
+  let clientCalls = 0;
   const leadSearchService = {
     getState: () => ({ leads: [], isLoading: false, error: null }),
     subscribe: () => () => calls.unsubscribed++,
@@ -27,8 +28,10 @@ test('SM mount and refresh load prospects and meetings without client APIs', asy
   };
   const imports = name => {
     assert.ok(!name.includes('/api/client'), 'SM must not import client APIs');
+    if (name === '../clientTaskData') { assert.ok(includeClientTasks); return { loadClientTaskQueue: async () => { clientCalls++; return []; } }; }
     if (name === 'react') return {
       useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
+      useRef: initial => ({ current: initial }),
       useMemo: callback => callback(),
       useEffect: callback => { const dispose = callback(); if (dispose) cleanup.push(dispose); },
     };
@@ -42,10 +45,13 @@ test('SM mount and refresh load prospects and meetings without client APIs', asy
   }).outputText;
   const exportsObject = {};
   new Function('require', 'exports', output)(imports, exportsObject);
-  const result = exportsObject.useSalesManagerTasks({ allTaskMode: true });
+  const result = exportsObject.useSalesManagerTasks({ allTaskMode: true, includeClientTasks });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(clientCalls, includeClientTasks ? 1 : 0);
   assert.deepEqual(calls, { leads: 1, meetings: 1, unsubscribed: 0 });
-  assert.ok(!result.allTaskFilterOptions.includes('Clients'));
+  assert.equal(result.allTaskFilterOptions.includes('Clients'), includeClientTasks);
   await result.refreshTasks();
+  assert.equal(clientCalls, includeClientTasks ? 2 : 0);
   assert.deepEqual(calls, { leads: 2, meetings: 2, unsubscribed: 0 });
   cleanup.forEach(dispose => dispose());
   assert.equal(calls.unsubscribed, 3);

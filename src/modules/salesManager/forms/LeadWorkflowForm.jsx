@@ -26,9 +26,6 @@ const MEETING_STATUS_OPTIONS = ["Meeting Conducted", "Visited but Not Met"];
 const LEAD_STATUSES = [
   "Work In Progress",
   "Converted as Client",
-  "Client Not Interested",
-  "Remove This Client",
-  "Already Blueant Client",
 ];
 const getLocalDate = (now = new Date()) => {
   const offset = now.getTimezoneOffset() * 60_000;

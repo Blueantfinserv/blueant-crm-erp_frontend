@@ -77,7 +77,7 @@ export function LoadingProgressBar({ progress, onComplete }: { progress: number;
   return <View accessibilityRole="progressbar" accessibilityLabel="Preparing coordinator data" accessibilityValue={{ min: 0, max: 100, now: displayedProgress }} style={styles.loaderStage}>
     <View style={styles.loaderOrbitFrame}>
       <LoaderOrbit />
-      <View style={styles.loaderCore}><Text style={styles.loaderPercent}>{displayedProgress}<Text style={styles.loaderPercentSign}>%</Text></Text><View style={[styles.loaderCoreLine, displayedProgress === 100 && { backgroundColor: '#14B8A6' }]} /></View>
+      <View style={styles.loaderCore}><Text style={styles.loaderPercent}>{displayedProgress}<Text style={styles.loaderPercentSign}>%</Text></Text></View>
     </View>
     <View style={styles.loaderSteps}>{Array.from({ length: 10 }, (_, index) => <View key={index} style={[styles.loaderStep, displayedProgress >= (index + 1) * 10 && styles.loaderStepActive, displayedProgress === 100 && styles.loaderStepComplete]} />)}</View>
   </View>;
