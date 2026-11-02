@@ -47,33 +47,38 @@ function harness(progress) {
     timerCount: () => timers.size,
   };
 }
-test('fast data still displays every ten-percent step and holds 100 before reveal', () => {
+test('ready data reveals immediately without waiting for animation timers', () => {
   const h = harness(100);
-  const labels = [h.render()];
-  for (let i = 0; i < 9; i++) labels.push(h.tick());
-  assert.deepEqual(labels, ['10%', '20%', '30%', '40%', '50%', '60%', '70%', '80%', '90%', '100%']);
-  assert.equal(h.completed(), 0);
-  h.tick();
+  h.render();
+  assert.equal(h.completed(), 1);
+  assert.equal(h.timerCount(), 0);
+  h.render();
   assert.equal(h.completed(), 1);
 });
-test('slow data waits at 90 until real completion without skipping numbers', () => {
+
+test('data ready midway cancels remaining steps and reveals immediately', () => {
+  const h = harness(0);
+  h.render();
+  assert.equal(h.tick(), '20%');
+  h.ready(100);
+  assert.equal(h.completed(), 1);
+  assert.equal(h.timerCount(), 0);
+});
+
+test('slow data waits at 90 and reveals as soon as readiness arrives', () => {
   const h = harness(0);
   assert.equal(h.render(), '10%');
   for (let step = 20; step <= 90; step += 10) assert.equal(h.tick(), `${step}%`);
   assert.equal(h.tick(), null);
   assert.equal(h.completed(), 0);
-  h.ready(80);
-  assert.equal(h.tick(), null);
   h.ready(100);
-  assert.equal(h.tick(), '100%');
-  h.tick();
   assert.equal(h.completed(), 1);
+  assert.equal(h.timerCount(), 0);
 });
-test('tab unmount cancels its timer and a cached tab starts a fresh full sequence', () => {
-  const h = harness(100);
+
+test('unmount cancels the pending cosmetic timer without revealing data', () => {
+  const h = harness(0);
   h.render(); h.tick(); h.unmount();
   assert.equal(h.timerCount(), 0);
   assert.equal(h.completed(), 0);
-  const reopened = harness(100);
-  assert.equal(reopened.render(), '10%');
 });

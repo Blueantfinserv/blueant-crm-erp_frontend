@@ -1,6 +1,11 @@
+import { styles as pcHistoryStyles } from './salesCoordinatorStyles';
+import { LeadHistoryContent } from './salesCoordinator/components/LeadHistory';
+import { leadApi } from '../api/lead';
+import { meetingApi } from '../api/meeting';
+import type { MeetingResponse } from '../types/meeting';
 import { parsePastedDate } from '../utils/parsePastedDate';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Icon } from 'react-native-paper';
@@ -72,7 +77,7 @@ const emptyForm = (): CrmAssignForm => ({
 });
 const roleLabel = (role: CrmAssignmentTarget['role']) => role === 'RELATIONSHIP_MANAGER' ? 'RM' : 'SC';
 const roleName = (role: CrmAssignmentTarget['role']) => role === 'RELATIONSHIP_MANAGER' ? 'Relationship Manager' : 'Sales Coordinator';
-// Safe fallback while the live RM/SC target list is loading (or /v1/roles is down).
+// CRM assignments intentionally use this frontend-maintained employee list.
 const CRM_ASSIGNMENT_TARGETS: readonly CrmAssignmentTarget[] = [
   { id: 0, employeeCode: 'AP2605', fullName: 'AP2605', role: 'RELATIONSHIP_MANAGER' },
   { id: 0, employeeCode: 'VA0607', fullName: 'VA0607', role: 'RELATIONSHIP_MANAGER' },
@@ -174,8 +179,7 @@ export function CrmOnboardingScreen() {
   const [clientSection, setClientSection] = useState<ClientFormSection>('basic');
   const [form, setForm] = useState<CrmAssignForm>(emptyForm);
   const [clientForm, setClientForm] = useState<CrmAssignForm>(emptyForm);
-  const [assignmentTargets, setAssignmentTargets] = useState<readonly CrmAssignmentTarget[]>(CRM_ASSIGNMENT_TARGETS);
-  const [loadingAssignmentTargets, setLoadingAssignmentTargets] = useState(true);
+  const assignmentTargets = CRM_ASSIGNMENT_TARGETS;
   const [assignedLeads, setAssignedLeads] = useState<LeadResponse[]>([]);
   const [assignedClients, setAssignedClients] = useState<AssignedClient[]>([]);
   const [leadFilters, setLeadFilters] = useState<AssignmentFilters>(emptyAssignmentFilters);
@@ -198,24 +202,6 @@ export function CrmOnboardingScreen() {
   const skipNextClientDraftSave = useRef(false);
 
 
-  useEffect(() => {
-    let active = true;
-    void crmAssignmentApi.getTargets()
-      .then((targets) => {
-        if (active && targets.length) {
-          // Live directory names override fallback entries with the same employee code.
-          setAssignmentTargets([...new Map([...CRM_ASSIGNMENT_TARGETS, ...targets]
-            .filter((target) => !['AP0101', 'DV0101'].includes(target.employeeCode.trim().toUpperCase()))
-            .map((target) => [target.employeeCode.trim().toUpperCase(), target])).values()]);
-        }
-      })
-      .catch(() => {
-        // Keep the known fallback target available if the user directory is
-        // temporarily unavailable; assignment can still be retried after sync.
-      })
-      .finally(() => { if (active) setLoadingAssignmentTargets(false); });
-    return () => { active = false; };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -459,7 +445,7 @@ export function CrmOnboardingScreen() {
     <View style={styles.panel}>
       <View style={[styles.panelHeading, (tab === 'assigned' || tab === 'assignedClients') && styles.panelHeadingWithFilters]}><View><Text style={styles.panelTitle}>{tab === 'assign' ? 'Assign Leads' : tab === 'assigned' ? 'Assigned Leads' : tab === 'assignClients' ? 'Assign Clients' : tab === 'assignedClients' ? 'Assigned Clients' : 'Today Meetings'}</Text><Text style={styles.panelSubtitle}>{tab === 'assign' ? 'Create a physical lead and assign it only to an RM or SC.' : tab === 'assigned' ? `Showing ${assignedLeads.filter((lead) => matchesAssignmentFilters({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }, leadFilters)).length} of ${assignedLeads.length} assigned leads` : tab === 'assignClients' ? 'Assign an existing client to a Relationship Manager or Sales Coordinator.' : tab === 'assignedClients' ? `Showing ${resolvedAssignedClients.filter((client) => matchesAssignmentFilters({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }, clientFilters)).length} of ${resolvedAssignedClients.length} assigned clients` : ' '}</Text></View>{tab === 'assigned' ? <AssignmentHeaderFilters items={assignedLeads.map((lead) => ({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }))} targets={assignmentTargets} filters={leadFilters} onChange={setLeadFilters} label="leads" /> : tab === 'assignedClients' ? <AssignmentHeaderFilters items={resolvedAssignedClients.map((client) => ({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }))} targets={assignmentTargets} filters={clientFilters} onChange={setClientFilters} label="clients" /> : null}</View>
       {tab === 'assignClients' ? <ClientFormSubheader active={clientSection} dark={isDark} onChange={setClientSection} /> : null}
-      {tab === 'assign' ? <AssignForm form={form} targets={assignmentTargets} selectedTarget={selectedTarget} assigning={assigning || loadingAssignmentTargets} canSubmit={canSubmit && !loadingAssignmentTargets} message={message} dark={isDark} onChange={(next) => setForm((current) => ({ ...current, ...next }))} onSubmit={() => void assignLead()} /> : tab === 'assigned' ? <AssignedLeadList leads={assignedLeads} filters={leadFilters} loading={loadingAssigned} error={assignedError} onSelectLead={setSelectedLead} /> : tab === 'assignClients' ? <AssignForm form={clientForm} targets={assignmentTargets} selectedTarget={selectedClientTarget} assigning={assigningClient || loadingAssignmentTargets} canSubmit={canAssignClient && !loadingAssignmentTargets} message={clientMessage} dark={isDark} kind="Client" section={clientSection} onChange={(next) => setClientForm((current) => ({ ...current, ...next }))} onValidateSection={saveAndValidateClientSection} onSubmit={() => void assignClient()} /> : tab === 'assignedClients' ? <AssignedClientList clients={resolvedAssignedClients} filters={clientFilters} loading={loadingAssigned} error={assignedError} onOpenClient={setSelectedClientDetails} /> : <View style={styles.blankPanel} />}
+      {tab === 'assign' ? <AssignForm form={form} targets={assignmentTargets} selectedTarget={selectedTarget} assigning={assigning} canSubmit={canSubmit} message={message} dark={isDark} onChange={(next) => setForm((current) => ({ ...current, ...next }))} onSubmit={() => void assignLead()} /> : tab === 'assigned' ? <AssignedLeadList leads={assignedLeads} filters={leadFilters} loading={loadingAssigned} error={assignedError} onSelectLead={setSelectedLead} /> : tab === 'assignClients' ? <AssignForm form={clientForm} targets={assignmentTargets} selectedTarget={selectedClientTarget} assigning={assigningClient} canSubmit={canAssignClient} message={clientMessage} dark={isDark} kind="Client" section={clientSection} onChange={(next) => setClientForm((current) => ({ ...current, ...next }))} onValidateSection={saveAndValidateClientSection} onSubmit={() => void assignClient()} /> : tab === 'assignedClients' ? <AssignedClientList clients={resolvedAssignedClients} filters={clientFilters} loading={loadingAssigned} error={assignedError} onOpenClient={setSelectedClientDetails} /> : <View style={styles.blankPanel} />}
     </View>
     <CrmLeadDetailsModal lead={selectedLead} onClose={() => setSelectedLead(null)} />
     <CrmClientDetailsModal client={selectedClientDetails} onClose={() => setSelectedClientDetails(null)} onManageFamily={(client) => { setSelectedClientDetails(null); setFamilyClient(client); }} />
@@ -615,7 +601,25 @@ function AssignedClientList({ clients, filters, loading, error, onOpenClient }: 
   if (loading) return <View style={styles.state}><ActivityIndicator color="#3156C8" /><Text style={styles.stateText}>Loading assigned clients...</Text></View>;
   if (error) return <View style={styles.state}><Icon source="alert-circle-outline" size={34} color="#B91C1C" /><Text style={styles.stateText}>{error}</Text></View>;
   if (!clients.length) return <View style={styles.state}><Icon source="account-multiple-outline" size={34} color="#94A3B8" /><Text style={styles.stateTitle}>No clients assigned by CRM yet</Text><Text style={styles.stateText}>Clients assigned from the Assign Clients tab will appear here.</Text></View>;
-  return <ScrollView contentContainerStyle={styles.cards} showsVerticalScrollIndicator={false}>{visibleClients.length ? visibleClients.map((client) => <Pressable key={client.id} accessibilityRole="button" accessibilityLabel={`Open ${show(client.clientName)} details`} onPress={() => onOpenClient(client)} style={({ pressed }) => [styles.card, pressed && styles.pressed]}><View style={styles.cardTop}><View style={styles.cardCopy}><Text numberOfLines={1} style={styles.cardName}>{show(client.clientName)}</Text><Text style={styles.cardMobile}>{client.assignedEmployeeRole ? roleLabel(client.assignedEmployeeRole) : '-'} · {show(client.mobileNumber)}</Text></View><View style={styles.rolePill}><Text numberOfLines={1} style={styles.rolePillText}>{client.status}</Text></View></View><View style={styles.cardDivider} /><View style={styles.cardDetails}><Info label="ASSIGNED TO" value={client.assignedEmployeeName} /><Info label="ASSIGNED DATE" value={client.assignedAt} /><Info label="LOCATION" value={client.location} /></View></Pressable>) : <NoFilteredResults />}</ScrollView>;
+  if (!visibleClients.length) return <NoFilteredResults />;
+  return <ScrollView horizontal style={clientTableStyles.scroll} contentContainerStyle={{ minWidth: '100%', flexGrow: 1 }}>
+    <View style={clientTableStyles.table}>
+      <View style={[clientTableStyles.row, clientTableStyles.heading]}>
+        {['Client name', 'Mobile number', 'Assigned to', 'Role', 'Assigned date', 'Location', ''].map((label, index) => <Text key={index} style={[clientTableStyles.cell, clientTableStyles.headingText, index === 0 && clientTableStyles.nameColumn, index === 3 && clientTableStyles.roleColumn, index === 6 && clientTableStyles.actionColumn]}>{label}</Text>)}
+      </View>
+      <ScrollView style={{ flex: 1 }}>
+        {visibleClients.map((client, index) => <View key={client.id} style={[clientTableStyles.row, index % 2 === 0 ? clientTableStyles.lavender : clientTableStyles.mint]}>
+          <Text numberOfLines={2} style={[clientTableStyles.cell, clientTableStyles.nameColumn, clientTableStyles.name]}>{show(client.clientName)}</Text>
+          <Text numberOfLines={1} style={clientTableStyles.cell}>{show(client.mobileNumber)}</Text>
+          <Text numberOfLines={2} style={clientTableStyles.cell}>{show(client.assignedEmployeeName)}</Text>
+          <View style={[clientTableStyles.cell, clientTableStyles.roleColumn]}><View style={clientTableStyles.badge}><Text style={clientTableStyles.badgeText}>{client.assignedEmployeeRole ? roleLabel(client.assignedEmployeeRole) : '-'}</Text></View></View>
+          <Text numberOfLines={1} style={clientTableStyles.cell}>{show(client.assignedAt?.slice(0, 10))}</Text>
+          <Text numberOfLines={2} style={clientTableStyles.cell}>{show(client.location)}</Text>
+          <View style={[clientTableStyles.cell, clientTableStyles.actionColumn]}><Pressable accessibilityRole="button" accessibilityLabel={`Open ${show(client.clientName)} details`} onPress={() => onOpenClient(client)} style={({ pressed }) => [clientTableStyles.details, pressed && styles.pressed]}><Text style={clientTableStyles.detailsText}>Details</Text><Icon source="chevron-right" size={16} color="#3156C8" /></Pressable></View>
+        </View>)}
+      </ScrollView>
+    </View>
+  </ScrollView>;
 }
 
 function AssignmentHeaderFilters({ items, targets, filters, onChange, label }: { items: AssignmentFilterItem[]; targets: readonly CrmAssignmentTarget[]; filters: AssignmentFilters; onChange: (filters: AssignmentFilters) => void; label: string }) {
@@ -694,11 +698,55 @@ function FamilyManagerModal({ client, onClose }: { client: AssignedClient | null
 }
 
 function CrmLeadDetailsModal({ lead, onClose }: { lead: LeadResponse | null; onClose: () => void }) {
+  const compact = useWindowDimensions().width < 760;
+  const [detail, setDetail] = useState<LeadResponse | null>(null);
+  const [meetings, setMeetings] = useState<MeetingResponse[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    setDetail(lead); setMeetings([]); setError(null);
+    if (!lead) { setLoading(false); return; }
+    setLoading(true);
+    const identifier = lead.uniqueLeadId ?? (lead.leadId != null ? String(lead.leadId) : '');
+    void (async () => {
+      try {
+        if (!identifier) throw new Error('Lead identifier is unavailable; meeting history cannot be loaded.');
+        const [details, history] = await Promise.all([
+          lead.uniqueLeadId ? leadApi.getLeadDetails(lead.uniqueLeadId) : Promise.resolve(null),
+          meetingApi.getHistory(identifier),
+        ]);
+        if (!active) return;
+        if (details?.data) setDetail({ ...lead, ...details.data });
+        const unique = new Map((history.data ?? []).map(meeting => [meeting.meetingCode ?? String(meeting.id), meeting]));
+        const records = await Promise.all([...unique.values()].map(async meeting => {
+          if (!meeting.meetingCode) return meeting;
+          const response = await meetingApi.getMeeting(meeting.meetingCode);
+          return { ...meeting, ...response.data };
+        }));
+        if (active) setMeetings(records.sort((a, b) => String(b.meetingDate ?? b.createdAt ?? '').localeCompare(String(a.meetingDate ?? a.createdAt ?? ''))));
+      } catch (error) { if (active) setError(messageFor(error)); }
+      finally { if (active) setLoading(false); }
+    })();
+    return () => { active = false; };
+  }, [lead]);
   if (!lead) return null;
-  const assignmentRole = roleCode(lead.assignedEmployeeRole) === 'RELATIONSHIP_MANAGER' ? 'Relationship Manager' : 'Sales Coordinator';
-  const detailFields: readonly (readonly [string, string | undefined | null])[] = [['Mobile Number', lead.mobileNumber], ['Location', lead.location], ['Clinic Address', lead.clinicAddress], ['Speciality', lead.speciality], ['Lead Code', lead.leadCode]];
-  const assignmentFields: readonly (readonly [string, string | undefined | null])[] = [['Assigned To', lead.assignedEmployeeName], ['Employee Code', lead.assignedEmployeeCode], ['Role', assignmentRole], ['Assigned Date', lead.assignedAt], ['Current Status', lead.leadStatus?.replace(/_/g, ' ')]];
-  return <Modal transparent visible animationType="fade" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable nativeID="blueant-workflow-modal" style={styles.modalCard} onPress={(event) => event.stopPropagation()}><View style={styles.modalHeader}><View><Text style={styles.modalEyebrow}>CRM ASSIGNED LEAD</Text><Text style={styles.modalTitle}>{show(lead.clientName)}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Close lead details" onPress={onClose} style={styles.modalClose}><Icon source="close" size={22} color="#3156C8" /></Pressable></View><ScrollView contentContainerStyle={styles.modalContent} showsVerticalScrollIndicator><DetailSection title="Lead details" fields={detailFields} /><DetailSection title="Assignment details" fields={assignmentFields} /></ScrollView></Pressable></Pressable></Modal>;
+  return <Modal transparent visible animationType="fade" onRequestClose={onClose}>
+    <View style={[pcHistoryStyles.backdrop, compact && { padding: 10 }]}>
+      <View nativeID="blueant-workflow-modal" style={pcHistoryStyles.modal}>
+        <View style={[pcHistoryStyles.modalHeader, compact && { paddingRight: 52 }]}>
+          <View style={pcHistoryStyles.modalHeaderCopy}>
+            <View style={pcHistoryStyles.modalEyebrowRow}><View style={pcHistoryStyles.modalEyebrowDot} /><Text style={pcHistoryStyles.modalEyebrow}>LEAD HISTORY</Text></View>
+            <Text numberOfLines={1} style={pcHistoryStyles.modalTitle}>{show(lead.clientName)}</Text>
+          </View>
+          <Pressable accessibilityRole="button" accessibilityLabel="Close lead details" onPress={onClose} style={[pcHistoryStyles.close, compact && { position: 'absolute', top: 10, right: 10 }]}><Icon source="close" size={22} color="#334155" /></Pressable>
+        </View>
+        <ScrollView contentContainerStyle={[pcHistoryStyles.modalBody, compact && { padding: 10, gap: 9 }]} showsVerticalScrollIndicator>
+          <LeadHistoryContent lead={detail ?? lead} meetings={meetings} loading={loading} progress={loading ? 0 : 100} error={error} />
+        </ScrollView>
+      </View>
+    </View>
+  </Modal>;
 }
 
 function DetailSection({ title, fields, dark = false }: { title: string; fields: readonly (readonly (string | undefined | null)[])[]; dark?: boolean }) {
@@ -747,4 +795,24 @@ const styles = StyleSheet.create({
   state: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 9, minHeight: 280, padding: 25 }, stateTitle: { color: theme.colors.text, fontSize: 15, fontWeight: '900' }, stateText: { maxWidth: 400, color: '#64748B', fontSize: 12, fontWeight: '600', textAlign: 'center' }, cards: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, padding: 12, paddingBottom: 28 }, card: { minWidth: 280, flexBasis: '31.9%', flexGrow: 0, flexShrink: 1, padding: 11, borderWidth: 1, borderTopWidth: 2, borderTopColor: '#D97706', borderLeftWidth: 4, borderLeftColor: '#D97706', borderColor: '#DCE3ED', borderRadius: 12, backgroundColor: '#FFFFFF' }, cardTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }, cardCopy: { minWidth: 0, flex: 1 }, cardName: { color: theme.colors.text, fontSize: 13, fontWeight: '900' }, cardMobile: { marginTop: 3, color: '#71809A', fontSize: 9, fontWeight: '700' }, rolePill: { maxWidth: '48%', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 99, backgroundColor: '#FFF7E8' }, rolePillText: { color: '#A95A08', fontSize: 8, fontWeight: '900' }, cardDivider: { height: 1, marginVertical: 10, backgroundColor: '#E8EDF4' }, cardDetails: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, info: { minWidth: 88, flexGrow: 1 }, infoLabel: { color: '#64748B', fontSize: 8, fontWeight: '900' }, infoValue: { marginTop: 3, color: '#42536F', fontSize: 9, fontWeight: '800' },
   familyLoading: { minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 9 }, familySummary: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, padding: 10, borderWidth: 1, borderColor: '#DDE7F8', borderRadius: 10, backgroundColor: '#F7F9FF' }, familySummaryDark: { borderColor: '#334155', backgroundColor: '#0B1220' }, familyForm: { gap: 8, padding: 11, borderWidth: 1, borderColor: '#DCE5F3', borderRadius: 12, backgroundColor: '#F7F9FE' }, familyFormDark: { borderColor: '#263652', backgroundColor: '#16233A' }, familyInputDark: { borderColor: '#334155', color: '#F8FAFC', backgroundColor: '#0B1220' }, familySelectShellDark: { borderColor: '#334155', backgroundColor: '#0B1220' }, familySelectDark: { color: '#F8FAFC', backgroundColor: '#0B1220' }, familyHint: { color: '#64748B', fontSize: 9, fontWeight: '700' }, familyAction: { minHeight: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 8, backgroundColor: '#3156C8' }, familyActionText: { color: '#FFFFFF', fontSize: 10, fontWeight: '900' }, familyError: { padding: 10, borderRadius: 8, color: '#B91C1C', fontSize: 10, fontWeight: '800', backgroundColor: '#FEF2F2' },
   clearFilters: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 7, backgroundColor: '#FEE2E2' }, clearFiltersText: { color: '#B91C1C', fontSize: 9, fontWeight: '900' }, emptyFiltered: { width: '100%', minHeight: 180, alignItems: 'center', justifyContent: 'center', gap: 8 }, disabled: { opacity: 0.55 }, pressed: { opacity: 0.82 },
+});
+
+// Scoped to CRM Assigned Clients; other assignment lists keep their existing layouts.
+const clientTableStyles = StyleSheet.create({
+  scroll: { flex: 1 },
+  table: { flex: 1, minWidth: 1050 },
+  row: { flexDirection: 'row', alignItems: 'center', minHeight: 62, borderBottomWidth: 1, borderBottomColor: '#DDE5F5', paddingHorizontal: 12 },
+  heading: { minHeight: 48, backgroundColor: '#EEF2FF' },
+  cell: { flex: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 10, fontSize: 13, color: '#23365E' },
+  headingText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', color: '#43609B', letterSpacing: 0.5 },
+  nameColumn: { flex: 1.5 },
+  roleColumn: { flex: 0.5 },
+  actionColumn: { flex: 0.8 },
+  name: { fontWeight: '800', color: '#10294F' },
+  lavender: { backgroundColor: '#EEF0FF' },
+  mint: { backgroundColor: '#EAF8F3' },
+  badge: { alignSelf: 'flex-start', borderRadius: 7, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: '#DBEAFE' },
+  badgeText: { color: '#3156C8', fontSize: 11, fontWeight: '800' },
+  details: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1, borderColor: '#CDD7FF', borderRadius: 9, backgroundColor: '#E9EDFF', paddingHorizontal: 10 },
+  detailsText: { color: '#3156C8', fontSize: 12, fontWeight: '800' },
 });

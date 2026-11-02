@@ -14,6 +14,7 @@ test('CRM assigned clients read all backend pages and exclude unassigned clients
   const calls = [];
   const clientApi = api(async (url, init) => {
     calls.push(url);
+    assert.ok(url.startsWith('https://blueant-crm-erp.up.railway.app/api/v1/clients?'));
     assert.equal(init.headers.Authorization, 'Bearer test-session');
     return { ok: true, json: async () => ({ success: true, data: url.includes('page=0') ? { totalPages: 2, content: [{ clientCode: 'C1', assignedSalesPersonCode: 'MK1908' }, { clientCode: 'UNASSIGNED' }] } : { content: [{ clientCode: 'C2', assignedSalesPersonCode: 'SC1' }] } }) };
   });
@@ -23,4 +24,11 @@ test('CRM assigned clients read all backend pages and exclude unassigned clients
 test('CRM backend failure is surfaced instead of becoming an empty list', async () => {
   const clientApi = api(async () => ({ ok: false, status: 403, json: async () => ({ success: false, message: 'Access denied' }) }));
   await assert.rejects(clientApi.getAssignedClients(), /Access denied/);
+});
+
+test('other CRM requests retain their original host', async () => {
+  let requestedUrl;
+  const clientApi = api(async url => { requestedUrl = url; return { ok: true, json: async () => ({ success: true, data: { content: [], totalPages: 1 } }) }; });
+  await clientApi.findClientByMobile('9999999999');
+  assert.ok(requestedUrl.startsWith(`${process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api'}/v1/clients?`));
 });

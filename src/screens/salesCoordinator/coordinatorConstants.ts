@@ -83,6 +83,7 @@ export const SALES_PERSONS = [
   { code: 'RG1108', name: 'Rajat Gupta' }, { code: 'HP0605', name: 'Harsh Pilania' }, { code: 'AKS0108', name: 'Amit Kumar Singh' },
   { code: 'SM2403', name: 'Sunny Mathur' }, { code: 'GK0902', name: 'Garv Kumar' }, { code: 'AS1909', name: 'Abhishek Singh' },
   { code: 'US2601', name: 'Umakant Sharma' },
+  { code: 'TS1208', name: 'Tejprakash Sharma' },
 ] as const;
 
 export const SALES_PERSON_CODES = SALES_PERSONS.map((employee) => employee.code);

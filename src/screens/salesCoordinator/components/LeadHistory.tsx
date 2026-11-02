@@ -1,3 +1,4 @@
+import { historyMeetingTitles } from '../historyMeetingTitles';
 import { MobileDetailSection } from './MobileDetailSection';
 import { Linking,Platform,Pressable,Text,useWindowDimensions,View } from 'react-native';
 import { Icon } from 'react-native-paper';
@@ -9,7 +10,7 @@ import { historyStyles,styles } from '../../salesCoordinatorStyles';
 import { mapUrlFor,show } from '../coordinatorUtils';
 import { State } from './CoordinatorControls';
 
-export function MeetingHistoryRow({ meeting, alternate }: { meeting: MeetingResponse; alternate: boolean }) {
+export function MeetingHistoryRow({ meeting, alternate, displayTitle }: { meeting: MeetingResponse; alternate: boolean; displayTitle?: string }) {
   const status = String(meeting.meetingStatus ?? meeting.leadStatus ?? 'PENDING').replace(/_/g, ' ');
   const normalized = status.toUpperCase();
   const statusStyle = normalized.includes('COMPLETED') ? historyStyles.statusCompleted : normalized.includes('SCHEDULED') ? historyStyles.statusScheduled : historyStyles.statusPending;
@@ -23,7 +24,7 @@ export function MeetingHistoryRow({ meeting, alternate }: { meeting: MeetingResp
   ].filter(Boolean) as { key: string; icon: string; label: string; style: object; color: string }[];
   return <View style={[historyStyles.meetingCard, alternate && historyStyles.meetingCardAlt]}>
     <View style={historyStyles.meetingCardTop}>
-      <View style={historyStyles.meetingTitleBlock}><Text style={historyStyles.meetingTitle}>{show(meeting.meetingTitle ?? meeting.meetingType)}</Text><Text style={historyStyles.meetingDate}>{show(meeting.meetingDate)}</Text></View>
+      <View style={historyStyles.meetingTitleBlock}><Text style={historyStyles.meetingTitle}>{show(displayTitle ?? meeting.meetingTitle ?? meeting.meetingType)}</Text><Text style={historyStyles.meetingDate}>{show(meeting.meetingDate)}</Text></View>
       <Text style={[historyStyles.meetingStatus, statusStyle]}>{status}</Text>
     </View>
     {tags.length ? <View style={historyStyles.meetingTagsRow}>{tags.map((tag) => <View key={tag.key} style={[historyStyles.meetingTag, tag.style]}><Icon source={tag.icon} size={11} color={tag.color} /><Text style={[historyStyles.meetingTagText, { color: tag.color }]}>{tag.label}</Text></View>)}</View> : null}
@@ -39,6 +40,7 @@ export function LiveLocationButton({ url }: { url: string | null | undefined }) 
 
 export function LeadHistoryContent({ lead, meetings, loading, progress, error, onProgressComplete }: { lead: LeadResponse; meetings: MeetingResponse[]; loading: boolean; progress: number; error: string | null; onProgressComplete?: () => void }) {
   const compact = useWindowDimensions().width < 760;
+  const displayTitles = historyMeetingTitles(meetings);
   const verifiedMeeting = meetings.find((m) => m.verificationStatus === 'VERIFIED' || Boolean(m.verifiedBy) || Boolean(m.meetingVerificationDate) || Boolean(m.ageGroup) || Boolean(m.profession));
   const liveLocationUrl = meetings.map(mapUrlFor).find(Boolean);
   const hiddenLeadFields = new Set(['Prospect ID', 'Mobile Number', 'Alternate Mobile', 'Email', 'Company Name', 'Best Time to Meet', 'Prospect Source', 'Assignment Date', 'Assignment Source', 'Assigned By', 'Assigned By Code']);
@@ -56,6 +58,6 @@ export function LeadHistoryContent({ lead, meetings, loading, progress, error, o
     {compact ? <MobileDetailSection title="PC verification details">{section('PC verification details', scFields, 'verification')}</MobileDetailSection> : section('PC verification details', scFields, 'verification')}
     <View style={styles.historyTitleRow}><Text style={styles.sectionTitle}>Meeting history</Text><Text style={styles.historyCount}>{loading ? 'Loading...' : `${meetings.length} meeting${meetings.length === 1 ? '' : 's'}`}</Text></View>
     {error ? <Text style={styles.error}>{error}</Text> : null}
-    {loading ? <State loading progress={progress} message="Loading lead history..." onProgressComplete={onProgressComplete} /> : meetings.length ? <View style={historyStyles.meetingList}>{meetings.map((meeting, index) => <MeetingHistoryRow key={meeting.meetingCode ?? `${meeting.id ?? index}`} meeting={meeting} alternate={index % 2 === 1} />)}</View> : <State message="No meeting history is available for this lead yet." />}
+    {loading ? <State loading progress={progress} message="Loading lead history..." onProgressComplete={onProgressComplete} /> : meetings.length ? <View style={historyStyles.meetingList}>{meetings.map((meeting, index) => <MeetingHistoryRow key={meeting.meetingCode ?? `${meeting.id ?? index}`} meeting={meeting} displayTitle={displayTitles.get(meeting)} alternate={index % 2 === 1} />)}</View> : <State message="No meeting history is available for this lead yet." />}
   </View>;
 }

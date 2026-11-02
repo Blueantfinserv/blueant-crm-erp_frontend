@@ -64,14 +64,13 @@ export function LoadingProgressBar({ progress, onComplete }: { progress: number;
   onCompleteRef.current = onComplete;
   const ready = Number.isFinite(progress) && progress >= 100;
   useEffect(() => {
-    if (displayedProgress === 100) {
-      const completeTimer = setTimeout(() => onCompleteRef.current?.(), 220);
-      return () => clearTimeout(completeTimer);
+    // Data readiness takes priority over the cosmetic progress sequence.
+    if (ready) {
+      onCompleteRef.current?.();
+      return;
     }
-    // Presentation steps are intentional, not an estimate of downloaded bytes.
-    // Never show completion before the caller confirms data is ready.
-    if (displayedProgress >= 90 && !ready) return;
-    const timer = setTimeout(() => setDisplayedProgress(value => Math.min(ready ? 100 : 90, value + 10)), 700);
+    if (displayedProgress >= 90) return;
+    const timer = setTimeout(() => setDisplayedProgress(value => Math.min(90, value + 10)), 700);
     return () => clearTimeout(timer);
   }, [displayedProgress, ready]);
   return <View accessibilityRole="progressbar" accessibilityLabel="Preparing coordinator data" accessibilityValue={{ min: 0, max: 100, now: displayedProgress }} style={styles.loaderStage}>

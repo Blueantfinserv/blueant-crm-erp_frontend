@@ -2,10 +2,10 @@ import { SecureStorageService } from '../services/SecureStorageService';
 import { requestWithSessionRefresh } from './authenticatedRequest';
 import type { ClientProfileResponse, ClientRegistrationRequest, ClientRegistrationResponse, CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleFamilyHeadResponse, EligibleLeadPage, FamilyDetailResponse, FamilyHeadHistoryResponse, FamilyRelationship } from '../types/crm';
 
-// CRM endpoints are served by the same production API that issues and refreshes
-// the authenticated user token. Keeping one base URL prevents cross-deployment
-// authorization mismatches.
+// Existing CRM requests retain the configured production host.
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
+// Backend-provided host, scoped to the CRM Assigned Clients list only.
+const CRM_CLIENT_LIST_BASE_URL = 'https://blueant-crm-erp.up.railway.app/api';
 
 type ApiResponse<T> = { success?: boolean; message?: string; data?: T; details?: Record<string, unknown> };
 type RoleSummary = { id?: number; roleCode?: string; roleName?: string; status?: string };
@@ -29,12 +29,12 @@ const roleCode = (value?: string) => {
   return code === 'RM' ? 'RELATIONSHIP_MANAGER' : code === 'SC' ? 'SALES_COORDINATOR' : code;
 };
 
-const request = async <T>(path: string, init: RequestInit = {}): Promise<T> => {
+const request = async <T>(path: string, init: RequestInit = {}, baseUrl = API_BASE_URL): Promise<T> => {
   const token = await SecureStorageService.getToken();
   if (!token) throw new CrmAssignmentApiError('Authentication token is unavailable.', '401');
   let response: Response;
   try {
-    response = await requestWithSessionRefresh(token, (accessToken) => fetch(`${API_BASE_URL}${path}`, {
+    response = await requestWithSessionRefresh(token, (accessToken) => fetch(`${baseUrl}${path}`, {
       ...init,
       headers: {
         Accept: 'application/json',
@@ -71,8 +71,8 @@ export const crmAssignmentApi = {
   // CRM assignment history must survive browser/device storage changes.
   getAssignedClients: async (): Promise<ClientProfileResponse[]> => {
     type Page = { content?: ClientProfileResponse[]; totalPages?: number };
-    const first = await request<Page>('/v1/clients?page=0&size=100');
-    const rest = await Promise.all(Array.from({ length: Math.max(0, (first.totalPages ?? 1) - 1) }, (_, index) => request<Page>(`/v1/clients?page=${index + 1}&size=100`)));
+    const first = await request<Page>('/v1/clients?page=0&size=100', {}, CRM_CLIENT_LIST_BASE_URL);
+    const rest = await Promise.all(Array.from({ length: Math.max(0, (first.totalPages ?? 1) - 1) }, (_, index) => request<Page>(`/v1/clients?page=${index + 1}&size=100`, {}, CRM_CLIENT_LIST_BASE_URL)));
     return [first, ...rest].flatMap(page => page.content ?? []).filter(client => Boolean(client.assignedSalesPersonCode?.trim()));
   },
   registerClient: (payload: ClientRegistrationRequest) => request<ClientRegistrationResponse>('/v1/clients/register', {

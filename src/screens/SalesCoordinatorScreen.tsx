@@ -286,10 +286,9 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
       progressActive = false;
       loadInFlight.current = false;
       if (generation === dataGeneration.current) {
-        if (!succeeded || activeTabRef.current === 'today' || activeTabRef.current === 'responses') {
-          setLoading(false);
-          setRefreshing(false);
-        }
+        // Request completion must clear global loading even if the user switched tabs.
+        setLoading(false);
+        setRefreshing(false);
         nextRefreshAt.current = Date.now() + 10_000;
         nextVerifiedRefreshAt.current = Date.now() + 5 * 60_000;
         nextTaskRefreshAt.current = Date.now() + 60 * 60_000;
@@ -399,7 +398,8 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
         } finally {
           progressActive = false;
           tabLoadInFlight.current.delete(target);
-          if (generation === dataGeneration.current && !succeeded) {
+          // Deferred data is already committed (or an error is set); no animation gate.
+          if (generation === dataGeneration.current) {
             setTabLoading((current) => ({ ...current, [target]: false }));
           }
         }

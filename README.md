@@ -19,7 +19,16 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 - React Native Paper
 - Web, Android, and iOS targets
 
-## Latest updates - 30 October 2026
+## Latest updates - 2 November 2026
+
+- PC loading now reveals ready data immediately instead of waiting for all cosmetic percentage steps or a completion hold. Orbit loader reduced to 72px. Initial and deferred loading flags clear when requests finish, including immediate navigation to Assigned Leads after refresh.
+- PC lead-history display numbering advances only after conducted meetings; unsuccessful attempts retain the current number. Backend titles are unchanged, and incomplete histories retain backend labels. Added numbering regression tests.
+- Added TS1208 (Tejprakash Sharma) to the PC Assign Lead employee list.
+- CRM Assigned Clients uses a compact striped table with existing search, filters and Details actions. CRM Assigned Leads opens the PC-style history view with lead, assignment, verification and meeting details.
+- CRM assignments use the frontend-maintained employee list; automatic roles/users-search directory requests are disabled for this screen.
+- Only the CRM Assigned Clients list uses the backend-provided Railway host: https://blueant-crm-erp.up.railway.app/api/v1/clients. Other requests keep their existing host. The Railway list still returns 403 ACCESS_DENIED for the observed CRM session; CRM meeting history also requires backend read permission. These authorization issues remain unresolved.
+
+## Previous updates - 30 October 2026
 
 - Prospect Meeting Update forms across roles now offer only Work In Progress and Converted as Client. Removed Client Not Interested, Remove This Client, and Already Blueant Client from the dropdown; historical status mappings remain compatible.
 - Restored client task loading for RM and SC through an explicit role flag; SM continues to skip client APIs. Added role-specific mount/refresh regression checks.
