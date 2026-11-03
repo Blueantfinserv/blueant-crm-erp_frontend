@@ -102,8 +102,11 @@ test('client loading reports completed pages and request stages and tolerates op
   assert.equal(result[0].isClientMeeting, true);
   assert.equal(progress.at(-1), 1);
   assert.ok(progress.every((value, index) => index === 0 || value >= progress[index - 1]));
-  const verified = await data.loadClientMeetings(async () => ({ content: [{ meetingCode: 'M4' }] }), { markVerified: true });
+  const verified = await data.loadClientMeetings(async () => ({ content: [{ meetingCode: 'M4', verifiedBy: 'PC1', verifiedAt: '2026-11-03T12:00:00' }] }), { markVerified: true });
   assert.equal(verified[0].verificationStatus, 'VERIFIED');
+  assert.equal(verified[0].verifiedBy, 'PC1');
+  assert.equal(verified[0].meetingVerificationDate, '2026-11-03T12:00:00');
+  assert.equal(filters.filterMeetingRecords(verified, { verifiedBy: 'PC1' }).length, 1);
 });
 test('empty client results complete all required loading stages', async () => {
   const progress = [];

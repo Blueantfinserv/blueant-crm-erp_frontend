@@ -1,3 +1,4 @@
+import { selectLocationMeeting } from '../locationMeetingSelector';
 import type { SalesTask } from '../types/tasks';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { leadSearchService } from '../../../../services/LeadSearchService';
@@ -95,20 +96,7 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
           (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
           || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
         ));
-        const locationMeeting = meetingState.meetings
-          .filter((candidate) => (
-            Number.isFinite(candidate.latitude)
-            && Number.isFinite(candidate.longitude)
-            && (
-              (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
-              || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
-            )
-          ))
-          .sort((a, b) => (
-            b.workflowUpdatedAt ?? b.updatedAt ?? b.lastModifiedDate ?? b.meetingDate ?? ''
-          ).localeCompare(
-            a.workflowUpdatedAt ?? a.updatedAt ?? a.lastModifiedDate ?? a.meetingDate ?? ''
-          ))[0];
+        const locationMeeting = selectLocationMeeting(meeting, meetingState.meetings);
         const lastMeetingDate = meetingHistory
           .filter((candidate) => (
             candidate.meetingCode !== meeting.meetingCode

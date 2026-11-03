@@ -20,4 +20,4 @@ export type MeetingColumnFilter = Partial<Record<'clientName' | 'meetingTitle' |
 
 export type AssignedDateRange = { from: string; to: string };
 
-export type VerificationPage = { content?: { meetingCode?: string; verificationStatus?: string }[]; totalPages?: number };
+export type VerificationPage = { content?: { meetingCode?: string; verificationStatus?: string; verifiedBy?: string; verifiedAt?: string }[]; totalPages?: number };

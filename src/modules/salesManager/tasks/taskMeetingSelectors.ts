@@ -34,14 +34,23 @@ export const isRemovedLead = (status?: string) => (
 export const getActionableTaskMeetings = (
   meetings: readonly MeetingResponse[],
   leads: readonly LeadResponse[],
-) => meetings.filter((meeting) => {
-  if (meeting.meetingStatus !== 'SCHEDULED' || meeting.meetingType === 'INTRO') return false;
-  const lead = leads.find((candidate) => (
-    (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
-    || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
-  ));
-  return !isHiddenCompletedLead(lead?.leadStatus)
-    && !isHiddenCompletedLead(meeting.leadStatus)
-    && !isRemovedLead(lead?.leadStatus)
-    && !isRemovedLead(meeting.leadStatus);
-});
+) => {
+  const byId = new Map<number, { lead: LeadResponse; index: number }>();
+  const byCode = new Map<string, { lead: LeadResponse; index: number }>();
+  leads.forEach((lead, index) => {
+    // Keep the first occurrence; Map treats NaN as equal, whereas the old === lookup does not.
+    if (lead.leadId !== undefined && !Number.isNaN(lead.leadId) && !byId.has(lead.leadId)) byId.set(lead.leadId, { lead, index });
+    if (lead.leadCode && !byCode.has(lead.leadCode)) byCode.set(lead.leadCode, { lead, index });
+  });
+  return meetings.filter((meeting) => {
+    if (meeting.meetingStatus !== 'SCHEDULED' || meeting.meetingType === 'INTRO') return false;
+    const idMatch = meeting.leadId !== undefined ? byId.get(meeting.leadId) : undefined;
+    const codeMatch = meeting.leadCode ? byCode.get(meeting.leadCode) : undefined;
+    // The original OR predicate chooses the earliest match across both keys, not ID priority.
+    const lead = (idMatch && codeMatch ? (idMatch.index < codeMatch.index ? idMatch : codeMatch) : idMatch ?? codeMatch)?.lead;
+    return !isHiddenCompletedLead(lead?.leadStatus)
+      && !isHiddenCompletedLead(meeting.leadStatus)
+      && !isRemovedLead(lead?.leadStatus)
+      && !isRemovedLead(meeting.leadStatus);
+  });
+};

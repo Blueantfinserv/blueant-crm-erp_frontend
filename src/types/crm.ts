@@ -227,6 +227,8 @@ export type CreateClientMeetingRequest = {
 };
 
 export type ClientMeetingResponse = {
+  verifiedBy?: string;
+  verifiedAt?: string;
   currentCity?: string;
   residentialAddress?: string;
   meetingCode?: string;
@@ -260,6 +262,8 @@ export type ClientMeetingResponse = {
 };
 
 export type ClientMeetingVerificationResponse = {
+  verifiedBy?: string;
+  verifiedAt?: string;
   meetingCode?: string;
   verificationStatus?: 'PENDING' | 'VERIFIED' | 'REJECTED' | string;
 };

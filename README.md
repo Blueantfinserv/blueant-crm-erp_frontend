@@ -21,6 +21,10 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 
 ## Latest updates - 3 November 2026
 
+- PC verified client meetings preserve verifiedBy and verifiedAt from the verification-list response when loading meeting details. Verifier/date appear in verified Details and are retained after a successful PC submission. Historical verifier identity still depends on backend data; failed sync can leave older records visible.
+- CRM Assigned Leads now has an Excel-compatible CSV export with the PC's existing 27-column schema, lead deduplication, CSV escaping and active CRM filters. By request it exports only already-loaded CRM lead data, makes no extra meeting API calls, and leaves unavailable meeting/verification values blank (or the existing placeholder). Export errors/progress are visible on web.
+- Two isolated calculation-only optimizations improve actionable-lead lookup and location-history selection. They retain first-match ID/code precedence, stable ties, record references and field output. API calls, caching, navigation, loading and other history calculations are unchanged. Added original-versus-optimized equivalence tests; synthetic timings are not end-to-end loading measurements.
+
 - PC role resolution identifies Divya and Monika as SC across prospect/client rows, role filters and details labels, including missing or outdated role data. Monika currently uses a name fallback pending an authoritative employee code. Added regression coverage.
 - Client Meeting Update validates required remarks, live coordinates and next-plan date, plus conducted-only mode, accompaniment, business selection, residential address and location. Address is limited to 500 characters. Required markers reflect editable fields; Not Conducted retains its fixed Tomorrow date.
 - Prospect Meeting Update now requires live location for SC too. Existing conditional validation remains; hidden visiting-card capture stays disabled. Required applicable values must exist whether auto-filled or entered manually.

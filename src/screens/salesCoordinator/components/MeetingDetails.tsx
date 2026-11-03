@@ -59,6 +59,6 @@ export function VerificationDetails({ meeting: m }: { meeting: MeetingResponse }
 }
 
 export function ClientVerificationDetails({ meeting: m }: { meeting: MeetingResponse }) {
-  const fields = ([['Meeting Date', m.meetingDate], ['Meeting Time', timeText(m.meetingTime)], ['BlueAnt App Used', m.blueantAppUsed], ['Along With', m.aloneWith], ['Person Name', m.personName], ['Person Designation', m.position], ['Business/Service Request', m.businessGenerated], ['Investment Types', m.businessTypes?.join(', ') ?? m.investmentType], ['Total Investment Amount', m.investmentAmount], ['Remarks by PC', m.verificationRemarks ?? m.remarks]] as const).filter(([, value]) => value !== undefined && value !== null && value !== '');
+  const fields = ([['Verified By', m.verifiedBy], ['Verification Date', m.meetingVerificationDate], ['Meeting Date', m.meetingDate], ['Meeting Time', timeText(m.meetingTime)], ['BlueAnt App Used', m.blueantAppUsed], ['Along With', m.aloneWith], ['Person Name', m.personName], ['Person Designation', m.position], ['Business/Service Request', m.businessGenerated], ['Investment Types', m.businessTypes?.join(', ') ?? m.investmentType], ['Total Investment Amount', m.investmentAmount], ['Remarks by PC', m.verificationRemarks ?? m.remarks]] as const).filter(([, value]) => value !== undefined && value !== null && value !== '');
   return <View style={styles.formSection}><Text style={styles.sectionTitle}>Client PC Verification Response</Text><DetailGrid fields={fields} /></View>;
 }

@@ -567,8 +567,11 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
       // The verification endpoint returns the PC answers but may omit the original client/profile
       // fields. Keep the values already loaded for the pending meeting so the verified list and
       // response modal remain useful after submission.
+      const currentUser = await SecureStorageService.getUserData();
       const verifiedClientRecord: MeetingResponse = {
         ...clientMeetingAsCoordinatorRecord(verifiedClientMeeting),
+        verifiedBy: verifiedClientMeeting.verifiedBy || currentUser?.employeeId || currentUser?.fullName,
+        meetingVerificationDate: verifiedClientMeeting.verifiedAt || new Date().toISOString(),
         clientName: verifiedClientMeeting.clientName ?? meeting.clientName,
         mobileNumber: verifiedClientMeeting.mobileNumber ?? meeting.mobileNumber,
         alternateMobileNumber: meeting.alternateMobileNumber,
@@ -599,7 +602,6 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
         verificationStatus: 'VERIFIED',
       };
       setPending((items) => items.filter((item) => item.meetingCode !== meeting.meetingCode));
-      const currentUser = await SecureStorageService.getUserData();
       const locallyVerifiedClients = await loadStoredVerifiedClientMeetings(currentUser?.employeeId);
       await saveStoredVerifiedClientMeetings(mergeVerifiedMeetings([verifiedClientRecord], locallyVerifiedClients), currentUser?.employeeId);
       commitVerifiedMeetings(mergeVerifiedMeetings([verifiedClientRecord], verifiedMeetingsRef.current));

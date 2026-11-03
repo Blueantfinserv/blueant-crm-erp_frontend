@@ -1,3 +1,5 @@
+import { buildCrmAssignedLeadExport } from './crmAssignedLeadExport';
+import { downloadCsv, exportDatePart, exportNamePart } from './salesCoordinator/coordinatorExport';
 import { styles as pcHistoryStyles } from './salesCoordinatorStyles';
 import { LeadHistoryContent } from './salesCoordinator/components/LeadHistory';
 import { leadApi } from '../api/lead';
@@ -5,7 +7,7 @@ import { meetingApi } from '../api/meeting';
 import type { MeetingResponse } from '../types/meeting';
 import { parsePastedDate } from '../utils/parsePastedDate';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Icon } from 'react-native-paper';
@@ -181,6 +183,9 @@ export function CrmOnboardingScreen() {
   const [clientForm, setClientForm] = useState<CrmAssignForm>(emptyForm);
   const assignmentTargets = CRM_ASSIGNMENT_TARGETS;
   const [assignedLeads, setAssignedLeads] = useState<LeadResponse[]>([]);
+  const [exportingLeads, setExportingLeads] = useState(false);
+  const [leadExportError, setLeadExportError] = useState<string | null>(null);
+  const exportInFlight = useRef(false);
   const [assignedClients, setAssignedClients] = useState<AssignedClient[]>([]);
   const [leadFilters, setLeadFilters] = useState<AssignmentFilters>(emptyAssignmentFilters);
   const [clientFilters, setClientFilters] = useState<AssignmentFilters>(emptyAssignmentFilters);
@@ -425,6 +430,23 @@ export function CrmOnboardingScreen() {
     finally { setAssigning(false); }
   };
 
+  const exportCrmAssignedLeads = async () => {
+    if (exportInFlight.current) return;
+    setLeadExportError(null);
+    if (!hasAssignedLeadsData.current) { setLeadExportError('Assigned leads are not ready. Use Sync data and wait for the list to load before exporting.'); return; }
+    if (Platform.OS !== 'web') { Alert.alert('Excel export', 'Excel export is currently available on the web version.'); return; }
+    exportInFlight.current = true; setExportingLeads(true);
+    try {
+      const leads = assignedLeads.filter(lead => matchesAssignmentFilters({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }, leadFilters));
+      // Export only the CRM lead data already loaded; no extra meeting permissions required.
+      const { headers, rows } = buildCrmAssignedLeadExport(leads, [], [], []);
+      const from = exportDatePart(leadFilters.from), to = exportDatePart(leadFilters.to);
+      const range = from && to ? `${from}-to-${to}` : from ? `from-${from}` : to ? `to-${to}` : 'all-dates';
+      downloadCsv(headers, rows, `assigned-leads-${exportNamePart(leadFilters.assignedTo)}-${range}`);
+    } catch (error) { setLeadExportError(`Excel export failed: ${messageFor(error)}. No file was downloaded.`); }
+    finally { exportInFlight.current = false; setExportingLeads(false); }
+  };
+
   const sync = async () => {
     setRefreshing(true);
     await (tab === 'assigned' ? loadAssigned() : tab === 'assignedClients' ? loadAssignedClients() : Promise.resolve());
@@ -443,7 +465,9 @@ export function CrmOnboardingScreen() {
       <Pressable disabled={refreshing || assigning} onPress={() => void sync()} style={({ pressed }) => [styles.syncButton, (refreshing || assigning) && styles.disabled, pressed && styles.pressed]}>{refreshing ? <ActivityIndicator size="small" color="#3156C8" /> : <Icon source="refresh" size={18} color="#3156C8" />}<Text style={styles.syncText}>{refreshing ? 'Syncing...' : 'Sync data'}</Text></Pressable>
     </View>
     <View style={styles.panel}>
-      <View style={[styles.panelHeading, (tab === 'assigned' || tab === 'assignedClients') && styles.panelHeadingWithFilters]}><View><Text style={styles.panelTitle}>{tab === 'assign' ? 'Assign Leads' : tab === 'assigned' ? 'Assigned Leads' : tab === 'assignClients' ? 'Assign Clients' : tab === 'assignedClients' ? 'Assigned Clients' : 'Today Meetings'}</Text><Text style={styles.panelSubtitle}>{tab === 'assign' ? 'Create a physical lead and assign it only to an RM or SC.' : tab === 'assigned' ? `Showing ${assignedLeads.filter((lead) => matchesAssignmentFilters({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }, leadFilters)).length} of ${assignedLeads.length} assigned leads` : tab === 'assignClients' ? 'Assign an existing client to a Relationship Manager or Sales Coordinator.' : tab === 'assignedClients' ? `Showing ${resolvedAssignedClients.filter((client) => matchesAssignmentFilters({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }, clientFilters)).length} of ${resolvedAssignedClients.length} assigned clients` : ' '}</Text></View>{tab === 'assigned' ? <AssignmentHeaderFilters items={assignedLeads.map((lead) => ({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }))} targets={assignmentTargets} filters={leadFilters} onChange={setLeadFilters} label="leads" /> : tab === 'assignedClients' ? <AssignmentHeaderFilters items={resolvedAssignedClients.map((client) => ({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }))} targets={assignmentTargets} filters={clientFilters} onChange={setClientFilters} label="clients" /> : null}</View>
+      <View style={[styles.panelHeading, (tab === 'assigned' || tab === 'assignedClients') && styles.panelHeadingWithFilters]}><View><Text style={styles.panelTitle}>{tab === 'assign' ? 'Assign Leads' : tab === 'assigned' ? 'Assigned Leads' : tab === 'assignClients' ? 'Assign Clients' : tab === 'assignedClients' ? 'Assigned Clients' : 'Today Meetings'}</Text><Text style={styles.panelSubtitle}>{tab === 'assign' ? 'Create a physical lead and assign it only to an RM or SC.' : tab === 'assigned' ? `Showing ${assignedLeads.filter((lead) => matchesAssignmentFilters({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }, leadFilters)).length} of ${assignedLeads.length} assigned leads` : tab === 'assignClients' ? 'Assign an existing client to a Relationship Manager or Sales Coordinator.' : tab === 'assignedClients' ? `Showing ${resolvedAssignedClients.filter((client) => matchesAssignmentFilters({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }, clientFilters)).length} of ${resolvedAssignedClients.length} assigned clients` : ' '}</Text></View>{tab === 'assigned' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}><AssignmentHeaderFilters items={assignedLeads.map((lead) => ({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }))} targets={assignmentTargets} filters={leadFilters} onChange={setLeadFilters} label="leads" /><Pressable accessibilityRole="button" accessibilityLabel="Export assigned leads to Excel" disabled={exportingLeads} onPress={() => void exportCrmAssignedLeads()} style={[pcHistoryStyles.assignedExportButton, exportingLeads && styles.disabled]}>{exportingLeads ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Icon source="file-excel-outline" size={18} color="#FFFFFF" />}</Pressable></View> : tab === 'assignedClients' ? <AssignmentHeaderFilters items={resolvedAssignedClients.map((client) => ({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }))} targets={assignmentTargets} filters={clientFilters} onChange={setClientFilters} label="clients" /> : null}</View>
+      {tab === 'assigned' && exportingLeads ? <Text accessibilityLiveRegion="polite" style={{ paddingHorizontal: 16, paddingVertical: 8, color: '#3156C8', fontSize: 12 }}>Preparing Excel export from available CRM data?</Text> : null}
+      {tab === 'assigned' && leadExportError ? <Text accessibilityRole="alert" style={{ paddingHorizontal: 16, paddingVertical: 8, color: '#B91C1C', fontSize: 12 }}>{leadExportError}</Text> : null}
       {tab === 'assignClients' ? <ClientFormSubheader active={clientSection} dark={isDark} onChange={setClientSection} /> : null}
       {tab === 'assign' ? <AssignForm form={form} targets={assignmentTargets} selectedTarget={selectedTarget} assigning={assigning} canSubmit={canSubmit} message={message} dark={isDark} onChange={(next) => setForm((current) => ({ ...current, ...next }))} onSubmit={() => void assignLead()} /> : tab === 'assigned' ? <AssignedLeadList leads={assignedLeads} filters={leadFilters} loading={loadingAssigned} error={assignedError} onSelectLead={setSelectedLead} /> : tab === 'assignClients' ? <AssignForm form={clientForm} targets={assignmentTargets} selectedTarget={selectedClientTarget} assigning={assigningClient} canSubmit={canAssignClient} message={clientMessage} dark={isDark} kind="Client" section={clientSection} onChange={(next) => setClientForm((current) => ({ ...current, ...next }))} onValidateSection={saveAndValidateClientSection} onSubmit={() => void assignClient()} /> : tab === 'assignedClients' ? <AssignedClientList clients={resolvedAssignedClients} filters={clientFilters} loading={loadingAssigned} error={assignedError} onOpenClient={setSelectedClientDetails} /> : <View style={styles.blankPanel} />}
     </View>

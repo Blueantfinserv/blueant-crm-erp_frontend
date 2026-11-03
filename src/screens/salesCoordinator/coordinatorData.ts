@@ -34,6 +34,8 @@ export const assignedSalesPersonForMobile = async (mobileNumber: string) => {
 
 export const clientMeetingAsCoordinatorRecord = (meeting: Awaited<ReturnType<typeof clientMeetingApi.getMeeting>>, profile?: ClientProfileResponse | null): MeetingResponse => ({
   meetingCode: meeting.meetingCode,
+  verifiedBy: meeting.verifiedBy,
+  meetingVerificationDate: meeting.verifiedAt,
   currentCity: meeting.currentCity,
   residentialAddress: meeting.residentialAddress,
   meetingNumber: meeting.meetingNumber,
@@ -87,7 +89,9 @@ export const loadClientMeetings = async (
   );
   completedPages = totalPages;
   onProgress((completedPages / totalPages) / 3);
-  const codes = [firstPage, ...remainingPages].flatMap((page) => page.content ?? [])
+  const verificationEntries = [firstPage, ...remainingPages].flatMap((page) => page.content ?? []);
+  const verificationByCode = new Map(verificationEntries.map(item => [item.meetingCode?.trim(), item]));
+  const codes = verificationEntries
     .filter((item) => !pendingOnly || !item.verificationStatus || item.verificationStatus === 'PENDING')
     .map((item) => item.meetingCode?.trim())
     .filter((code): code is string => Boolean(code));
@@ -100,7 +104,12 @@ export const loadClientMeetings = async (
     (completed) => onProgress((2 + completed) / 3),
   );
   return records.map((meeting, index) => {
-    const record = clientMeetingAsCoordinatorRecord(meeting, profiles[index]);
+    const verification = verificationByCode.get(codes[index]);
+    const record = clientMeetingAsCoordinatorRecord({
+      ...meeting,
+      verifiedBy: verification?.verifiedBy || meeting.verifiedBy,
+      verifiedAt: verification?.verifiedAt || meeting.verifiedAt,
+    }, profiles[index]);
     return markVerified ? { ...record, verificationStatus: 'VERIFIED' as const } : record;
   });
 };
