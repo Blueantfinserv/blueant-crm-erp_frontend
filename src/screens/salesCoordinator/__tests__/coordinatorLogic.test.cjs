@@ -177,3 +177,16 @@ test('Amit role migration is consistent for prospect and client meeting labels a
   assert.equal(utils.leadRole({ assignedEmployeeRole: 'SALES_MANAGER', assignedEmployeeCode: 'AKS0108' }), 'RM');
   assert.equal(utils.employeeRole('SALES_MANAGER', 'RK1507'), 'SM');
 });
+
+test('Divya and Monika remain SC across PC meetings, leads, labels and role filters', () => {
+  for (const name of ['Divya Gupta', ' Divya ', 'Monika', 'MONIKA SHARMA']) {
+    const meeting = { employeeName: name, employeeRole: 'RELATIONSHIP_MANAGER' };
+    assert.equal(utils.meetingRole(meeting), 'SC');
+    assert.equal(utils.employeeRoleLabels(meeting).person, 'Sales Coordinator');
+    assert.equal(utils.leadRole({ assignedEmployeeName: name, assignedEmployeeRole: 'SALES_MANAGER' }), 'SC');
+    assert.equal(filters.filterMeetingRecords([meeting], { employeeRole: 'SC' }).length, 1);
+    assert.equal(filters.filterMeetingRecords([meeting], { employeeRole: 'RM' }).length, 0);
+  }
+  assert.equal(utils.employeeRole('RM', ' dv0101 '), 'SC');
+  assert.equal(utils.employeeRole('RM', undefined, 'Avesh parjapti'), 'RM');
+});

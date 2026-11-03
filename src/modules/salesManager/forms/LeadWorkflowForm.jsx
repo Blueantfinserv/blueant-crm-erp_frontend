@@ -101,7 +101,7 @@ export default function LeadWorkflowForm({ type, lead, role, onClose, onSubmit }
       if (conducted && !form.leadStatus) nextErrors.leadStatus = "Prospect status is required.";
       if (conducted && !form.joinedWith) nextErrors.joinedWith = "Joined With is required.";
       if (!form.remarks.trim()) nextErrors.remarks = "Remarks are required.";
-      if (!isSalesCoordinator && !form.liveLocation) nextErrors.liveLocation = "Live location is required.";
+      if (!form.liveLocation) nextErrors.liveLocation = "Live location is required.";
       // Temporarily disabled while the backend visiting-card flow is being fixed.
       // if (!form.cardImage) nextErrors.cardImage = "Card image is required.";
       const followUpRequired = form.meetingStatus === "Visited but Not Met"
@@ -344,7 +344,7 @@ export default function LeadWorkflowForm({ type, lead, role, onClose, onSubmit }
                 </Field>
               </> : null}
 
-              <Field label="Location Pinned" required={!isSalesCoordinator} error={errors.liveLocation}>
+              <Field label="Location Pinned" required error={errors.liveLocation}>
                 <Pressable
                   disabled={fetchingLocation}
                   onPress={() => void captureLiveLocation()}

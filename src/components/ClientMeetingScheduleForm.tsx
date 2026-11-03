@@ -53,8 +53,19 @@ export function ClientMeetingScheduleForm({ client, onClose, onSuccess }: { clie
 
   const submit = async () => {
     if (!client.clientCode) { setError('Client code is unavailable. Refresh the task list and try again.'); return; }
+    if (!remarks.trim()) { setError('Remarks are required.'); return; }
+    if (outcome === 'CONDUCTED') {
+      if (!mode) { setError('Meeting mode is required.'); return; }
+      if (!aloneWith) { setError('Along With is required.'); return; }
+      if (!businessChoice) { setError('Select Investment, Service or Only Discussion.'); return; }
+      if (!meetingAddress.trim()) { setError('Address is required.'); return; }
+      if (meetingAddress.trim().length > 500) { setError('Address can be at most 500 characters.'); return; }
+      if (!MEETING_LOCATIONS.includes(meetingLocation)) { setError('Location is required.'); return; }
+    }
+    if (!coordinates || !Number.isFinite(coordinates.latitude) || !Number.isFinite(coordinates.longitude)) { setError('Capture your live location before submitting.'); return; }
     if (remarks.length > 1000) { setError('Remarks can be at most 1000 characters.'); return; }
     const submittedNextPlanDate = outcome === 'NOT_CONDUCTED' ? followUpOptions()[0].value : nextPlanDate;
+    if (!submittedNextPlanDate) { setError('Next plan date is required.'); return; }
     if (submittedNextPlanDate && !followUpOptions().some((option) => option.value === submittedNextPlanDate)) { setError('Choose a next plan date from the available options.'); return; }
     setSaving(true); setError(null);
     try {
@@ -85,14 +96,14 @@ export function ClientMeetingScheduleForm({ client, onClose, onSuccess }: { clie
         <View style={styles.clientSummary}><View style={styles.clientSummaryCell}><Text style={styles.summaryLabel}>CLIENT</Text><Text numberOfLines={1} style={styles.summaryValue}>{client.name}</Text></View><View style={styles.clientSummaryCell}><Text style={styles.summaryLabel}>NUMBER</Text><Text numberOfLines={1} style={styles.summaryValue}>{client.phone || '—'}</Text></View></View>
         <Text style={styles.label}>Client Meeting Status *</Text>
         <View style={styles.statusRow}><Status selected={outcome === 'CONDUCTED'} label="Conducted" icon="check-circle" onPress={() => setOutcome('CONDUCTED')} /><Status selected={outcome === 'NOT_CONDUCTED'} label="Not Conducted" icon="minus-circle-outline" onPress={() => setOutcome('NOT_CONDUCTED')} /></View>
-        {outcome === 'NOT_CONDUCTED' ? <Field label="Meeting Date"><View style={styles.fixedDate}><Icon source="calendar-outline" size={17} color="#64748B" /><Text style={styles.fixedDateText}>{localDate()}</Text><Text style={styles.fixedDateHint}>Today</Text></View></Field> : <><Field label="Meeting Mode"><CompactDropdown value={mode} options={[{ label: 'Physical', value: 'PHYSICAL' }, { label: 'Virtual / Online', value: 'VIRTUAL/ONLINE' }, { label: 'Phone', value: 'PHONE' }]} onSelect={(value) => setMode(value as Mode)} /></Field><View style={styles.twoColumn}><Field compact label="Along With"><CompactDropdown value={aloneWith} options={[{ label: 'Alone', value: 'SELF' }, { label: 'Someone', value: 'SOMEONE' }]} onSelect={(value) => setAloneWith(value as 'SELF' | 'SOMEONE')} /></Field><Field compact label="Business/Service Request"><CompactDropdown value={businessChoice} placeholder="Select" options={[{ label: 'Investment', value: 'INVESTMENT' }, { label: 'Service', value: 'SERVICE' }, { label: 'Only Discussion', value: 'ONLY_DISCUSSION' }]} onSelect={setBusinessChoice} /></Field></View></>}
-        <Field label="Remarks"><TextInput value={remarks} onChangeText={setRemarks} maxLength={1000} multiline placeholder="Add meeting remarks" placeholderTextColor="#94A3B8" style={[styles.input, styles.remarks]} /></Field>
+        {outcome === 'NOT_CONDUCTED' ? <Field label="Meeting Date"><View style={styles.fixedDate}><Icon source="calendar-outline" size={17} color="#64748B" /><Text style={styles.fixedDateText}>{localDate()}</Text><Text style={styles.fixedDateHint}>Today</Text></View></Field> : <><Field label="Meeting Mode *"><CompactDropdown value={mode} options={[{ label: 'Physical', value: 'PHYSICAL' }, { label: 'Virtual / Online', value: 'VIRTUAL/ONLINE' }, { label: 'Phone', value: 'PHONE' }]} onSelect={(value) => setMode(value as Mode)} /></Field><View style={styles.twoColumn}><Field compact label="Along With *"><CompactDropdown value={aloneWith} options={[{ label: 'Alone', value: 'SELF' }, { label: 'Someone', value: 'SOMEONE' }]} onSelect={(value) => setAloneWith(value as 'SELF' | 'SOMEONE')} /></Field><Field compact label="Business/Service Request *"><CompactDropdown value={businessChoice} placeholder="Select" options={[{ label: 'Investment', value: 'INVESTMENT' }, { label: 'Service', value: 'SERVICE' }, { label: 'Only Discussion', value: 'ONLY_DISCUSSION' }]} onSelect={setBusinessChoice} /></Field></View></>}
+        <Field label="Remarks *"><TextInput value={remarks} onChangeText={setRemarks} maxLength={1000} multiline placeholder="Add meeting remarks" placeholderTextColor="#94A3B8" style={[styles.input, styles.remarks]} /></Field>
         {outcome === 'CONDUCTED' ? <>
-          <Field label="Address"><TextInput accessibilityLabel="Meeting address" value={meetingAddress} onChangeText={setMeetingAddress} maxLength={500} multiline textAlignVertical="top" placeholder="Enter complete meeting address" placeholderTextColor="#94A3B8" style={[styles.input, styles.remarks]} /></Field>
-          <Field label="Location"><CompactDropdown value={meetingLocation} placeholder="Select location" options={MEETING_LOCATIONS.map(value => ({ label: value, value }))} onSelect={setMeetingLocation} /></Field>
+          <Field label="Address *"><TextInput accessibilityLabel="Meeting address" value={meetingAddress} onChangeText={setMeetingAddress} maxLength={500} multiline textAlignVertical="top" placeholder="Enter complete meeting address" placeholderTextColor="#94A3B8" style={[styles.input, styles.remarks]} /></Field>
+          <Field label="Location *"><CompactDropdown value={meetingLocation} placeholder="Select location" options={MEETING_LOCATIONS.map(value => ({ label: value, value }))} onSelect={setMeetingLocation} /></Field>
         </> : null}
-        <Field label="Next Plan Date">{outcome === 'NOT_CONDUCTED' ? <View style={styles.fixedDate}><Icon source="calendar-outline" size={17} color="#64748B" /><Text style={styles.fixedDateText}>{followUpOptions()[0].value}</Text><Text style={styles.fixedDateHint}>Tomorrow</Text></View> : <FollowUpPicker value={nextPlanDate} onSelect={setNextPlanDate} />}</Field>
-        <Field label="Location Pinned">
+        <Field label="Next Plan Date *">{outcome === 'NOT_CONDUCTED' ? <View style={styles.fixedDate}><Icon source="calendar-outline" size={17} color="#64748B" /><Text style={styles.fixedDateText}>{followUpOptions()[0].value}</Text><Text style={styles.fixedDateHint}>Tomorrow</Text></View> : <FollowUpPicker value={nextPlanDate} onSelect={setNextPlanDate} />}</Field>
+        <Field label="Location Pinned *">
           <Pressable accessibilityRole="button" disabled={capturing} onPress={() => void captureLocation()} style={[styles.captureBox, capturing && styles.disabled]}>
             <View style={[styles.captureIcon, coordinates ? styles.captureIconDone : undefined]}>{capturing ? <ActivityIndicator size="small" color="#2563EB" /> : <Icon source={coordinates ? 'map-marker-check' : 'crosshairs-gps'} size={20} color={coordinates ? '#047857' : '#2563EB'} />}</View>
             <View style={styles.captureCopy}>

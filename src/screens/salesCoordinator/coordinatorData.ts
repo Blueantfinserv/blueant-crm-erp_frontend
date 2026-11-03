@@ -54,7 +54,7 @@ export const clientMeetingAsCoordinatorRecord = (meeting: Awaited<ReturnType<typ
   employeeName: meeting.assignedEmployeeName,
   // Client-meeting responses expose the employee code but not the role. Resolve the known
   // assigned code so an active SC filter does not hide Divya's pending client meetings.
-  employeeRole: employeeRole(undefined, meeting.assignedEmployeeCode) === 'SC' ? 'SALES_COORDINATOR' : 'RELATIONSHIP_MANAGER',
+  employeeRole: employeeRole(undefined, meeting.assignedEmployeeCode, meeting.assignedEmployeeName) === 'SC' ? 'SALES_COORDINATOR' : 'RELATIONSHIP_MANAGER',
   meetingMode: meeting.meetingMode as MeetingResponse['meetingMode'],
   aloneWith: meeting.aloneWith,
   personName: meeting.personName,

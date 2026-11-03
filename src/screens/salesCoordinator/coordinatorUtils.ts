@@ -51,7 +51,11 @@ export const belongsToCoordinatorTeam = (coordinator: string, salesPerson: strin
 
 export const isValidAmount = (value: string) => Boolean(value.trim()) && Number.isFinite(Number(value)) && Number(value) >= 0;
 
-export const employeeRole = (roleValue?: string, employeeCode?: string): 'SM' | 'RM' | 'SC' => {
+export const employeeRole = (roleValue?: string, employeeCode?: string, employeeName?: string): 'SM' | 'RM' | 'SC' => {
+  const code = employeeCode?.trim().toUpperCase();
+  const name = employeeName?.trim().toLowerCase().replace(/\s+/g, ' ') ?? '';
+  // PC directory corrections also cover responses that omit employee codes.
+  if (code === 'DV0101' || name === 'divya' || name === 'divya gupta' || /^monika(?: |$)/.test(name)) return 'SC';
   // Confirmed role migration: historical prospect records may still report SM.
   if (employeeCode?.trim().toUpperCase() === 'AKS0108') return 'RM';
   const role = String(roleValue ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
@@ -63,9 +67,9 @@ export const employeeRole = (roleValue?: string, employeeCode?: string): 'SM' | 
   return 'SM';
 };
 
-export const meetingRole = (meeting: MeetingResponse) => employeeRole(meeting.employeeRole ?? meeting.assignedEmployeeRole, meeting.employeeCode);
+export const meetingRole = (meeting: MeetingResponse) => employeeRole(meeting.employeeRole ?? meeting.assignedEmployeeRole, meeting.employeeCode, meeting.employeeName ?? meeting.assignedEmployeeName);
 
-export const leadRole = (lead: LeadResponse) => employeeRole(lead.assignedEmployeeRole, lead.assignedEmployeeCode);
+export const leadRole = (lead: LeadResponse) => employeeRole(lead.assignedEmployeeRole, lead.assignedEmployeeCode, lead.assignedEmployeeName);
 
 export const employeeRoleLabels = (meeting: MeetingResponse) => {
   const role = meetingRole(meeting);

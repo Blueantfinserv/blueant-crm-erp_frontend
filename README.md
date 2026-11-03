@@ -21,6 +21,11 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 
 ## Latest updates - 3 November 2026
 
+- PC role resolution identifies Divya and Monika as SC across prospect/client rows, role filters and details labels, including missing or outdated role data. Monika currently uses a name fallback pending an authoritative employee code. Added regression coverage.
+- Client Meeting Update validates required remarks, live coordinates and next-plan date, plus conducted-only mode, accompaniment, business selection, residential address and location. Address is limited to 500 characters. Required markers reflect editable fields; Not Conducted retains its fixed Tomorrow date.
+- Prospect Meeting Update now requires live location for SC too. Existing conditional validation remains; hidden visiting-card capture stays disabled. Required applicable values must exist whether auto-filled or entered manually.
+- Experimental SM/RM/SC workspace caching and client-loading changes were reverted; this update does not include that experiment.
+
 - Client Meeting Update fixes Not Conducted follow-up to Tomorrow in both the read-only control and submitted payload. Conducted follow-up choices remain available.
 - Conducted client meetings show Remarks, Address, Location, then Next Plan Date. The location dropdown includes the requested 11 areas. Optional Location maps to currentCity and Address maps to residentialAddress (500-character limit); neither is submitted for Not Conducted meetings.
 - Client meeting outcome choices now display Investment, Service, and Only Discussion, mapping to backend businessGenerated YES, YES, and NO. PC verification retains its existing Yes/No controls; the backend boolean-style value does not distinguish Investment from Service.
