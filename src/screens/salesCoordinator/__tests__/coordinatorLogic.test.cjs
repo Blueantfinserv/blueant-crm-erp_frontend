@@ -165,3 +165,15 @@ test('CSV escaping and phone masking preserve exported/displayed values', () => 
   assert.equal(csv.exportNamePart(' Aarti Kumari '), 'Aarti-Kumari');
   assert.equal(utils.maskedMobile('9876543210'), '98******10');
 });
+
+test('Amit role migration is consistent for prospect and client meeting labels and filters', () => {
+  for (const role of [undefined, 'SM', 'SALES_MANAGER', 'RELATIONSHIP_MANAGER']) {
+    assert.equal(utils.employeeRole(role, ' aks0108 '), 'RM');
+    const prospect = { employeeRole: role, employeeCode: 'AKS0108' };
+    assert.equal(utils.meetingRole(prospect), 'RM');
+    assert.equal(filters.filterMeetingRecords([prospect], { employeeRole: 'RM' }).length, 1);
+    assert.equal(filters.filterMeetingRecords([prospect], { employeeRole: 'SM' }).length, 0);
+  }
+  assert.equal(utils.leadRole({ assignedEmployeeRole: 'SALES_MANAGER', assignedEmployeeCode: 'AKS0108' }), 'RM');
+  assert.equal(utils.employeeRole('SALES_MANAGER', 'RK1507'), 'SM');
+});

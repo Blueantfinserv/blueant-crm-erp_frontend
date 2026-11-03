@@ -34,6 +34,8 @@ export const assignedSalesPersonForMobile = async (mobileNumber: string) => {
 
 export const clientMeetingAsCoordinatorRecord = (meeting: Awaited<ReturnType<typeof clientMeetingApi.getMeeting>>, profile?: ClientProfileResponse | null): MeetingResponse => ({
   meetingCode: meeting.meetingCode,
+  currentCity: meeting.currentCity,
+  residentialAddress: meeting.residentialAddress,
   meetingNumber: meeting.meetingNumber,
   meetingTitle: 'Client Meeting',
   meetingStatus: meeting.meetingStatus as MeetingResponse['meetingStatus'],

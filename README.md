@@ -19,7 +19,15 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 - React Native Paper
 - Web, Android, and iOS targets
 
-## Latest updates - 2 November 2026
+## Latest updates - 3 November 2026
+
+- Client Meeting Update fixes Not Conducted follow-up to Tomorrow in both the read-only control and submitted payload. Conducted follow-up choices remain available.
+- Conducted client meetings show Remarks, Address, Location, then Next Plan Date. The location dropdown includes the requested 11 areas. Optional Location maps to currentCity and Address maps to residentialAddress (500-character limit); neither is submitted for Not Conducted meetings.
+- Client meeting outcome choices now display Investment, Service, and Only Discussion, mapping to backend businessGenerated YES, YES, and NO. PC verification retains its existing Yes/No controls; the backend boolean-style value does not distinguish Investment from Service.
+- PC client verification and verified details display currentCity and residentialAddress when returned by the backend.
+- PC role labels and filters recognize Amit Kumar Singh (AKS0108) as RM, including historical prospect records marked SM. This is a scoped display override; backend roles and RM/SM access rules are unchanged. Added regression coverage.
+
+## Previous updates - 2 November 2026
 
 - PC loading now reveals ready data immediately instead of waiting for all cosmetic percentage steps or a completion hold. Orbit loader reduced to 72px. Initial and deferred loading flags clear when requests finish, including immediate navigation to Assigned Leads after refresh.
 - PC lead-history display numbering advances only after conducted meetings; unsuccessful attempts retain the current number. Backend titles are unchanged, and incomplete histories retain backend labels. Added numbering regression tests.

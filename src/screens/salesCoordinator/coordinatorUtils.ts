@@ -52,6 +52,8 @@ export const belongsToCoordinatorTeam = (coordinator: string, salesPerson: strin
 export const isValidAmount = (value: string) => Boolean(value.trim()) && Number.isFinite(Number(value)) && Number(value) >= 0;
 
 export const employeeRole = (roleValue?: string, employeeCode?: string): 'SM' | 'RM' | 'SC' => {
+  // Confirmed role migration: historical prospect records may still report SM.
+  if (employeeCode?.trim().toUpperCase() === 'AKS0108') return 'RM';
   const role = String(roleValue ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
   if (role === 'RELATIONSHIP_MANAGER' || role === 'RM') return 'RM';
   if (role === 'SALES_COORDINATOR' || role === 'SC') return 'SC';

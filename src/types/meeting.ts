@@ -14,6 +14,8 @@ export type MeetingSummary = {
 };
 
 export type MeetingResponse = MeetingSummary & {
+  currentCity?: string;
+  residentialAddress?: string;
   mobileNumber?: string; employeeCode?: string; employeeName?: string; meetingMode?: MeetingMode;
   employeeRole?: string; assignedEmployeeRole?: string;
   meetingLocation?: string; status?: string; address?: string; discussion?: string;

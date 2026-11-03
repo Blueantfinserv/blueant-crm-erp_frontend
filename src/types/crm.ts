@@ -227,6 +227,8 @@ export type CreateClientMeetingRequest = {
 };
 
 export type ClientMeetingResponse = {
+  currentCity?: string;
+  residentialAddress?: string;
   meetingCode?: string;
   meetingNumber?: number;
   meetingStatus?: string;
@@ -365,6 +367,8 @@ export type ClientMeetingUpdateRequest = {
   aloneWith?: string;
   businessGenerated?: string;
   remarks?: string;
+  currentCity?: string;
+  residentialAddress?: string;
   nextPlanDate?: string;
   latitude?: number;
   longitude?: number;

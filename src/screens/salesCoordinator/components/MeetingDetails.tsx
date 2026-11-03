@@ -16,6 +16,10 @@ export function Details({ meeting: m, visitOnly = false, presentation, hideMeeti
   const contactFields: [string, unknown][] = [['Mobile Number', maskedMobile(m.mobileNumber)]];
   if (m.isClientMeeting) contactFields.push(['Alternate Mobile', maskedMobile(m.alternateMobileNumber)], ['Email', m.email]);
   contactFields.push([employeeLabels.person, m.employeeName], [employeeLabels.id, m.employeeCode]);
+  if (m.isClientMeeting) {
+    if (m.currentCity) contactFields.push(['Location', m.currentCity]);
+    if (m.residentialAddress) contactFields.push(['Residential Address', m.residentialAddress]);
+  }
   if (m.meetingCode || m.id) contactFields.push(['Meeting ID', m.meetingCode ?? m.id]);
   if (!visitOnly) {
     contactFields.push(['Joined With', m.aloneWith]);
@@ -35,7 +39,7 @@ export function Details({ meeting: m, visitOnly = false, presentation, hideMeeti
   </View>;
   return <View style={styles.detailsWrap}>
     <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, label === 'Lead Status' && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
-    <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, label === 'Joined With' && styles.contactCardCompact, label === 'Client Details' && styles.clientDetailsContactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={label === 'Client Details' ? undefined : 1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
+    <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, label === 'Joined With' && styles.contactCardCompact, label === 'Client Details' && styles.clientDetailsContactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={label === 'Client Details' || label === 'Residential Address' ? undefined : 1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
     <View style={styles.contextGrid}>
       {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)}</Text></View> : null}
       {meetingPlace ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>{m.isClientMeeting ? 'CLIENT LOCATION' : 'MEETING LOCATION'}</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}
