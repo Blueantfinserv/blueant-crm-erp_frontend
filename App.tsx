@@ -65,6 +65,24 @@ type ScreenState =
 type SalesTaskView = 'all-task' | 'task-to-do' | 'today-task' | 'pending-task' | 'future-3-days' | 'all-leads';
 
 export default function App() {
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+
+    const style = document.createElement('style');
+    style.textContent = `
+      @supports (-webkit-touch-callout: none) {
+        @media screen and (max-width: 768px) {
+          input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]),
+          textarea {
+            font-size: 16px !important;
+          }
+        }
+      }
+    `;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, []);
+
   return (
     <ThemeProvider>
       <ThemeAwarePaperProvider />

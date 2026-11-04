@@ -1,3 +1,4 @@
+import { useAuth } from '../../../context/AuthContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useClientHistory } from './hooks/useClientHistory';
 import { hasPendingClientVerification } from '../../../services/ClientHistoryService';
@@ -109,6 +110,8 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const { width } = useWindowDimensions();
   const isMobile = width < 600;
   const isClient = lead.taskKind === 'CLIENT';
+  const { user } = useAuth();
+  const splitClientRemarks = isClient && (user?.role === 'RELATIONSHIP_MANAGER' || user?.role === 'SALES_COORDINATOR');
   const clientHistory = useClientHistory(isClient ? lead.clientCode : undefined);
   const isVerificationPending = isClient && clientHistory.history !== undefined
     ? hasPendingClientVerification(clientHistory.history) : lead.verificationPending === true;
@@ -318,10 +321,10 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
         </View>
       </View>
 
-      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        <View style={styles.grid}>
-          <View style={[styles.panel, styles.infoPanel, isMobile && styles.mobilePanel]}>
-            <SectionHeading icon="account-details-outline" title={isClient ? 'Client Information' : 'Prospect Information'} subtitle={isClient ? 'Contact, clinic and account details' : 'Key contact and meeting details'} />
+      <ScrollView style={styles.scrollArea} showsVerticalScrollIndicator={false} contentContainerStyle={[styles.content, splitClientRemarks && styles.compactContent]}>
+        <View style={[styles.grid, splitClientRemarks && styles.compactGrid]}>
+          <View style={[styles.panel, styles.infoPanel, isMobile && styles.mobilePanel, splitClientRemarks && styles.compactPanel]}>
+            <SectionHeading compact={splitClientRemarks} icon="account-details-outline" title={isClient ? 'Client Information' : 'Prospect Information'} subtitle={isClient ? 'Contact, clinic and account details' : 'Key contact and meeting details'} />
             {clientProfileLoading ? <View style={styles.inlineState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.inlineStateText}>Loading client details...</Text></View> : null}
             {clientProfileError ? <View style={styles.inlineState}><Icon source="alert-circle-outline" size={16} color="#DC2626" /><Text style={[styles.inlineStateText, styles.verificationError]}>{clientProfileError}</Text></View> : null}
             <View style={[styles.infoGrid, isMobile && styles.mobileInfoGrid]}>
@@ -334,51 +337,52 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                     isMobile && styles.mobileInfoItem,
                     isMobile && field.label === 'Clinic Address' && styles.mobileInfoAddressItem,
                     isMobile && field.label === 'Email' && styles.mobileEmailItem,
+                    splitClientRemarks && styles.compactInfoItem,
+                    splitClientRemarks && !isMobile && styles.compactDesktopInfoItem,
+                    !isMobile && field.label === 'Email' && styles.emailInfoItem,
                   ]}
                 >
-                  <View style={[styles.infoIcon, isMobile && styles.mobileInfoIcon]}>
+                  <View style={[styles.infoIcon, isMobile && styles.mobileInfoIcon, splitClientRemarks && styles.compactInfoIcon]}>
                     <Icon source={field.icon} size={isMobile ? 13 : 15} color="#6D28D9" />
                   </View>
                   <View style={styles.infoCopy}>
                     <Text style={styles.infoLabel}>{field.label}</Text>
-                    <Text
-                      numberOfLines={isClient && field.label !== 'Clinic Address' ? 1 : undefined}
-                      ellipsizeMode={field.label === 'Clinic Address' ? undefined : 'tail'}
+                    <ExpandableDetailText
+                      value={field.value}
+                      lines={isClient && field.label !== 'Clinic Address' && field.label !== 'Email' ? 1 : undefined}
                       style={[styles.infoValue, field.label === 'Clinic Address' && styles.infoAddressValue]}
-                    >
-                      {field.value}
-                    </Text>
+                    />
                   </View>
                 </View>
               ))}
             </View>
-            {isClient && clientProfile ? <View style={styles.clientProfileDetails}>
-              {clientProfileSections(clientProfile).map((section) => <View key={section.title} style={styles.clientProfileSection}>
+            {isClient && clientProfile ? <View style={[styles.clientProfileDetails, splitClientRemarks && styles.compactProfileDetails]}>
+              {clientProfileSections(clientProfile).map((section) => <View key={section.title} style={[styles.clientProfileSection, splitClientRemarks && styles.compactProfileSection]}>
                 <View style={styles.clientProfileHeading}><Icon source={section.icon} size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>{section.title}</Text></View>
-                <View style={styles.clientProfileGrid}>{section.fields.map((field, index) => <View key={`${field.label}-${index}`} style={styles.clientProfileItem}><Text style={styles.clientProfileLabel}>{field.label}</Text><Text numberOfLines={field.label.includes('Address') ? undefined : 2} style={styles.clientProfileValue}>{field.value}</Text></View>)}</View>
+                <View style={[styles.clientProfileGrid, splitClientRemarks && styles.compactProfileGrid]}>{section.fields.map((field, index) => <View key={`${field.label}-${index}`} style={[styles.clientProfileItem, splitClientRemarks && styles.compactProfileItem, splitClientRemarks && !isMobile && styles.compactDesktopProfileItem]}><Text style={styles.clientProfileLabel}>{field.label}</Text><ExpandableDetailText value={field.value} lines={field.label.includes('Address') ? undefined : 2} style={styles.clientProfileValue} /></View>)}</View>
               </View>)}
-              <View style={styles.clientProfileSection}>
+              <View style={[styles.clientProfileSection, splitClientRemarks && styles.compactProfileSection]}>
                 <View style={styles.clientProfileHeading}><Icon source="account-heart-outline" size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>Nominee Details</Text></View>
-                {clientProfile.nominees?.length ? <View style={styles.clientProfileGrid}>{clientProfile.nominees.flatMap((nominee, nomineeIndex) => [
+                {clientProfile.nominees?.length ? <View style={[styles.clientProfileGrid, splitClientRemarks && styles.compactProfileGrid]}>{clientProfile.nominees.flatMap((nominee, nomineeIndex) => [
                   { label: `Nominee ${nomineeIndex + 1}`, value: displayProfileValue(nominee.nomineeName) }, { label: 'Relationship', value: displayProfileValue(nominee.relationship) },
                   { label: 'Date of Birth', value: displayProfileValue(nominee.dateOfBirth) }, { label: 'Contact Number', value: displayProfileValue(nominee.contactNumber) },
                   { label: 'Minor', value: displayProfileValue(nominee.isMinor) }, { label: 'Guardian', value: displayProfileValue(nominee.guardianName) },
-                ]).map((field, index) => <View key={`${field.label}-${index}`} style={styles.clientProfileItem}><Text style={styles.clientProfileLabel}>{field.label}</Text><Text numberOfLines={2} style={styles.clientProfileValue}>{field.value}</Text></View>)}</View> : <Text style={styles.clientProfileEmpty}>No nominee details recorded.</Text>}
+                ]).map((field, index) => <View key={`${field.label}-${index}`} style={[styles.clientProfileItem, splitClientRemarks && styles.compactProfileItem, splitClientRemarks && !isMobile && styles.compactDesktopProfileItem]}><Text style={styles.clientProfileLabel}>{field.label}</Text><ExpandableDetailText value={field.value} lines={2} style={styles.clientProfileValue} /></View>)}</View> : <Text style={styles.clientProfileEmpty}>No nominee details recorded.</Text>}
               </View>
-              <View style={styles.clientProfileSection}>
+              <View style={[styles.clientProfileSection, splitClientRemarks && styles.compactProfileSection]}>
                 <View style={styles.clientProfileHeading}><Icon source="file-check-outline" size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>Documents</Text></View>
-                {clientProfile.documents?.length ? <View style={styles.clientProfileGrid}>{clientProfile.documents.flatMap((document, documentIndex) => [
+                {clientProfile.documents?.length ? <View style={[styles.clientProfileGrid, splitClientRemarks && styles.compactProfileGrid]}>{clientProfile.documents.flatMap((document, documentIndex) => [
                   { label: `Document ${documentIndex + 1}`, value: displayProfileValue(document.documentName) }, { label: 'Document Type', value: displayProfileValue(document.documentType) },
                   { label: 'Received', value: displayProfileValue(document.received) }, { label: 'Received Date', value: displayProfileValue(document.receivedDate) },
                   { label: 'Verification', value: displayProfileValue(document.verificationStatus) }, { label: 'Reference', value: document.documentReference || 'Not provided' },
-                ].map((field) => ({ ...field, document }))).map((field, index) => <View key={`${field.label}-${index}`} style={styles.clientProfileItem}>
+                ].map((field) => ({ ...field, document }))).map((field, index) => <View key={`${field.label}-${index}`} style={[styles.clientProfileItem, splitClientRemarks && styles.compactProfileItem, splitClientRemarks && !isMobile && styles.compactDesktopProfileItem]}>
                   <Text style={styles.clientProfileLabel}>{field.label}</Text>
                   {field.label === 'Reference' && field.document.documentReference ? (
                     <Pressable accessibilityRole="link" accessibilityLabel={`Download ${field.document.documentName ?? 'client document'}`} disabled={downloadingDocument !== null} onPress={() => void openDocument(field.document)} style={styles.documentLink}>
                       {downloadingDocument === field.document.documentReference ? <ActivityIndicator size="small" color="#0F766E" /> : <Icon source="download" size={15} color="#0F766E" />}
                       <Text numberOfLines={2} style={[styles.clientProfileValue, styles.documentLinkText]}>{downloadingDocument === field.document.documentReference ? 'Downloading...' : 'Download document'}</Text>
                     </Pressable>
-                  ) : <Text numberOfLines={2} style={styles.clientProfileValue}>{field.value}</Text>}
+                  ) : <ExpandableDetailText value={field.value} lines={2} style={styles.clientProfileValue} />}
                 </View>)}</View> : <Text style={styles.clientProfileEmpty}>No document details recorded.</Text>}
                 {documentError ? <Text accessibilityRole="alert" style={styles.documentError}>{documentError}</Text> : null}
               </View>
@@ -436,8 +440,9 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
               styles.locationPanel,
               isMobile && styles.mobilePanel,
               isMobile && styles.mobileLocationPanel,
+              splitClientRemarks && styles.compactLocationPanel,
             ]}>
-              <SectionHeading icon="map-marker-radius-outline" title="Location" subtitle="Saved meeting location" />
+              <SectionHeading compact={splitClientRemarks} icon="map-marker-radius-outline" title="Location" subtitle="Saved meeting location" />
               <Pressable
                 accessibilityRole="link"
                 accessibilityLabel={`Open location for ${lead.name} in Google Maps`}
@@ -468,33 +473,60 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 <Text style={styles.mapButtonText}>Open in Maps</Text>
               </Pressable>
             </View>
-            <View style={[styles.panel, styles.remarksPanel, isMobile && styles.mobilePanel]}>
-              <SectionHeading icon="text-box-outline" title="Latest Remarks" subtitle={`Updated ${lead.lastUpdated}`} />
-              <View style={styles.remarksCard}>
+            {splitClientRemarks ? <View style={styles.splitRemarksStack}>
+            <View style={[styles.panel, styles.remarksPanel, isMobile && styles.mobilePanel, splitClientRemarks && styles.compactPanel]}>
+              <SectionHeading compact={splitClientRemarks} icon="text-box-outline" title="Latest Remarks" subtitle={`Updated ${lead.lastUpdated}`} />
+              <View style={[styles.remarksCard, splitClientRemarks && styles.compactRemarksCard]}>
                 <View style={styles.quoteMark}>
                   <Icon source="format-quote-open" size={20} color="#7C3AED" />
                 </View>
                 <Text style={styles.remarksText}>{lead.remarks}</Text>
               </View>
             </View>
+              <View style={[styles.panel, styles.remarksPanel, isMobile && styles.mobilePanel, splitClientRemarks && styles.compactPanel]}>
+                <SectionHeading compact={splitClientRemarks} icon="history" title="Your Prior Remarks" subtitle="Client notes" />
+                <View style={[styles.remarksCard, styles.priorRemarksCard, styles.compactRemarksCard]}>
+                  <View style={[styles.quoteMark, styles.priorQuoteMark]}><Icon source="format-quote-open" size={20} color="#0F766E" /></View>
+                  <Text selectable style={styles.remarksText}>{clientProfile?.remarks?.trim() || 'No prior remarks recorded.'}</Text>
+                </View>
+              </View>
+            </View> : (
+            <View style={[styles.panel, styles.remarksPanel, isMobile && styles.mobilePanel, splitClientRemarks && styles.compactPanel]}>
+              <SectionHeading compact={splitClientRemarks} icon="text-box-outline" title="Latest Remarks" subtitle={`Updated ${lead.lastUpdated}`} />
+              <View style={[styles.remarksCard, splitClientRemarks && styles.compactRemarksCard]}>
+                <View style={styles.quoteMark}>
+                  <Icon source="format-quote-open" size={20} color="#7C3AED" />
+                </View>
+                <Text style={styles.remarksText}>{lead.remarks}</Text>
+              </View>
+            </View>
+            )}
           </View>
         </View>
 
-        <View style={[styles.panel, isMobile && styles.mobilePanel]}>
-          <SectionHeading icon="history" title="Meeting History" subtitle={historyLoading ? 'Loading meeting history...' : `${meetingHistory.length} meeting${meetingHistory.length === 1 ? '' : 's'} recorded`} />
+        <View style={[styles.panel, isMobile && styles.mobilePanel, splitClientRemarks && styles.compactPanel]}>
+          <SectionHeading compact={splitClientRemarks} icon="history" title="Meeting History" subtitle={historyLoading ? 'Loading meeting history...' : `${meetingHistory.length} meeting${meetingHistory.length === 1 ? '' : 's'} recorded`} />
           {isClient && clientHistory.history !== undefined && historyError ? <Text accessibilityRole="alert" style={[styles.historyStateText, styles.historyError]}>Refresh failed. Showing previously loaded history. {historyError}</Text> : null}
           {isClient && clientHistory.history !== undefined && clientHistory.loading ? <Text style={styles.historyStateText}>Refreshing meeting history...</Text> : null}
-          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError && !(isClient && clientHistory.history !== undefined) ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const clientMeeting = meeting as unknown as ClientMeetingResponse; const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; const time = isClient ? clientMeeting.meetingTime : meeting.meetingTime; const nextPlan = isClient ? clientMeeting.nextPlanDate : meeting.nextMeetingDate; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{isClient ? `Client Meeting${clientMeeting.meetingNumber ? ` ${clientMeeting.meetingNumber}` : ''}` : meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{isClient ? clientMeeting.meetingConducted ?? clientMeeting.meetingStatus ?? 'SCHEDULED' : meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(time) ? ` · ${meetingTimeText(time)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{nextPlan ? <Text style={styles.historyNext}>Next plan: {nextPlan}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this {isClient ? 'client' : 'prospect'}.</Text></View>}
+          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError && !(isClient && clientHistory.history !== undefined) ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const clientMeeting = meeting as unknown as ClientMeetingResponse; const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; const time = isClient ? clientMeeting.meetingTime : meeting.meetingTime; const nextPlan = isClient ? clientMeeting.nextPlanDate : meeting.nextMeetingDate; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={[styles.historyRow, splitClientRemarks && styles.compactHistoryRow]}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{isClient ? `Client Meeting${clientMeeting.meetingNumber ? ` ${clientMeeting.meetingNumber}` : ''}` : meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{isClient ? clientMeeting.meetingConducted ?? clientMeeting.meetingStatus ?? 'SCHEDULED' : meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(time) ? ` · ${meetingTimeText(time)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{nextPlan ? <Text style={styles.historyNext}>Next plan: {nextPlan}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this {isClient ? 'client' : 'prospect'}.</Text></View>}
         </View>
       </ScrollView>
     </View>
   );
 }
 
-function SectionHeading({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
+function ExpandableDetailText({ value, lines, style }: { value: string; lines?: number; style: React.ComponentProps<typeof Text>['style'] }) {
+  const [expanded, setExpanded] = useState(false);
+  if (lines === undefined) return <Text selectable style={style}>{value}</Text>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={`${expanded ? 'Collapse' : 'Show full value'}: ${value}`} accessibilityState={{ expanded }} onPress={() => setExpanded(current => !current)}>
+    <Text selectable={expanded} numberOfLines={expanded ? undefined : lines} style={style}>{value}</Text>
+  </Pressable>;
+}
+
+function SectionHeading({ icon, title, subtitle, compact = false }: { icon: string; title: string; subtitle: string; compact?: boolean }) {
   return (
-    <View style={styles.sectionHeading}>
-      <View style={styles.sectionIcon}><Icon source={icon} size={17} color="#6D28D9" /></View>
+    <View style={[styles.sectionHeading, compact && styles.compactSectionHeading]}>
+      <View style={[styles.sectionIcon, compact && styles.compactSectionIcon]}><Icon source={icon} size={17} color="#6D28D9" /></View>
       <View>
         <Text style={styles.sectionTitle}>{title}</Text>
         <Text style={styles.sectionSubtitle}>{subtitle}</Text>
@@ -504,6 +536,23 @@ function SectionHeading({ icon, title, subtitle }: { icon: string; title: string
 }
 
 const styles = StyleSheet.create({
+  compactContent: { gap: 10 },
+  compactGrid: { gap: 12 },
+  compactPanel: { padding: 12, gap: 10 },
+  compactSectionHeading: { paddingBottom: 8, gap: 8 },
+  compactSectionIcon: { width: 28, height: 28, borderRadius: 9 },
+  compactInfoItem: { padding: 8, gap: 6 },
+  compactDesktopInfoItem: { minWidth: 125, flexBasis: '22%' },
+  compactInfoIcon: { width: 25, height: 25, borderRadius: 8 },
+  compactProfileDetails: { gap: 9, paddingTop: 10 },
+  compactProfileSection: { padding: 8, gap: 7 },
+  compactProfileGrid: { gap: 6 },
+  compactProfileItem: { padding: 6 },
+  compactDesktopProfileItem: { minWidth: 110, flexBasis: '22%' },
+  compactLocationPanel: { height: 'auto', minHeight: 0, padding: 12, gap: 8 },
+  compactRemarksCard: { padding: 10, gap: 8 },
+  compactHistoryRow: { padding: 8, gap: 7 },
+
   documentLink: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 32 },
   documentLinkText: { color: '#0F766E', textDecorationLine: 'underline', flexShrink: 1 },
   documentError: { color: '#B91C1C', fontSize: 12, marginTop: 8 },
@@ -554,6 +603,9 @@ const styles = StyleSheet.create({
   locationPanel: { height: 218, flexGrow: 0, flexShrink: 0, gap: 10, padding: 14, overflow: 'hidden' },
   mobileLocationPanel: { height: 'auto', minHeight: 205 },
   remarksPanel: { flex: 1 },
+  splitRemarksStack: { flex: 1, gap: 14 },
+  priorRemarksCard: { borderLeftColor: '#14B8A6', backgroundColor: '#F0FDFA' },
+  priorQuoteMark: { backgroundColor: '#CCFBF1' },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingBottom: 12, borderBottomWidth: 1, borderBottomColor: '#EEF0F5' },
   sectionIcon: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#F3F0FF' },
   sectionTitle: { color: '#1E1B4B', fontSize: 13, fontWeight: '900' },
@@ -561,6 +613,7 @@ const styles = StyleSheet.create({
   infoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   mobileInfoGrid: { gap: 7 },
   infoItem: { minWidth: 180, flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 11, borderRadius: 12, backgroundColor: '#F8F9FD' },
+  emailInfoItem: { flexBasis: '47%' },
   infoAddressItem: { flexBasis: '47%', alignItems: 'flex-start' },
   mobileInfoItem: { minWidth: 0, flexBasis: '47%', flexGrow: 1, gap: 6, paddingHorizontal: 7, paddingVertical: 8, borderRadius: 10 },
   mobileInfoAddressItem: { flexBasis: '100%' },

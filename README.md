@@ -21,6 +21,9 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 
 ## Latest updates - 4 November 2026
 
+- RM/SC Client Details uses compact spacing and desktop field grids to reduce vertical scrolling. Latest Remarks and Your Prior Remarks are separate panels; prior remarks display client profile remarks with an empty-state fallback. Email has more desktop space and wraps fully; limited detail values expand on tap without repeated View full labels.
+- Mobile Safari text inputs and textareas use a 16px font on narrow screens to prevent automatic focus zoom; other platforms retain their existing styles.
+
 - RM/SC retains the originating task/client list while Details is open. Returning shows previous complete task results during fresh background reads; incomplete refresh responses do not replace the full calculation dataset. RM/SC task cards use virtualized rows, while search, filters, counts and ordering still use the complete dataset. SM and PC keep their existing screen flows.
 - Client histories are fetched once per exact client code per initial task-loading cycle. An account-scoped, memory-only history store supplies immediate cached Client Details with fresh revalidation, 30-second active-screen polling and foreground/browser-reconnect refresh. Refresh errors retain old history with an error; leaving Details removes polling/subscriptions. Native offline detection remains limited to available lifecycle/connectivity signals.
 - Client Details verification state follows the existing client-specific pending rule. Opening a client meeting update also checks fresh history and the active account. Submission invalidates older reads; logout/account changes clear history state and prevent old responses from publishing into another account.
