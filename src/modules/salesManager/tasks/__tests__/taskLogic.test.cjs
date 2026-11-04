@@ -86,3 +86,16 @@ test('meeting mapping retains location fallback and previous meeting date', () =
   assert.equal(result.hasLocationPin, true);
   assert.equal(result.lastUpdated, '20 Oct');
 });
+
+
+test('client PAN is mapped and searchable without client or meeting code matching', () => {
+  const client = mapClientToSalesTask({ clientCode: 'CLIENTCODE', clientName: 'Rohan', mobileNumber: '9876543210', panNumber: 'ABCDE1234F', activeMeetingCode: 'MEETINGCODE' }, 0);
+  assert.equal(client.panNumber, 'ABCDE1234F');
+  const input = { tasks: [client], allTaskMode: true };
+  assert.deepEqual(select({ ...input, search: 'abcde1234f' }), ['CLIENTCODE']);
+  assert.deepEqual(select({ ...input, search: 'Rohan' }), ['CLIENTCODE']);
+  assert.deepEqual(select({ ...input, search: '9876543210' }), ['CLIENTCODE']);
+  assert.deepEqual(select({ ...input, search: 'CLIENTCODE' }), []);
+  assert.deepEqual(select({ ...input, search: 'MEETINGCODE' }), []);
+  assert.doesNotThrow(() => select({ tasks: [task('no-pan', 'CLIENT', 0)], allTaskMode: true, search: 'ABCDE' }));
+});

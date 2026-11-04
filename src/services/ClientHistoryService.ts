@@ -22,13 +22,55 @@ type Entry = {
   finishMutation?: () => void;
 };
 
+// Limit the history fan-out without dropping any clients or changing task calculations.
+export class ClientHistoryRequestQueue {
+  private active = 0;
+  private waiting: Array<() => void> = [];
+  private startGate: Promise<void> = Promise.resolve();
+  private nextStart = 0;
+  private cooldownUntil = 0;
+  constructor(private concurrency = 2, private spacingMs = 300, private retryBaseMs = 2000) {}
+  private wait(ms: number) { return new Promise<void>(resolve => setTimeout(resolve, ms)); }
+  run<T>(operation: () => Promise<T>, isValid = () => true): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const start = () => {
+        this.active += 1;
+        void this.execute(operation, isValid).then(resolve, reject).finally(() => {
+          this.active -= 1;
+          this.waiting.shift()?.();
+        });
+      };
+      if (this.active < this.concurrency) start(); else this.waiting.push(start);
+    });
+  }
+  private async execute<T>(operation: () => Promise<T>, isValid: () => boolean): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      if (!isValid()) throw new Error('Client history request was superseded.');
+      const gate = this.startGate.then(async () => {
+        let delay: number;
+        while ((delay = Math.max(this.nextStart, this.cooldownUntil) - Date.now()) > 0) await this.wait(delay);
+        this.nextStart = Date.now() + this.spacingMs;
+      });
+      this.startGate = gate.catch(() => undefined);
+      await gate;
+      try { return await operation(); }
+      catch (error) {
+        const failure = error as { status?: number; retryAfterMs?: number } | null;
+        if (failure?.status !== 429 || attempt >= 3) throw error;
+        const backoff = Math.max(failure.retryAfterMs ?? 0, this.retryBaseMs * 2 ** attempt);
+        this.cooldownUntil = Math.max(this.cooldownUntil, Date.now() + backoff);
+      }
+    }
+  }
+}
+
 // Raw history only. Task mapping and classification remain owned by their callers.
 export class ClientHistoryService {
   private account: string | null = null;
   private epoch = 0;
   private entries = new Map<string, Entry>();
   private listeners = new Set<() => void>();
-  constructor(private fetchHistory: (code: string) => Promise<ClientMeetingResponse[]>) {}
+  constructor(private fetchHistory: (code: string) => Promise<ClientMeetingResponse[]>, private requests = new ClientHistoryRequestQueue()) {}
 
   setAccount(account: string | null) {
     if (account === this.account) return;
@@ -85,7 +127,10 @@ export class ClientHistoryService {
     const current = () => this.isCurrentScope(epoch) && entry.revision === revision;
     const flight = Promise.resolve().then(() => {
       if (!current()) throw new Error('Client history request was superseded.');
-      return this.fetchHistory(code);
+      return this.requests.run(() => {
+        if (!current()) throw new Error('Client history request was superseded.');
+        return this.fetchHistory(code);
+      }, current);
     }).then(history => {
       if (!current()) throw new Error('Client history request was superseded.');
       entry.snapshot = { history, loading: false, error: null, stale: false };

@@ -24,6 +24,7 @@ export function getTaskFilterCounts(tasks: SalesTask[], search: string, taskType
     const matchesSearch =
       !normalizedSearch
       || task.name.toLowerCase().includes(normalizedSearch)
+      || (task.taskKind === 'CLIENT' && !!task.panNumber?.toLowerCase().includes(normalizedSearch))
       || (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch));
     return matchesSearch;
   });
@@ -57,8 +58,9 @@ export function filterSalesTasks({ allLeadTasks, allLeadsMode, allTaskFilter, al
     const matchesSearch =
       !normalizedSearch ||
       task.name.toLowerCase().includes(normalizedSearch) ||
+      (task.taskKind === 'CLIENT' && !!task.panNumber?.toLowerCase().includes(normalizedSearch)) ||
       (normalizedPhoneSearch.length > 0 && task.phone.replace(/\D/g, '').includes(normalizedPhoneSearch)) ||
-      ((allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode) && [task.leadCode, task.meetingCode, task.uniqueLeadId]
+      (task.taskKind !== 'CLIENT' && (allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode) && [task.leadCode, task.meetingCode, task.uniqueLeadId]
         .filter(Boolean)
         .some((identifier) => identifier?.toLowerCase().includes(normalizedSearch)));
     if (allTaskMode) {
