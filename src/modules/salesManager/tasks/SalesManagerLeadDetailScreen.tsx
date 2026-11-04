@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useClientHistory } from './hooks/useClientHistory';
+import { hasPendingClientVerification } from '../../../services/ClientHistoryService';
 import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
@@ -106,8 +108,10 @@ const meetingTimeText = (time?: MeetingSummary['meetingTime'] | string) => {
 export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 600;
-  const isVerificationPending = lead.verificationPending === true;
   const isClient = lead.taskKind === 'CLIENT';
+  const clientHistory = useClientHistory(isClient ? lead.clientCode : undefined);
+  const isVerificationPending = isClient && clientHistory.history !== undefined
+    ? hasPendingClientVerification(clientHistory.history) : lead.verificationPending === true;
   const [downloadingDocument, setDownloadingDocument] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const documentDownloadInFlight = useRef(false);
@@ -128,13 +132,18 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const [verifiedMeeting, setVerifiedMeeting] = useState<MeetingResponse | null>(null);
   const [verificationLoading, setVerificationLoading] = useState(true);
   const [verificationError, setVerificationError] = useState<string | null>(null);
-  const [meetingHistory, setMeetingHistory] = useState<MeetingResponse[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
-  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [prospectHistory, setMeetingHistory] = useState<MeetingResponse[]>([]);
+  const [prospectHistoryLoading, setHistoryLoading] = useState(true);
+  const [prospectHistoryError, setHistoryError] = useState<string | null>(null);
   const [clientProfile, setClientProfile] = useState<ClientProfileResponse | null>(null);
   const [clientProfileLoading, setClientProfileLoading] = useState(false);
   const [clientProfileError, setClientProfileError] = useState<string | null>(null);
   const [prospectProfile, setProspectProfile] = useState<LeadResponse | null>(null);
+  const meetingHistory = useMemo(() => isClient
+    ? [...(clientHistory.history ?? [])].sort((a, b) => String(b.meetingDate ?? '').localeCompare(String(a.meetingDate ?? ''))) as unknown as MeetingResponse[]
+    : prospectHistory, [isClient, clientHistory.history, prospectHistory]);
+  const historyLoading = isClient ? Boolean(lead.clientCode) && clientHistory.history === undefined && !clientHistory.error : prospectHistoryLoading;
+  const historyError = isClient ? clientHistory.error : prospectHistoryError;
   useEffect(() => {
     setProspectProfile(null);
     if (isClient || !lead.uniqueLeadId) return;
@@ -213,22 +222,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   }, [isClient, lead.clientCode]);
 
   useEffect(() => {
-    if (isClient) {
-      if (!lead.clientCode) { setMeetingHistory([]); setHistoryError(null); setHistoryLoading(false); return; }
-      let active = true;
-      const loadClientHistory = async () => {
-        setHistoryLoading(true); setHistoryError(null);
-        try {
-          const history = await clientMeetingApi.getByClientCode(lead.clientCode!);
-          const sorted = [...history].sort((a, b) => String(b.meetingDate ?? '').localeCompare(String(a.meetingDate ?? '')));
-          if (active) setMeetingHistory(sorted as unknown as MeetingResponse[]);
-        } catch (error) {
-          if (active) { setMeetingHistory([]); setHistoryError(error instanceof Error ? error.message : 'Client meeting history could not be loaded.'); }
-        } finally { if (active) setHistoryLoading(false); }
-      };
-      void loadClientHistory();
-      return () => { active = false; };
-    }
+    if (isClient) return;
     const leadIdentifier = lead.uniqueLeadId ?? (lead.leadId !== undefined ? String(lead.leadId) : '');
     if (!leadIdentifier) {
       setMeetingHistory([]); setHistoryError(null); setHistoryLoading(false); return;
@@ -306,7 +300,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 accessibilityLabel={isVerificationPending ? 'Verification pending' : `Update meeting for ${lead.name}`}
                 accessibilityState={{ disabled: isVerificationPending }}
                 disabled={isVerificationPending}
-                onPress={() => { if (!isVerificationPending) onUpdateMeeting(lead); }}
+                onPress={() => { if (!isVerificationPending) onUpdateMeeting(isClient ? { ...lead, verificationPending: isVerificationPending } : lead); }}
                 style={[
                   styles.heroAction,
                   styles.updateAction,
@@ -488,7 +482,9 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
 
         <View style={[styles.panel, isMobile && styles.mobilePanel]}>
           <SectionHeading icon="history" title="Meeting History" subtitle={historyLoading ? 'Loading meeting history...' : `${meetingHistory.length} meeting${meetingHistory.length === 1 ? '' : 's'} recorded`} />
-          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const clientMeeting = meeting as unknown as ClientMeetingResponse; const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; const time = isClient ? clientMeeting.meetingTime : meeting.meetingTime; const nextPlan = isClient ? clientMeeting.nextPlanDate : meeting.nextMeetingDate; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{isClient ? `Client Meeting${clientMeeting.meetingNumber ? ` ${clientMeeting.meetingNumber}` : ''}` : meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{isClient ? clientMeeting.meetingConducted ?? clientMeeting.meetingStatus ?? 'SCHEDULED' : meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(time) ? ` · ${meetingTimeText(time)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{nextPlan ? <Text style={styles.historyNext}>Next plan: {nextPlan}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this {isClient ? 'client' : 'prospect'}.</Text></View>}
+          {isClient && clientHistory.history !== undefined && historyError ? <Text accessibilityRole="alert" style={[styles.historyStateText, styles.historyError]}>Refresh failed. Showing previously loaded history. {historyError}</Text> : null}
+          {isClient && clientHistory.history !== undefined && clientHistory.loading ? <Text style={styles.historyStateText}>Refreshing meeting history...</Text> : null}
+          {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError && !(isClient && clientHistory.history !== undefined) ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const clientMeeting = meeting as unknown as ClientMeetingResponse; const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; const time = isClient ? clientMeeting.meetingTime : meeting.meetingTime; const nextPlan = isClient ? clientMeeting.nextPlanDate : meeting.nextMeetingDate; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={styles.historyRow}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{isClient ? `Client Meeting${clientMeeting.meetingNumber ? ` ${clientMeeting.meetingNumber}` : ''}` : meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{isClient ? clientMeeting.meetingConducted ?? clientMeeting.meetingStatus ?? 'SCHEDULED' : meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(time) ? ` · ${meetingTimeText(time)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{nextPlan ? <Text style={styles.historyNext}>Next plan: {nextPlan}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this {isClient ? 'client' : 'prospect'}.</Text></View>}
         </View>
       </ScrollView>
     </View>

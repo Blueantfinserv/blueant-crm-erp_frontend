@@ -1,3 +1,4 @@
+import { VirtualizedTaskList } from './components/VirtualizedTaskList';
 import { ActivityIndicator, Linking, Pressable, ScrollView, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
@@ -12,21 +13,14 @@ import type { SalesManagerTasksProps } from './types/screen';
 
 export { matchesAssignmentTaskFilter } from './taskDateUtils';
 
-export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
+export function SalesManagerTasksScreen({ active = true, onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
   const { isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
-  const { clientLoading, clientError, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks } = useSalesManagerTasks({ includeClientTasks, initialTaskType, allTaskMode, taskToDoMode, todaysTaskMode, pendingTaskMode, future3DaysTaskMode, allLeadsMode });
+  const { hasCompleteData, clientLoading, clientError, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks } = useSalesManagerTasks({ active, includeClientTasks, initialTaskType, allTaskMode, taskToDoMode, todaysTaskMode, pendingTaskMode, future3DaysTaskMode, allLeadsMode });
 
-  return (
-    <View style={styles.page}>
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[0]}
-        contentContainerStyle={styles.scrollContent}
-      >
-        <View style={styles.stickyHeader}>
+  const header = (<View style={styles.stickyHeader}>
           <View style={styles.headerCard}>
             <View style={[styles.heading, isMobile && styles.mobileHeading]}>
               <View style={[styles.headingCopy, isMobile && styles.mobileHeadingCopy]}>
@@ -269,7 +263,47 @@ export function SalesManagerTasksScreen({ onCreateNewLead, onUpdateMeeting, onOp
               )}
             </View>
           </View>
-        </View>
+        </View>);
+  if (includeClientTasks) {
+    const loading = leadState.isLoading || meetingState.isLoading || clientLoading;
+    const error = leadState.error ?? meetingState.error ?? clientError;
+    return <VirtualizedTaskList header={header}
+      summary={<>
+        <View style={styles.bodyHeader}>
+            <Text style={styles.bodyTitle}>Task Pipeline</Text>
+            <Text style={[styles.bodyCount, isDark && styles.darkModeWhiteSource]}>
+              {filteredTasks.length ? `${filteredTasks.length} tasks` : '0 tasks'}
+            </Text>
+          </View>
+        {hasCompleteData && loading ? <Text style={styles.emptyText}>Refreshing tasks. Showing the previous complete results.</Text> : null}
+        {hasCompleteData && !loading && error ? <Text accessibilityRole="alert" style={styles.emptyText}>Refresh failed: {error}. Showing the previous complete results; tap Refresh to retry.</Text> : null}
+      </>}
+      tasks={hasCompleteData || (!loading && !error) ? filteredTasks : []}
+      placeholder={loading && !hasCompleteData ? <View style={styles.emptyState}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={styles.emptyTitle}>Loading tasks</Text>
+            </View> : error && !hasCompleteData ? <View style={styles.emptyState}>
+              <Icon source="alert-circle-outline" size={30} color="#DC2626" />
+              <Text style={styles.emptyTitle}>Tasks could not be loaded</Text>
+              <Text style={styles.emptyText}>{leadState.error ?? meetingState.error ?? clientError}</Text>
+            </View> : <View style={styles.emptyState}>
+              <Icon source="clipboard-search-outline" size={30} color={theme.colors.subtle} />
+              <Text style={styles.emptyTitle}>{allLeadsMode && !search ? 'No prospects assigned' : allLeadsMode ? 'No matching prospects found' : pendingTaskMode && !search ? 'No pending tasks' : future3DaysTaskMode && !search ? 'No tasks scheduled' : 'No matching tasks found'}</Text>
+              <Text style={styles.emptyText}>{pendingTaskMode && !search ? 'There are no pending tasks.' : future3DaysTaskMode && !search ? `There are no tasks scheduled for ${futureDayFilter.toLowerCase()}.` : 'Try changing the search.'}</Text>
+            </View>}
+      columns={width >= 1200 ? 3 : width >= 700 ? 2 : 1} width={cardWidth}
+      highlightTaskLabel={allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode}
+      onUpdateMeeting={onUpdateMeeting} onOpenDetails={onOpenLeadDetails} />;
+  }
+
+  return (
+    <View style={styles.page}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        stickyHeaderIndices={[0]}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {header}
 
         <View style={styles.body}>
           <View style={styles.bodyHeader}>

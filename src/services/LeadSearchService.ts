@@ -22,6 +22,7 @@ export class LeadSearchService {
   private assignedUserId: number | null = null;
   private assignedEmployeeCode: string | null = null;
   private requestGeneration = 0;
+  private inFlight: { cycle: symbol; promise: Promise<void> } | null = null;
 
   private getLeadKeys(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
     return [
@@ -59,8 +60,19 @@ export class LeadSearchService {
     return null;
   }
 
-  async loadLeads() {
-    const generation = this.requestGeneration;
+  // Only callers explicitly belonging to the same refresh cycle may share a request.
+  // No token means a fresh read (manual refresh, mutation follow-up or other callers).
+  loadLeads(cycle: symbol = Symbol('fresh read')): Promise<void> {
+    if (this.inFlight?.cycle === cycle) return this.inFlight.promise;
+    const promise = this.fetchForRefreshCycle().finally(() => {
+      if (this.inFlight?.promise === promise) this.inFlight = null;
+    });
+    this.inFlight = { cycle, promise };
+    return promise;
+  }
+
+  private async fetchForRefreshCycle() {
+    const generation = ++this.requestGeneration;
     const assignedUserId = this.assignedUserId;
     const assignedEmployeeCode = this.assignedEmployeeCode;
     this.setState({ isLoading: true, error: null });
@@ -116,12 +128,15 @@ export class LeadSearchService {
   }
 
   setAssignedUserScope(assignedUserId: number | null, assignedEmployeeCode: string | null = null) {
+    if (this.assignedUserId === assignedUserId && this.assignedEmployeeCode === assignedEmployeeCode) return;
     this.assignedUserId = assignedUserId;
     this.assignedEmployeeCode = assignedEmployeeCode;
+    this.reset();
   }
 
   reset() {
     this.requestGeneration += 1;
+    this.inFlight = null;
     this.hiddenTaskLeadKeys.clear();
     this.setState(initialState);
   }

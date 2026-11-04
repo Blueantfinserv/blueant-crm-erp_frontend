@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { clientWorkFollowApi } from '../api/clientWorkFollow';
-import { clientMeetingApi } from '../api/clientMeeting';
+import { clientHistoryService } from '../services/ClientHistoryService';
 import { SalesTaskCard } from '../modules/salesManager/tasks/components/SalesTaskCard';
 import { getTaskSchedule } from '../modules/salesManager/tasks/taskMeetingSelectors';
 import type { SalesTask } from '../modules/salesManager/tasks/types/tasks';
@@ -13,6 +13,7 @@ type Props = {
   onUpdateMeeting: (client: SalesTask) => void;
   onOpenDetails: (client: SalesTask) => void;
   refreshKey?: number;
+  active?: boolean;
 };
 
 const formatDate = (value: string | undefined, fallback: string) => {
@@ -45,7 +46,7 @@ const toClientTask = (client: ClientWorkFollowResponse, meetings: ClientMeetingR
   };
 };
 
-export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refreshKey = 0 }: Props) {
+export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refreshKey = 0, active = true }: Props) {
   const { width } = useWindowDimensions();
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
   const [clients, setClients] = useState<SalesTask[]>([]);
@@ -53,26 +54,36 @@ export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refresh
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const loadId = useRef(0);
   const load = useCallback(async (refresh = false) => {
+    const id = ++loadId.current;
     refresh ? setRefreshing(true) : setLoading(true);
     setError(null);
     try {
+      const scope = clientHistoryService.captureScope();
       const first = await clientWorkFollowApi.getQueue({ search: '', page: 0, size: 100 });
       const rest = await Promise.all(Array.from({ length: Math.max(0, (first.totalPages ?? 1) - 1) }, (_, index) => clientWorkFollowApi.getQueue({ search: '', page: index + 1, size: 100 })));
       const assignedClients = [...(first.content ?? []), ...rest.flatMap((page) => page.content ?? [])];
+      if (id !== loadId.current) return;
+      if (!clientHistoryService.isCurrentScope(scope)) throw new Error('Client history account changed.');
       const tasks = await Promise.all(assignedClients.map(async (client, index) => {
         const code = client.clientCode?.trim();
-        const meetings = code ? await clientMeetingApi.getByClientCode(code).catch(() => []) : [];
+        const meetings = code ? await clientHistoryService.refresh(code, true).catch(() => []) : [];
         return toClientTask(client, meetings, index);
       }));
-      setClients(tasks);
+      if (id === loadId.current && clientHistoryService.isCurrentScope(scope)) setClients(tasks);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Client work follow could not be loaded.');
+      if (id === loadId.current) setError(cause instanceof Error ? cause.message : 'Client work follow could not be loaded.');
     } finally {
-      setLoading(false); setRefreshing(false);
+      if (id === loadId.current) { setLoading(false); setRefreshing(false); }
     }
   }, []);
-  useEffect(() => { void load(); }, [load, refreshKey]);
+  useEffect(() => { void load(); return () => { loadId.current += 1; }; }, [load, refreshKey]);
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (active && !wasActive.current) void load(true);
+    wasActive.current = active;
+  }, [active, load]);
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return !needle ? clients : clients.filter((client) => [client.name, client.phone, client.clientCode, client.locationText].some((value) => String(value ?? '').toLowerCase().includes(needle)));

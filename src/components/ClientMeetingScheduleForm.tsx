@@ -1,3 +1,4 @@
+import { clientHistoryService } from '../services/ClientHistoryService';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Icon } from 'react-native-paper';
@@ -68,7 +69,9 @@ export function ClientMeetingScheduleForm({ client, onClose, onSuccess }: { clie
     if (!submittedNextPlanDate) { setError('Next plan date is required.'); return; }
     if (submittedNextPlanDate && !followUpOptions().some((option) => option.value === submittedNextPlanDate)) { setError('Choose a next plan date from the available options.'); return; }
     setSaving(true); setError(null);
+    let finishHistoryMutation: (() => boolean) | undefined;
     try {
+      finishHistoryMutation = clientHistoryService.beginMutation(client.clientCode);
       await clientMeetingApi.update(client.clientCode, {
         meetingConducted: outcome,
         meetingDate: localDate(),
@@ -79,9 +82,12 @@ export function ClientMeetingScheduleForm({ client, onClose, onSuccess }: { clie
         longitude: coordinates?.longitude,
         accuracy: coordinates?.accuracy ?? undefined,
       });
-      onSuccess();
+      if (finishHistoryMutation()) {
+        void clientHistoryService.refresh(client.clientCode, true).catch(() => undefined);
+        onSuccess();
+      }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Client meeting update could not be saved.'); }
-    finally { setSaving(false); }
+    finally { finishHistoryMutation?.(); setSaving(false); }
   };
 
   return <View style={styles.shell}>

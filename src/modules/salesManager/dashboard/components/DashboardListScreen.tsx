@@ -131,6 +131,7 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
 
   useEffect(() => {
     if (!isLiveList) return;
+    const refreshCycle = Symbol('dashboard list refresh');
     const refresh = () => {
       const leads = leadSearchService.getState().leads;
       if (list.id === 'lead-collected-list') {
@@ -164,11 +165,11 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
     const unsubscribeCreatedClients = clientCreatedService.subscribe(refresh);
     refresh();
     if (list.id === 'meeting-done-list') {
-      if (!meetingService.getState().timestamp) void meetingService.loadMeetings();
+      if (!meetingService.getState().timestamp) void meetingService.loadMeetings(refreshCycle);
     } else if (list.id === 'client-created-list') {
-      void Promise.all([clientCreatedService.loadClients(userId, employeeCode), meetingService.loadMeetings()]);
+      void Promise.all([clientCreatedService.loadClients(userId, employeeCode), meetingService.loadMeetings(refreshCycle)]);
     } else if (!leadSearchService.getState().timestamp) {
-      void leadSearchService.loadLeads();
+      void leadSearchService.loadLeads(refreshCycle);
     }
     return () => { unsubscribeLeads(); unsubscribeMeetings(); unsubscribeCreatedClients(); };
   }, [employeeCode, isLiveList, list.id, showRemovedLeads, userId]);

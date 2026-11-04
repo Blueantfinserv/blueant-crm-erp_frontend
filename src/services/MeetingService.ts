@@ -15,6 +15,8 @@ export class MeetingService {
   private verifiedMeetings: MeetingResponse[] = [];
   private employeeCode: string | null = null;
   private requestGeneration = 0;
+  private inFlight: { cycle: symbol; promise: Promise<void> } | null = null;
+  private scopeGeneration = 0;
 
   private getLeadKeys(lead: { leadId?: number; leadCode?: string }) {
     return [
@@ -33,8 +35,19 @@ export class MeetingService {
   getVerifiedMeetings() { return this.verifiedMeetings; }
   private setState(next: Partial<MeetingQueueState>) { this.state = { ...this.state, ...next }; this.listeners.forEach((listener) => listener(this.state)); }
 
-  async loadMeetings() {
-    const generation = this.requestGeneration;
+  // Only callers explicitly belonging to the same refresh cycle may share a request.
+  // No token means a fresh read (manual refresh, mutation follow-up or other callers).
+  loadMeetings(cycle: symbol = Symbol('fresh read')): Promise<void> {
+    if (this.inFlight?.cycle === cycle) return this.inFlight.promise;
+    const promise = this.fetchForRefreshCycle().finally(() => {
+      if (this.inFlight?.promise === promise) this.inFlight = null;
+    });
+    this.inFlight = { cycle, promise };
+    return promise;
+  }
+
+  private async fetchForRefreshCycle() {
+    const generation = ++this.requestGeneration;
     const employeeCode = this.employeeCode;
     this.setState({ isLoading: true, error: null });
     try {
@@ -106,8 +119,13 @@ export class MeetingService {
     if (!code) throw new Error('No active meeting is available for this prospect.');
     if (this.submissions.has(code)) throw new Error('This meeting submission is already in progress.');
     this.submissions.add(code);
+    const scopeGeneration = this.scopeGeneration;
     try {
       const response = await meetingApi.submitWorkflowUpdate(code, request);
+      // A submission from a previous account must not populate or refresh this account.
+      if (scopeGeneration !== this.scopeGeneration) return response.data
+        ? { ...response.data, ...(response.timestamp ? { workflowUpdatedAt: response.timestamp } : {}) }
+        : {};
       const nextMeetingCode = response.data?.meetingCode?.trim();
       if (nextMeetingCode && response.timestamp) {
         this.workflowTimestamps.set(nextMeetingCode, response.timestamp);
@@ -117,7 +135,7 @@ export class MeetingService {
         ? { ...response.data, ...(response.timestamp ? { workflowUpdatedAt: response.timestamp } : {}) }
         : {};
     } catch (error) { throw new Error(toMessage(error)); }
-    finally { this.submissions.delete(code); }
+    finally { if (scopeGeneration === this.scopeGeneration) this.submissions.delete(code); }
   }
 
   hideLeadFromTasks(lead: { leadId?: number; leadCode?: string }) {
@@ -126,11 +144,15 @@ export class MeetingService {
   }
 
   setEmployeeScope(employeeCode: string | null) {
+    if (this.employeeCode === employeeCode) return;
     this.employeeCode = employeeCode;
+    this.reset();
   }
 
   reset() {
     this.requestGeneration += 1;
+    this.inFlight = null;
+    this.scopeGeneration += 1;
     this.submissions.clear();
     this.hiddenTaskLeadKeys.clear();
     this.workflowTimestamps.clear();

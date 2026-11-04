@@ -1,7 +1,7 @@
 import type { Tab as CoordinatorTab } from './src/screens/salesCoordinator/coordinatorTypes';
 import { TABS as COORDINATOR_TABS } from './src/screens/salesCoordinator/coordinatorConstants';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Animated, Easing, Modal, Platform, Pressable, SafeAreaView, StatusBar, StyleSheet, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Modal, Platform, Pressable, SafeAreaView, StatusBar, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { MD3DarkTheme, MD3LightTheme, PaperProvider } from 'react-native-paper';
 import { en, registerTranslation } from 'react-native-paper-dates';
 import { AuthProvider } from './src/context/AuthProvider';
@@ -40,6 +40,7 @@ import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/S
 import { leadService } from './src/services/LeadService';
 import { leadSearchService } from './src/services/LeadSearchService';
 import { meetingService } from './src/services/MeetingService';
+import { clientHistoryService, hasPendingClientVerification } from './src/services/ClientHistoryService';
 import { meetingApi } from './src/api/meeting';
 import type { CreateLeadRequest } from './src/types/lead';
 import type { MeetingFormSubmission } from './src/types/meeting';
@@ -133,11 +134,21 @@ function AppShell() {
   const openTaskWorkflowForm = async (task: SalesTask) => {
     setMessage(null);
     if (task.taskKind === 'CLIENT') {
-      if (task.verificationPending) {
-        setMessage('Verification is pending for this client. The update form will be available after Process Coordinator verification.');
-        return;
+      let scope: number | undefined;
+      try {
+        scope = clientHistoryService.captureScope();
+        // A visible previous result must never authorize an update using stale verification.
+        const history = task.clientCode ? await clientHistoryService.refresh(task.clientCode) : undefined;
+        if (!clientHistoryService.isCurrentScope(scope)) return;
+        const verificationPending = history !== undefined ? hasPendingClientVerification(history) : task.verificationPending === true;
+        if (verificationPending) {
+          setMessage('Verification is pending for this client. The update form will be available after Process Coordinator verification.');
+          return;
+        }
+        setClientMeetingTask({ ...task, verificationPending });
+      } catch (error) {
+        if (scope === undefined || clientHistoryService.isCurrentScope(scope)) setMessage(error instanceof Error ? error.message : 'Client verification could not be refreshed. Please retry.');
       }
-      setClientMeetingTask(task);
       return;
     }
     if (task.verificationPending) {
@@ -190,6 +201,7 @@ function AppShell() {
     setFollowups(defaultFollowupItems);
     setSelectedDashboardListId(null);
     setSelectedSalesTask(null);
+    setClientMeetingTask(null);
     setLeadForm(null);
     if (isSalesWorkspaceExperience(getRoleExperience(backendRole))) {
       setSalesTaskView('task-to-do');
@@ -381,6 +393,51 @@ function AppShell() {
       </ErpShell>
     );
 
+    const clientRole = backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR';
+    const returningList = screen === 'sales-task-details' ? screenHistory.current[screenHistory.current.length - 1] : screen;
+    // Keep only the originating RM/SC list alive during Details. Other routes and
+    // explicit menu changes retain their existing mount/key lifecycle.
+    if (clientRole && (screen === 'leads' || screen === 'client-work-follow' || screen === 'sales-task-details')
+      && (returningList === 'leads' || returningList === 'client-work-follow')) {
+      return renderShell(<View style={{ flex: 1, minHeight: 0 }}>
+        <View style={{ flex: 1, minHeight: 0, display: screen === 'sales-task-details' ? 'none' : 'flex' }}>
+          {returningList === 'leads' ? <SalesManagerTasksScreen
+              active={screen === 'leads'}
+              includeClientTasks={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR'}
+              key={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR' ? `${authenticatedUserKey}:${salesTaskScreenKey}` : salesTaskScreenKey}
+              initialTaskType={salesTaskFilter}
+              allTaskMode={salesTaskView === 'all-task'}
+              taskToDoMode={salesTaskView === 'task-to-do'}
+              todaysTaskMode={salesTaskView === 'today-task'}
+              pendingTaskMode={salesTaskView === 'pending-task'}
+              future3DaysTaskMode={salesTaskView === 'future-3-days'}
+              allLeadsMode={salesTaskView === 'all-leads'}
+              onCreateNewLead={() => setLeadForm({ type: 'new-lead' })}
+              onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
+              onOpenLeadDetails={(lead) => {
+                setSelectedSalesTask(lead);
+                navigate('sales-task-details');
+              }}
+            /> : <ClientWorkFollowScreen
+            active={screen === 'client-work-follow'}
+            key={authenticatedUserKey}
+            refreshKey={salesTaskScreenKey}
+            onUpdateMeeting={(client) => void openTaskWorkflowForm(client)}
+            onOpenDetails={(client) => {
+              setSelectedSalesTask(client);
+              navigate('sales-task-details');
+            }}
+          />}
+        </View>
+        {screen === 'sales-task-details' && selectedSalesTask ? <SalesManagerLeadDetailScreen
+            key={selectedSalesTask.taskKind === 'CLIENT' ? `${authenticatedUserKey}:${selectedSalesTask.clientCode}` : undefined}
+            lead={selectedSalesTask}
+            onBack={goBack}
+            onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}
+          /> : null}
+      </View>, { salesMenu: true, scrollable: false, onModulePress: screen === 'sales-task-details' || returningList === 'client-work-follow' ? (module) => { setActiveModule(module.key); navigate('dashboard'); } : undefined });
+    }
+
     switch (screen) {
       case 'splash':
         return <SplashScreen />;
@@ -466,7 +523,7 @@ function AppShell() {
           ) : isSalesWorkspaceExperience(experience) ? (
             <SalesManagerTasksScreen
               includeClientTasks={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR'}
-              key={salesTaskScreenKey}
+              key={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR' ? `${authenticatedUserKey}:${salesTaskScreenKey}` : salesTaskScreenKey}
               initialTaskType={salesTaskFilter}
               allTaskMode={salesTaskView === 'all-task'}
               taskToDoMode={salesTaskView === 'task-to-do'}
@@ -489,6 +546,7 @@ function AppShell() {
       case 'client-work-follow':
         return renderShell(
           <ClientWorkFollowScreen
+            key={authenticatedUserKey}
             refreshKey={salesTaskScreenKey}
             onUpdateMeeting={(client) => void openTaskWorkflowForm(client)}
             onOpenDetails={(client) => {
@@ -507,6 +565,7 @@ function AppShell() {
         if (!selectedSalesTask) return null;
         return renderShell(
           <SalesManagerLeadDetailScreen
+            key={selectedSalesTask.taskKind === 'CLIENT' ? `${authenticatedUserKey}:${selectedSalesTask.clientCode}` : undefined}
             lead={selectedSalesTask}
             onBack={goBack}
             onUpdateMeeting={(lead) => void openTaskWorkflowForm(lead)}

@@ -14,7 +14,7 @@ import { meetingTitleOrder, mapLeadToSalesTask, mapMeetingToSalesTask } from '..
 import { getActionableTaskMeetings, isHiddenCompletedLead, isRemovedLead } from '../taskMeetingSelectors';
 import { filterSalesTasks, getTaskFilterCounts } from '../taskFilters';
 
-export function useSalesManagerTasks({ includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
+export function useSalesManagerTasks({ active = true, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
   const [search, setSearch] = useState('');
   const [taskType, setTaskType] = useState<TaskTypeFilter>(initialTaskType);
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
@@ -31,6 +31,7 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
   const [clientLoading, setClientLoading] = useState(includeClientTasks);
   const [clientError, setClientError] = useState<string | null>(null);
   const clientLoadId = useRef(0);
+  const mountRefreshCycle = useRef(Symbol('task mount')).current;
   const loadClients = async () => {
     if (!includeClientTasks) return;
     const id = ++clientLoadId.current;
@@ -48,15 +49,31 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
     else { setClientTasks([]); setClientLoading(false); setClientError(null); }
     return () => { clientLoadId.current += 1; };
   }, [includeClientTasks]);
+  // Retain one complete calculation input while a visible RM/SC list refreshes.
+  // Partial service/page completions must never publish partial counts or results.
+  const complete = useRef<{
+    leads: LeadSearchState['leads']; meetings: MeetingQueueState['meetings'];
+    pending: MeetingResponse[]; verified: MeetingResponse[]; clients: SalesTask[];
+  } | null>(null);
+  const loading = leadState.isLoading || meetingState.isLoading || clientLoading;
+  const failed = Boolean(leadState.error || meetingState.error || clientError);
+  if (includeClientTasks && !loading && !failed) complete.current = {
+    leads: leadState.leads, meetings: meetingState.meetings,
+    pending: meetingService.getPendingVerificationMeetings(), verified: meetingService.getVerifiedMeetings(), clients: clientTasks,
+  };
+  const source = includeClientTasks && complete.current ? complete.current : {
+    leads: leadState.leads, meetings: meetingState.meetings,
+    pending: meetingService.getPendingVerificationMeetings(), verified: meetingService.getVerifiedMeetings(), clients: clientTasks,
+  };
   const tasks = useMemo(
     () => {
-      const actionableMeetings = getActionableTaskMeetings(meetingState.meetings, leadState.leads);
+      const actionableMeetings = getActionableTaskMeetings(source.meetings, source.leads);
       const meetingHistory = Array.from(
         new Map(
           [
-            ...meetingState.meetings,
-            ...meetingService.getPendingVerificationMeetings(),
-            ...meetingService.getVerifiedMeetings(),
+            ...source.meetings,
+            ...source.pending,
+            ...source.verified,
           ]
             .map((meeting) => [meeting.meetingCode ?? String(meeting.id ?? ''), meeting] as const)
             .filter(([meetingCode]) => Boolean(meetingCode)),
@@ -92,11 +109,11 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
         || Boolean(phone && pendingVerificationPhones.has(phone.replace(/\D/g, '')))
       );
       const meetingTasks = actionableMeetings.flatMap((meeting, index) => {
-        const lead = leadState.leads.find((candidate) => (
+        const lead = source.leads.find((candidate) => (
           (meeting.leadId !== undefined && candidate.leadId === meeting.leadId)
           || (Boolean(meeting.leadCode) && candidate.leadCode === meeting.leadCode)
         ));
-        const locationMeeting = selectLocationMeeting(meeting, meetingState.meetings);
+        const locationMeeting = selectLocationMeeting(meeting, source.meetings);
         const lastMeetingDate = meetingHistory
           .filter((candidate) => (
             candidate.meetingCode !== meeting.meetingCode
@@ -121,7 +138,7 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
         task.leadCode ? `code:${task.leadCode}` : '',
         task.leadId !== undefined ? `id:${task.leadId}` : '',
       ]).filter(Boolean));
-      const leadTasks = leadState.leads
+      const leadTasks = source.leads
         .filter((lead) => !isHiddenCompletedLead(lead.leadStatus))
         .filter((lead) => !isRemovedLead(lead.leadStatus))
         .filter((lead) => {
@@ -141,16 +158,16 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
             verificationPending: hasPendingVerification(lead.leadId, lead.leadCode, lead.mobileNumber),
           };
         });
-      return [...leadTasks, ...meetingTasks, ...(includeClientTasks ? clientTasks : [])];
+      return [...leadTasks, ...meetingTasks, ...(includeClientTasks ? source.clients : [])];
     },
-    [leadState.leads, meetingState.meetings, clientTasks, includeClientTasks],
+    [source.leads, source.meetings, source.pending, source.verified, source.clients, includeClientTasks],
   );
   const allLeadTasks = useMemo(
-    () => leadState.leads
+    () => source.leads
       .filter((lead) => !isHiddenCompletedLead(lead.leadStatus))
       .filter((lead) => !isRemovedLead(lead.leadStatus))
       .map((lead, index) => mapLeadToSalesTask(lead, index)),
-    [leadState.leads],
+    [source.leads],
   );
   const meetingFilterOptions = useMemo(() => [
     'All Meetings',
@@ -173,7 +190,7 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
   ], [meetingFilterOptions, includeClientTasks]);
   useEffect(() => {
     const unsubscribe = leadSearchService.subscribe(setLeadState);
-    void leadSearchService.loadLeads();
+    void leadSearchService.loadLeads(mountRefreshCycle);
     return unsubscribe;
   }, []);
 
@@ -187,9 +204,15 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
     }
   };
 
+  const wasActive = useRef(active);
+  useEffect(() => {
+    if (includeClientTasks && active && !wasActive.current) void refreshTasks();
+    wasActive.current = active;
+  }, [active]);
+
   useEffect(() => {
     const unsubscribe = meetingService.subscribe(setMeetingState);
-    void meetingService.loadMeetings();
+    void meetingService.loadMeetings(mountRefreshCycle);
     return unsubscribe;
   }, []);
 
@@ -226,5 +249,5 @@ export function useSalesManagerTasks({ includeClientTasks = false, initialTaskTy
 
   const filteredTasks = useMemo(() => filterSalesTasks({ allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, leadFilter, meetingFilter, pendingTaskMode, search, taskStage, taskToDoMode, taskType, tasks, todaysTaskMode }), [allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, leadFilter, meetingFilter, pendingTaskMode, search, taskStage, taskToDoMode, taskType, tasks, todaysTaskMode]);
 
-  return { clientLoading, clientError, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks };
+  return { hasCompleteData: includeClientTasks && complete.current !== null, clientLoading, clientError, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks };
 }

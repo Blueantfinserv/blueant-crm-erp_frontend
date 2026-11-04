@@ -1,0 +1,135 @@
+import { leadSearchApi } from '../api/leadSearch';
+import type { LeadSearchState } from '../types/lead';
+
+type Listener = (state: LeadSearchState) => void;
+
+const initialState: LeadSearchState = {
+  leads: [],
+  timestamp: null,
+  isLoading: false,
+  error: null,
+};
+
+const toMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  return 'Prospects could not be loaded.';
+};
+
+export class LeadSearchService {
+  private state = initialState;
+  private listeners = new Set<Listener>();
+  private hiddenTaskLeadKeys = new Set<string>();
+  private assignedUserId: number | null = null;
+  private assignedEmployeeCode: string | null = null;
+  private requestGeneration = 0;
+
+  private getLeadKeys(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
+    return [
+      lead.leadId !== undefined ? `id:${lead.leadId}` : '',
+      lead.leadCode ? `code:${lead.leadCode}` : '',
+      lead.uniqueLeadId ? `unique:${lead.uniqueLeadId}` : '',
+    ].filter(Boolean);
+  }
+
+  private isHiddenTaskLead(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
+    return this.getLeadKeys(lead).some((key) => this.hiddenTaskLeadKeys.has(key));
+  }
+
+  subscribe(listener: Listener) {
+    this.listeners.add(listener);
+    listener(this.state);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private emit() {
+    this.listeners.forEach((listener) => listener(this.state));
+  }
+
+  private setState(next: Partial<LeadSearchState>) {
+    this.state = { ...this.state, ...next };
+    this.emit();
+  }
+
+  private getDeduplicationKey(lead: { uniqueLeadId?: string; leadId?: number; leadCode?: string }) {
+    if (lead.uniqueLeadId) return `unique:${lead.uniqueLeadId}`;
+    if (lead.leadId !== undefined) return `id:${lead.leadId}`;
+    if (lead.leadCode) return `code:${lead.leadCode}`;
+    return null;
+  }
+
+  async loadLeads() {
+    const generation = this.requestGeneration;
+    const assignedUserId = this.assignedUserId;
+    const assignedEmployeeCode = this.assignedEmployeeCode;
+    this.setState({ isLoading: true, error: null });
+    try {
+      const request = {
+        ...(assignedUserId !== null ? { filter: { assignedUserId } } : {}),
+        size: 100,
+      };
+      const response = await leadSearchApi.search({ ...request, page: 0 });
+      const totalPages = response.data?.totalPages ?? 1;
+      const remainingPages = await Promise.all(Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => (
+        leadSearchApi.search({ ...request, page: index + 1 })
+      )));
+      const allLeads = [
+        ...(response.data?.content ?? []),
+        ...remainingPages.flatMap((page) => page.data?.content ?? []),
+      ];
+      // The search response already contains the fields needed by task and dashboard lists.
+      // Fetching every individual lead detail here produces hundreds of simultaneous requests.
+      const seenLeadKeys = new Set<string>();
+      const leads = allLeads.map((lead) => ({
+        ...lead,
+        assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
+      })).filter((lead) => {
+        const key = this.getDeduplicationKey(lead);
+        if (!key) return true;
+        if (seenLeadKeys.has(key)) return false;
+        seenLeadKeys.add(key);
+        return true;
+      });
+      if (generation !== this.requestGeneration) return;
+      const scopedLeads = assignedUserId === null && assignedEmployeeCode === null
+        ? leads
+        : leads.filter((lead) => (
+          (assignedUserId !== null && lead.assignedUserId === assignedUserId)
+          || (assignedEmployeeCode !== null && lead.assignedEmployeeCode === assignedEmployeeCode)
+        ));
+      this.setState({
+        leads: scopedLeads.filter((lead) => !this.isHiddenTaskLead(lead)),
+        timestamp: response.timestamp ?? null,
+        error: null,
+      });
+    } catch (error) {
+      if (generation !== this.requestGeneration) return;
+      this.setState({ leads: [], timestamp: null, error: toMessage(error) });
+    } finally {
+      if (generation === this.requestGeneration) this.setState({ isLoading: false });
+    }
+  }
+
+  getState() {
+    return this.state;
+  }
+
+  setAssignedUserScope(assignedUserId: number | null, assignedEmployeeCode: string | null = null) {
+    this.assignedUserId = assignedUserId;
+    this.assignedEmployeeCode = assignedEmployeeCode;
+  }
+
+  reset() {
+    this.requestGeneration += 1;
+    this.hiddenTaskLeadKeys.clear();
+    this.setState(initialState);
+  }
+
+  hideLeadFromTasks(lead: { leadId?: number; leadCode?: string; uniqueLeadId?: string }) {
+    this.getLeadKeys(lead).forEach((key) => this.hiddenTaskLeadKeys.add(key));
+    this.setState({ leads: this.state.leads.filter((candidate) => !this.isHiddenTaskLead(candidate)) });
+  }
+}
+
+export const leadSearchService = new LeadSearchService();

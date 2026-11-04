@@ -78,10 +78,11 @@ export function DashboardScreen({ onLogout, role, user, onMenuItemPress, menuIte
 
   useEffect(() => {
     if (!isSalesWorkspace) return;
+    const refreshCycle = Symbol('dashboard refresh');
     const unsubscribeMeetings = meetingService.subscribe(setMeetingState);
     const unsubscribeLeads = leadSearchService.subscribe(setLeadState);
-    void meetingService.loadMeetings();
-    void leadSearchService.loadLeads();
+    void meetingService.loadMeetings(refreshCycle);
+    void leadSearchService.loadLeads(refreshCycle);
     return () => {
       unsubscribeMeetings();
       unsubscribeLeads();

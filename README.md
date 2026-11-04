@@ -19,7 +19,16 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 - React Native Paper
 - Web, Android, and iOS targets
 
-## Latest updates - 3 November 2026
+## Latest updates - 4 November 2026
+
+- RM/SC retains the originating task/client list while Details is open. Returning shows previous complete task results during fresh background reads; incomplete refresh responses do not replace the full calculation dataset. RM/SC task cards use virtualized rows, while search, filters, counts and ordering still use the complete dataset. SM and PC keep their existing screen flows.
+- Client histories are fetched once per exact client code per initial task-loading cycle. An account-scoped, memory-only history store supplies immediate cached Client Details with fresh revalidation, 30-second active-screen polling and foreground/browser-reconnect refresh. Refresh errors retain old history with an error; leaving Details removes polling/subscriptions. Native offline detection remains limited to available lifecycle/connectivity signals.
+- Client Details verification state follows the existing client-specific pending rule. Opening a client meeting update also checks fresh history and the active account. Submission invalidates older reads; logout/account changes clear history state and prevent old responses from publishing into another account.
+- Lead/meeting service reads share only identical explicit in-flight refresh cycles. New navigation/manual/post-submission reads remain fresh, and older responses cannot overwrite newer results. No completed-response cache was added to these services.
+- Initial loading still retrieves every required unique-client history and the bulk prospect meeting collections; virtualization and Details reuse do not eliminate backend response time or those initial requests. No backend API changes or pagination were introduced.
+- Validation: 91 regression tests, including fixed pre-optimization output fixtures, plus TypeScript checking. Automated coverage includes task/count/order equivalence, later-record search, navigation retention, refresh failures/retries, polling cleanup, account isolation and submission races. Live end-to-end loading-time improvement has not been measured.
+
+## Previous updates - 3 November 2026
 
 - PC verified client meetings preserve verifiedBy and verifiedAt from the verification-list response when loading meeting details. Verifier/date appear in verified Details and are retained after a successful PC submission. Historical verifier identity still depends on backend data; failed sync can leave older records visible.
 - CRM Assigned Leads now has an Excel-compatible CSV export with the PC's existing 27-column schema, lead deduplication, CSV escaping and active CRM filters. By request it exports only already-loaded CRM lead data, makes no extra meeting API calls, and leaves unavailable meeting/verification values blank (or the existing placeholder). Export errors/progress are visible on web.
