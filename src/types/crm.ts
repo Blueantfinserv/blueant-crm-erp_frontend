@@ -186,7 +186,6 @@ export type ClientRegistrationResponse = {
 
 export type ClientWorkFollowResponse = {
   clientId?: number;
-  panNumber?: string;
   clientCode?: string;
   clientName?: string;
   mobileNumber?: string;

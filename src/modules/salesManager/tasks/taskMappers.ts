@@ -44,7 +44,6 @@ export const mapClientToSalesTask = (client: ClientWorkFollowResponse, index: nu
   const activeDate = client.activeMeetingDate;
   const scheduledAt = activeDate ?? client.assignmentDate;
   return {
-    ...(client.panNumber !== undefined ? { panNumber: client.panNumber } : {}),
     id: client.clientCode ?? String(client.clientId ?? `client-${index}`), taskKind: 'CLIENT', clientCode: client.clientCode, meetingCode: client.activeMeetingCode,
     assignedAt: client.assignmentDate, scheduledAt, name: client.clientName ?? 'Unnamed client', phone: client.mobileNumber ?? '',
     locationText: client.location ?? 'Location unavailable', clinicAddress: client.clinicAddress, coordinates: { latitude: 0, longitude: 0 },

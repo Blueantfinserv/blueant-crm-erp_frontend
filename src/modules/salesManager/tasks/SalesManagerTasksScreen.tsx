@@ -69,7 +69,7 @@ export function SalesManagerTasksScreen({ active = true, onCreateNewLead, onUpda
                   onChangeText={setSearch}
                   onFocus={() => setSearchFocused(true)}
                   onBlur={() => setSearchFocused(false)}
-                  placeholder={includeClientTasks ? 'Search by name, PAN or mobile' : allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode ? 'Search by name, mobile or code' : 'Search by name or mobile number'}
+                  placeholder={allTaskMode || taskToDoMode || todaysTaskMode || pendingTaskMode || future3DaysTaskMode || allLeadsMode ? 'Search by name, mobile or code' : 'Search by name or mobile number'}
                   placeholderTextColor={theme.colors.subtle}
                   returnKeyType="search"
                   style={styles.searchInput}
@@ -275,6 +275,7 @@ export function SalesManagerTasksScreen({ active = true, onCreateNewLead, onUpda
               {filteredTasks.length ? `${filteredTasks.length} tasks` : '0 tasks'}
             </Text>
           </View>
+        {hasCompleteData && loading ? <Text style={styles.emptyText}>Refreshing tasks. Showing the previous complete results.</Text> : null}
         {hasCompleteData && !loading && error ? <Text accessibilityRole="alert" style={styles.emptyText}>Refresh failed: {error}. Showing the previous complete results; tap Refresh to retry.</Text> : null}
       </>}
       tasks={hasCompleteData || (!loading && !error) ? filteredTasks : []}

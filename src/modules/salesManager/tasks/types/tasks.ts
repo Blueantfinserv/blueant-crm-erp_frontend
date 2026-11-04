@@ -6,7 +6,6 @@ export interface SalesTask {
   id: string;
   taskKind: 'LEAD' | 'MEETING' | 'CLIENT';
   clientCode?: string;
-  panNumber?: string;
   clientMeetingCount?: number;
   uniqueLeadId?: string;
   meetingCode?: string;

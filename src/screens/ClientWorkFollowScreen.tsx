@@ -86,7 +86,7 @@ export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refresh
   }, [active, load]);
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return !needle ? clients : clients.filter((client) => [client.name, client.phone, client.panNumber].some((value) => String(value ?? '').toLowerCase().includes(needle)));
+    return !needle ? clients : clients.filter((client) => [client.name, client.phone, client.clientCode, client.locationText].some((value) => String(value ?? '').toLowerCase().includes(needle)));
   }, [clients, search]);
 
   return (
@@ -100,7 +100,7 @@ export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refresh
       </View>
       <View style={styles.searchRow}>
         <Icon source="magnify" size={19} color="#3156C8" />
-        <TextInput value={search} onChangeText={setSearch} placeholder="Search by client name, PAN or mobile" placeholderTextColor="#94A3B8" style={styles.search} />
+        <TextInput value={search} onChangeText={setSearch} placeholder="Search by client name, mobile or code" placeholderTextColor="#94A3B8" style={styles.search} />
       </View>
       {loading ? (
         <View style={styles.state}><ActivityIndicator color="#3156C8" /><Text style={styles.stateText}>Loading assigned clients...</Text></View>

@@ -18,12 +18,7 @@ const get = async <T>(path: string): Promise<T> => {
   }
   const body = await response.json().catch(() => null) as ApiResponse<T> | null;
   if (!response.ok || body?.success !== true || body.data === undefined) {
-    const retryAfter = response.headers.get('Retry-After');
-    const seconds = retryAfter === null ? NaN : Number(retryAfter);
-    const retryAfterMs = Number.isFinite(seconds) ? Math.max(0, seconds * 1000)
-      : retryAfter ? Math.max(0, Date.parse(retryAfter) - Date.now()) : 0;
-    throw Object.assign(new Error(body?.message ?? `Client meeting request failed (${response.status}).`),
-      { status: response.status, retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : 0 });
+    throw new Error(body?.message ?? `Client meeting request failed (${response.status}).`);
   }
   return body.data;
 };

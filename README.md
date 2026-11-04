@@ -21,9 +21,7 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 
 ## Latest updates - 4 November 2026
 
-- RM/SC client-history reads now use a shared queue with at most two concurrent requests and 300ms spacing between starts. HTTP 429 responses receive up to three retries with exponential backoff and Retry-After support; obsolete queued reads are skipped after account changes or invalidation. Initial loading still fetches complete histories; this is rate-limit mitigation, not the proposed bulk-summary backend integration.
-- Client cards replace the meeting-count badge with a PAN preview showing the first five characters and masking the remainder. Client search supports name, PAN and mobile instead of client/meeting codes. PAN requires panNumber in the client-list response; missing values display PAN unavailable, with no additional profile requests. Full PAN on Details is unchanged. Removed the background Refreshing tasks message.
-- Validation for this update: 95 automated tests plus TypeScript checking, including history concurrency, start spacing, bounded 429 retries, Retry-After cooldown and client PAN search. Live server rate-limit elimination has not been verified.
+- Reverted b5d821a at user request: restored pre-throttle client history requests and pre-PAN card/search behavior. Client Details improvements from 0d0507a remain. Per-client initial history fetching is unchanged; bulk backend summaries are still needed to eliminate that fan-out.
 
 - RM/SC Client Details uses compact spacing and desktop field grids to reduce vertical scrolling. Latest Remarks and Your Prior Remarks are separate panels; prior remarks display client profile remarks with an empty-state fallback. Email has more desktop space and wraps fully; limited detail values expand on tap without repeated View full labels.
 - Mobile Safari text inputs and textareas use a 16px font on narrow screens to prevent automatic focus zoom; other platforms retain their existing styles.

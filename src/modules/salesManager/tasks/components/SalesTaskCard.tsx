@@ -25,8 +25,12 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
   const isRemovedLead = task.taskKind === 'LEAD'
     && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED');
   const isVerificationPending = task.verificationPending === true;
-  const pan = task.panNumber?.trim();
-  const clientPanSummary = pan ? `PAN: ${pan.slice(0, 5)}${'*'.repeat(Math.max(0, pan.length - 5))}` : 'PAN unavailable';
+  const recordedMeetingCount = task.clientMeetingCount ?? 0;
+  const clientMeetingSummary = recordedMeetingCount > 0
+    ? `${recordedMeetingCount} meeting${recordedMeetingCount === 1 ? '' : 's'} recorded`
+    : task.meetingNumber
+      ? `Meeting ${task.meetingNumber} scheduled`
+      : 'No meetings recorded';
   const whatsappNumber = task.phone.replace(/\D/g, '');
   const dialerNumber = task.phone.replace(/[^\d+]/g, '');
   const mapUrl = `https://www.google.com/maps/search/?api=1&query=${task.coordinates.latitude},${task.coordinates.longitude}`;
@@ -123,9 +127,9 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
 
       {task.taskKind === 'CLIENT' ? (
         <View style={styles.clientMeetingSummary}>
-          <Icon source="card-account-details-outline" size={13} color={tone.accent} />
+          <Icon source="calendar-check-outline" size={13} color={tone.accent} />
           <Text style={[styles.clientMeetingSummaryText, { color: tone.accent }]}>
-            {clientPanSummary}
+            {clientMeetingSummary}
           </Text>
         </View>
       ) : null}

@@ -16,13 +16,8 @@ function compile(file, imports, globals = {}, source) {
   return exports;
 }
 function serviceModule(fetcher = async () => [], onAuth = () => {}) {
-  const result = compile('src/services/ClientHistoryService.ts', name => name.endsWith('/AuthService')
+  return compile('src/services/ClientHistoryService.ts', name => name.endsWith('/AuthService')
     ? { authService: { subscribe: onAuth } } : { clientMeetingApi: { getByClientCode: fetcher } });
-  const Service = result.ClientHistoryService;
-  result.ClientHistoryService = class extends Service {
-    constructor(fetchHistory) { super(fetchHistory, new result.ClientHistoryRequestQueue(2, 0, 0)); }
-  };
-  return result;
 }
 function harness() {
   const calls = [], api = code => { const call = { code, ...deferred() }; calls.push(call); return call.promise; };
@@ -260,50 +255,4 @@ test('account change while client queue loads cannot start histories in the new 
   queue.resolve({ content: [{ clientCode: 'OLD-CLIENT' }], totalPages: 1 });
   await rejected; assert.equal(h.calls.length, 0);
   assert.equal(h.store.getSnapshot('OLD-CLIENT').history, undefined);
-});
-
-
-test('history request queue bounds concurrent unique requests and preserves output', async () => {
-  const { ClientHistoryRequestQueue } = serviceModule();
-  const queue = new ClientHistoryRequestQueue(2, 0, 0);
-  let active = 0, peak = 0;
-  const results = await Promise.all(Array.from({ length: 12 }, (_, id) => queue.run(async () => {
-    peak = Math.max(peak, ++active); await flush(); active--; return id;
-  })));
-  assert.equal(peak, 2);
-  assert.deepEqual(results, Array.from({ length: 12 }, (_, id) => id));
-});
-
-test('history queue retries 429 only, bounds retries and releases failed slots', async () => {
-  const { ClientHistoryRequestQueue } = serviceModule();
-  const queue = new ClientHistoryRequestQueue(1, 0, 0);
-  let attempts = 0;
-  assert.equal(await queue.run(async () => {
-    if (++attempts < 3) throw Object.assign(new Error('limited'), { status: 429 });
-    return 'fresh';
-  }), 'fresh');
-  assert.equal(attempts, 3);
-  attempts = 0;
-  await assert.rejects(queue.run(async () => { attempts++; throw Object.assign(new Error('limited'), { status: 429 }); }), /limited/);
-  assert.equal(attempts, 4);
-  attempts = 0;
-  await assert.rejects(queue.run(async () => { attempts++; throw new Error('denied'); }), /denied/);
-  assert.equal(attempts, 1);
-  assert.equal(await queue.run(async () => 'retry works'), 'retry works');
-});
-
-
-test('history queue spaces starts and honors server Retry-After cooldown', async () => {
-  const { ClientHistoryRequestQueue } = serviceModule();
-  const queue = new ClientHistoryRequestQueue(1, 25, 0);
-  const starts = [];
-  let attempt = 0;
-  await queue.run(async () => {
-    starts.push(Date.now());
-    if (++attempt === 1) throw Object.assign(new Error('limited'), { status: 429, retryAfterMs: 50 });
-    return [];
-  });
-  await queue.run(async () => { starts.push(Date.now()); return []; });
-  assert.ok(starts[1] - starts[0] >= 50);
-  assert.ok(starts[2] - starts[1] >= 25);
 });
