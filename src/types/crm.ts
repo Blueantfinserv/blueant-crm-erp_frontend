@@ -227,6 +227,9 @@ export type CreateClientMeetingRequest = {
 };
 
 export type ClientMeetingResponse = {
+  panNumber?: string;
+  meetingRemarks?: string;
+  verificationRemarks?: string;
   verifiedBy?: string;
   verifiedAt?: string;
   currentCity?: string;
@@ -262,6 +265,8 @@ export type ClientMeetingResponse = {
 };
 
 export type ClientMeetingVerificationResponse = {
+  verificationRemarks?: string;
+  remarks?: string;
   verifiedBy?: string;
   verifiedAt?: string;
   meetingCode?: string;

@@ -193,3 +193,22 @@ test('Divya and Monika remain SC across PC meetings, leads, labels and role filt
   assert.equal(utils.employeeRole('RM', ' dv0101 '), 'SC');
   assert.equal(utils.employeeRole('RM', undefined, 'Avesh parjapti'), 'RM');
 });
+
+
+test('PC client mapping retains profile PAN and distinct original/verification remarks',()=>{
+ const data=createLoader({'/clientMeeting':{clientMeetingApi:{}},'/leadSearch':{leadSearchApi:{}},'/lead':{leadApi:{}}})('coordinatorData');
+ const record=data.clientMeetingAsCoordinatorRecord({meetingCode:'M1',remarks:'RM note',meetingRemarks:'Original meeting note',verificationRemarks:'PC note'},{panNumber:'ABCDE1234F'});
+ assert.equal(record.panNumber,'ABCDE1234F');assert.equal(record.remarks,'RM note');assert.equal(record.meetingRemarks,'Original meeting note');assert.equal(record.verificationRemarks,'PC note');
+ assert.equal(data.clientMeetingAsCoordinatorRecord({panNumber:'MEET12345X'},{panNumber:'PROFILEPAN'}).panNumber,'MEET12345X');
+ assert.equal(data.clientMeetingAsCoordinatorRecord({panNumber:''},{panNumber:'PROFILEPAN'}).panNumber,'PROFILEPAN');
+});
+
+test('verified reload preserves PC remarks from verification page without replacing RM note or fetching extra data',async()=>{
+ let details=0,profiles=0;
+ const data=createLoader({'/clientMeeting':{clientMeetingApi:{getMeeting:async code=>{details++;return{meetingCode:code,clientCode:'C1',remarks:'RM note'};},getProfile:async()=>{profiles++;return{panNumber:'ABCDE1234F'};}}},'/leadSearch':{leadSearchApi:{}},'/lead':{leadApi:{}}})('coordinatorData');
+ for(const entry of [{meetingCode:'M1',verificationRemarks:'PC explicit',remarks:'PC fallback'},{meetingCode:'M1',remarks:'PC fallback'},{meetingCode:'M1',verificationRemarks:'',remarks:'PC fallback'}]){
+  const [record]=await data.loadClientMeetings(async()=>({content:[entry]}),{markVerified:true});
+  assert.equal(record.verificationRemarks,entry.verificationRemarks||entry.remarks);assert.equal(record.remarks,'RM note');assert.equal(record.panNumber,'ABCDE1234F');
+ }
+ assert.equal(details,3);assert.equal(profiles,3);
+});

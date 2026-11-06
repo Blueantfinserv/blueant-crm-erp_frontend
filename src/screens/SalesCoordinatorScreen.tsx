@@ -1,3 +1,4 @@
+import { VerifiedMeetingsExportButton } from './salesCoordinator/components/VerifiedMeetingsExportButton';
 import { MobileWorkspaceHeader } from './salesCoordinator/components/MobileWorkspaceHeader';
 import { useCallback,useEffect,useMemo,useRef,useState } from 'react';
 import { ActivityIndicator,Alert,Modal,Platform,Pressable,ScrollView,Text,TextInput,useWindowDimensions,View } from 'react-native';
@@ -21,6 +22,7 @@ import { ClientVerificationFields,LeadVerificationPopup } from './salesCoordinat
 import { clientBusinessDefinition,EXCLUDED_TASK_LEAD_STATUSES,FIELDS,NOT_CONDUCTED_FIELDS,PAGE_SIZE,SALES_PERSONS,TABS } from './salesCoordinator/coordinatorConstants';
 import { assignedSalesPersonForMobile,clientMeetingAsCoordinatorRecord,loadCoordinatorAssignedLeads,loadPendingClientMeetings,loadVerifiedClientMeetings } from './salesCoordinator/coordinatorData';
 import { downloadCsv,exportDatePart,exportNamePart } from './salesCoordinator/coordinatorExport';
+import { VERIFIED_MEETING_EXPORT_HEADERS,verifiedMeetingExportRows } from './salesCoordinator/verifiedMeetingExport';
 import { filterMeetingRecords } from './salesCoordinator/coordinatorFilters';
 import { clientBusinessTypes,clientInvestmentTotal,emptyAssignForm,emptyClientVerificationForm,emptyForm } from './salesCoordinator/coordinatorForms';
 import type { AssignedDateRange,ClientVerificationForm,MeetingColumnFilter,Tab } from './salesCoordinator/coordinatorTypes';
@@ -107,6 +109,16 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
     setVerified(records);
   };
   const [exportingAssignedLeads, setExportingAssignedLeads] = useState(false);
+  const [verifiedExportError, setVerifiedExportError] = useState<string | null>(null);
+  const exportVerifiedMeetings = () => {
+    if (Platform.OS !== 'web') { Alert.alert('Excel export', 'Excel export is currently available on the web version.'); return; }
+    setVerifiedExportError(null);
+    try {
+      downloadCsv(VERIFIED_MEETING_EXPORT_HEADERS, verifiedMeetingExportRows(visibleVerifiedMeetings), `verified-meetings-${localToday()}`);
+    } catch (cause) {
+      setVerifiedExportError(cause instanceof Error ? cause.message : 'Verified meeting export failed. Please try again.');
+    }
+  };
 
   const salesPersonNamesByCode = useMemo(() => {
     const values = new Map<string, string>(SALES_PERSONS.map((employee) => [employee.code, employee.name]));
@@ -574,6 +586,7 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
         meetingVerificationDate: verifiedClientMeeting.verifiedAt || new Date().toISOString(),
         clientName: verifiedClientMeeting.clientName ?? meeting.clientName,
         mobileNumber: verifiedClientMeeting.mobileNumber ?? meeting.mobileNumber,
+        panNumber: verifiedClientMeeting.panNumber?.trim() || meeting.panNumber,
         alternateMobileNumber: meeting.alternateMobileNumber,
         email: meeting.email,
         speciality: meeting.speciality,
@@ -598,7 +611,7 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
         // The verification API currently returns its response in `remarks`.
         remarks: meeting.remarks ?? meeting.meetingRemarks,
         meetingRemarks: meeting.meetingRemarks ?? meeting.remarks,
-        verificationRemarks: verifiedClientMeeting.remarks ?? remarks,
+        verificationRemarks: [verifiedClientMeeting.verificationRemarks, verifiedClientMeeting.remarks, remarks].find(value => Boolean(value?.trim())),
         verificationStatus: 'VERIFIED',
       };
       setPending((items) => items.filter((item) => item.meetingCode !== meeting.meetingCode));
@@ -725,7 +738,10 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
             <Text style={[styles.contentTitle, compact && { fontSize: 16, lineHeight: 20 }]}>{TABS.find((item) => item.key === tab)?.label}</Text>
             <Text style={[styles.contentSubtitle, compact && { fontSize: 11, lineHeight: 15 }]}>{subtitle}</Text>
           </View>
-          {tab === 'responses' ? <TextInput value={responseSearch} onChangeText={setResponseSearch} placeholder="Search lead name or number" placeholderTextColor="#CBD9FF" style={[styles.headerSearch, compact && styles.headerSearchCompact]} /> : null}
+          {tab === 'responses' ? <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 8, ...(compact ? { width: '100%' } : { flex: 1 }) }}>
+            <TextInput value={responseSearch} onChangeText={setResponseSearch} placeholder="Search lead name or number" placeholderTextColor="#CBD9FF" style={[styles.headerSearch, compact && styles.headerSearchCompact, compact && { flex: 1, width: undefined, minWidth: 0 }]} />
+            <VerifiedMeetingsExportButton compact={compact} disabled={contentLoading || Boolean(contentError) || !visibleVerifiedMeetings.length} onExport={exportVerifiedMeetings} />
+          </View> : null}
           {tab === 'tasks' && !loading && !error ? <TaskToolbar search={taskSearch} onSearch={setTaskSearch} status={statusFilter} onStatus={setStatusFilter} /> : null}
           {tab === 'assignedLeads' ? <View style={[styles.assignedHeaderActions, compact && styles.assignedHeaderActionsCompact]}>
             <HeaderLeadFilters leads={assignedLeads} coordinatorFilter={coordinatorFilter} setCoordinatorFilter={setCoordinatorFilter} salesPersonFilter={assignedSalesPersonFilter} setSalesPersonFilter={setAssignedSalesPersonFilter} dateRange={assignedDateRange} setDateRange={setAssignedDateRange} search={assignedSearch} setSearch={setAssignedSearch} />
@@ -734,6 +750,7 @@ export function SalesCoordinatorScreen({ permissions, activeTab, onTabChange }: 
           </View> : null}
         </View>
       </View>
+      {tab === 'responses' && verifiedExportError ? <Text accessibilityRole="alert" style={styles.error}>{verifiedExportError}</Text> : null}
       {!compact && !contentLoading && !contentError && tab === 'today' ? <MeetingTableHeader hideMeetingDate records={pending} filters={todayColumnFilters} onFiltersChange={setTodayColumnFilters} /> : null}
       {tab === 'tasks' ? <ScrollView style={styles.resultsScroll} contentContainerStyle={styles.resultsContent} showsVerticalScrollIndicator stickyHeaderIndices={[0]}>
         <View style={styles.taskStickyHeader}>{!compact && !loading && !error && !tabLoading.tasks ? <MeetingTableHeader taskOnly records={taskRecords} filters={taskColumnFilters} onFiltersChange={setTaskColumnFilters} /> : null}</View>

@@ -19,7 +19,15 @@ A role-based Expo / React Native CRM frontend for BlueAnt's lead, meeting, sales
 - React Native Paper
 - Web, Android, and iOS targets
 
-## Latest updates - 4 November 2026
+## Latest updates - 6 November 2026
+
+- PC Verified Meetings has a web Excel-compatible CSV export with nine columns: Name, PAN Number, Sales Person / RM / SC Name, Meeting Date, Next Plan Date, Remarks RM / SC, Remarks PC, Address and Location. It exports all records matching the current search and column filters, across mobile pages, using already-loaded data without additional API requests.
+- The export button opens a masked password popup for every download. Incorrect passwords show an inline error; cancellation and successful downloads clear the input. This is a frontend-only confirmation gate, not backend authorization or file encryption.
+- PC client-meeting mapping retains PAN from the existing client profile and keeps original meeting notes separate from PC verification remarks. Missing backend values remain blank rather than substituting a phone number or another person's remarks.
+- These changes are scoped to the PC verified export. Pending RM/SC performance work and its unmeasured TEST benchmark results are not part of this release.
+- Validation: isolated PC-only release passed all 105 regression tests, TypeScript checking and production web export. No live backend performance benchmark was run.
+
+## Previous updates - 4 November 2026
 
 - Reverted b5d821a at user request: restored pre-throttle client history requests and pre-PAN card/search behavior. Client Details improvements from 0d0507a remain. Per-client initial history fetching is unchanged; bulk backend summaries are still needed to eliminate that fan-out.
 

@@ -34,6 +34,9 @@ export const assignedSalesPersonForMobile = async (mobileNumber: string) => {
 
 export const clientMeetingAsCoordinatorRecord = (meeting: Awaited<ReturnType<typeof clientMeetingApi.getMeeting>>, profile?: ClientProfileResponse | null): MeetingResponse => ({
   meetingCode: meeting.meetingCode,
+  panNumber: meeting.panNumber?.trim() || profile?.panNumber,
+  meetingRemarks: meeting.meetingRemarks,
+  verificationRemarks: meeting.verificationRemarks,
   verifiedBy: meeting.verifiedBy,
   meetingVerificationDate: meeting.verifiedAt,
   currentCity: meeting.currentCity,
@@ -109,6 +112,8 @@ export const loadClientMeetings = async (
       ...meeting,
       verifiedBy: verification?.verifiedBy || meeting.verifiedBy,
       verifiedAt: verification?.verifiedAt || meeting.verifiedAt,
+      // Remarks on the verification response belong to PC; keep the meeting note separate.
+      verificationRemarks: [verification?.verificationRemarks, markVerified ? verification?.remarks : undefined, meeting.verificationRemarks].find(value => Boolean(value?.trim())),
     }, profiles[index]);
     return markVerified ? { ...record, verificationStatus: 'VERIFIED' as const } : record;
   });
