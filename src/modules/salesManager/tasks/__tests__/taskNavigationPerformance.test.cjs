@@ -40,12 +40,20 @@ function runner() {
     if (name.endsWith('/LeadSearchService')) return { leadSearchService: leads };
     if (name.endsWith('/MeetingService')) return { meetingService: meetings };
     if (name.endsWith('/LeadService')) return { leadService: { getState: () => ({}), subscribe: () => () => {} } };
-    if (name === '../clientTaskData') return { loadClientTaskQueue: () => { const request = deferred(); clients.push(request); return request.promise; } };
+    if (name.endsWith('/ClientHistoryService')) return { clientHistoryService: {subscribeInvalidatedHistory:()=>()=>{}} };
+    if (name === '../clientTaskData') return { loadClientTaskQueue: options => { const request = deferred(); clients.push({ request, options }); return request.promise; } };
     return local(name);
   }, exports);
   return { leads, meetings, clients,
     render: active => { cursor = 0; const result = exports.useSalesManagerTasks({ includeClientTasks: true, allTaskMode: true, active }); effects.splice(0).forEach(effect => effect()); return result; },
-    async finish(index, tasks) { leads.set({ leads: [], isLoading: false }); meetings.set({ meetings: [], isLoading: false }); leads.requests[index].resolve(); meetings.requests[index].resolve(); clients[index].resolve(tasks); await flush(); },
+    async finish(index, tasks) {
+      const progress = { loadedClients: tasks.length, totalClients: tasks.length, loadedPages: 1, totalPages: 1, queueComplete: true, historyPending: 0, historyCompleted: 0, historyFailed: 0 };
+      clients[index].options.onPage(tasks, progress);
+      clients[index].options.onProgress(progress);
+      leads.set({ leads: [], isLoading: false }); meetings.set({ meetings: [], isLoading: false });
+      leads.requests[index].resolve(); meetings.requests[index].resolve(); clients[index].request.resolve(tasks);
+      await flush();
+    },
   };
 }
 const task = id => ({ id, taskKind: 'CLIENT', name: `Client ${id}`, phone: '9876543210', schedule: 'Today', scheduledAt: '2026-11-04', nextPlanDate: '2026-11-04' });
@@ -66,8 +74,8 @@ test('failed background refresh retains complete results; manual retry still per
   const r = runner(); r.render(true); await flush(); const old = [task('1')]; await r.finish(0, old); r.render(true);
   r.render(false); r.render(true); await flush();
   r.leads.set({ leads: [], isLoading: false, error: 'server failed' }); r.meetings.set({ meetings: [], isLoading: false });
-  r.leads.requests[1].resolve(); r.meetings.requests[1].resolve(); r.clients[1].reject(new Error('history failed')); await flush();
-  const failed = r.render(true); assert.equal(failed.hasCompleteData, true); assert.deepEqual(failed.filteredTasks, old); assert.equal(failed.clientError, 'history failed');
+  r.leads.requests[1].resolve(); r.meetings.requests[1].resolve(); r.clients[1].request.reject(new Error('queue failed')); await flush();
+  const failed = r.render(true); assert.equal(failed.hasCompleteData, true); assert.deepEqual(failed.filteredTasks, old); assert.equal(failed.clientError, 'queue failed');
   const retry = failed.refreshTasks(); await flush(); assert.equal(r.clients.length, 3); await r.finish(2, [task('2')]); await retry;
   assert.deepEqual(r.render(true).filteredTasks, [task('2')]);
 });
@@ -92,6 +100,7 @@ test('App keeps the same keyed RM/SC list during Details and leaves SM on its ex
   const source = fs.readFileSync(path.join(root, 'App.tsx'), 'utf8');
   const branch = source.slice(source.indexOf('    const clientRole ='), source.indexOf('    switch (screen) {'));
   const code = ts.transpileModule(`export function render(backendRole, screen, history, account) {
+    const clientHistoryReloadCycle={current:undefined};
     const screenHistory={current:history}, authenticatedUserKey=account, salesTaskScreenKey=0, salesTaskFilter='Today', salesTaskView='task-to-do';
     const selectedSalesTask={taskKind:'CLIENT',clientCode:'C1'}; const renderShell=value=>value; const goBack=()=>{};
     const View='View', SalesManagerTasksScreen='Tasks', ClientWorkFollowScreen='Clients', SalesManagerLeadDetailScreen='Details';
@@ -114,25 +123,13 @@ test('App keeps the same keyed RM/SC list during Details and leaves SM on its ex
 });
 
 
-test('older All Clients queue refresh neither starts obsolete histories nor overwrites newer cards', async () => {
+test('All Clients screen uses progressive cards and retains them when later loading fails', () => {
   const source = fs.readFileSync(path.join(root, 'src/screens/ClientWorkFollowScreen.tsx'), 'utf8');
-  const mapping = source.slice(source.indexOf('const formatDate ='), source.indexOf('export function ClientWorkFollowScreen'));
-  const load = source.slice(source.indexOf('  const load = useCallback('), source.indexOf('  }, []);', source.indexOf('  const load = useCallback(')) + '  }, []);'.length);
-  const code = ts.transpileModule(`export function make(context) {
-    const {loadId,clientWorkFollowApi,clientHistoryService,setRefreshing,setLoading,setError,setClients,getTaskSchedule}=context;
-    const useCallback=fn=>fn;
-    ${mapping} ${load} return load;
-  }`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
-  const exports = {}; new Function('exports', code)(exports);
-  const queues = [], histories = [], results = [], errors = [], flags = [];
-  const loadFn = exports.make({ loadId: {current:0}, clientWorkFollowApi: {getQueue: () => {const request=deferred();queues.push(request);return request.promise;}},
-    clientHistoryService: {captureScope:()=>1,isCurrentScope:()=>true,refresh:async code=>{histories.push(code);return[];}},
-    setClients:value=>results.push(value),setError:value=>errors.push(value),setLoading:value=>flags.push(value),setRefreshing:value=>flags.push(value),getTaskSchedule:()=> 'Today' });
-  const old = loadFn(), fresh = loadFn(true);
-  queues[1].resolve({content:[{clientCode:'NEW',clientName:'new'}],totalPages:1});await fresh;
-  queues[0].resolve({content:[{clientCode:'OLD',clientName:'old'}],totalPages:1});await old;
-  assert.deepEqual(histories,['NEW']); assert.equal(results.length,1);assert.equal(results[0][0].clientCode,'NEW');
-  assert.deepEqual(errors,[null,null]); assert.deepEqual(flags,[true,true,false,false]);
+  assert.ok(source.includes('loadClientTaskQueue({'));
+  assert.ok(source.includes('onClients:'));
+  assert.ok(source.includes('setClients(previous =>'));
+  assert.ok(source.includes('error && !clients.length'));
+  assert.ok(source.includes('loadId.current += 1'));
 });
 
 
@@ -155,4 +152,24 @@ test('previous visible task data cannot open a client update before fresh verifi
     assert.equal(opened!==null,outcome==='verified');
     if(outcome==='failed')assert.equal(message,'network unavailable');
   }
+});
+
+
+test('All Clients screen keeps history failure feedback without progress narration', () => {
+  const source=fs.readFileSync(path.join(root,'src/screens/ClientWorkFollowScreen.tsx'),'utf8');
+  assert.ok(source.includes('progress.historyFailed > 0'));
+  assert.ok(source.includes('error && !clients.length'));
+  assert.equal(source.includes('Loading clients:'),false);
+  assert.equal(source.includes('Updating meeting history for'),false);
+  assert.equal(source.includes('All ${progress.loadedClients} clients'),false);
+});
+
+
+test('partial history enrichment cannot replace complete global task inputs during refresh',async()=>{
+ const r=runner();r.render(true);await flush();const old=[task('1'),task('2')];await r.finish(0,old);r.render(true);
+ r.render(false);r.render(true);await flush();
+ const progress={loadedClients:1,totalClients:2,loadedPages:1,totalPages:1,queueComplete:true,historyPending:1,historyCompleted:0,historyFailed:0};
+ r.clients[1].options.onPage([{...task('3'),historyLoadState:'loading',verificationPending:true}],progress);r.clients[1].options.onProgress(progress);
+ const partial=r.render(true);assert.deepEqual(partial.filteredTasks,old);assert.equal(partial.taskDataComplete,false);
+ await r.finish(1,[task('3')]);assert.deepEqual(r.render(true).filteredTasks,[task('3')]);
 });

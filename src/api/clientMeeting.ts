@@ -1,3 +1,4 @@
+import { publishClientMeetingChange } from '../utils/clientMeetingChanges';
 import { SecureStorageService } from '../services/SecureStorageService';
 import { requestWithSessionRefresh } from './authenticatedRequest';
 import type { ClientMeetingResponse, ClientMeetingUpdateRequest, ClientMeetingVerificationPage, ClientMeetingVerificationRequest, ClientProfileResponse } from '../types/crm';
@@ -14,11 +15,15 @@ const get = async <T>(path: string): Promise<T> => {
       headers: { Accept: 'application/json', Authorization: `Bearer ${accessToken}` },
     }));
   } catch {
-    throw new Error('Network unavailable. Please check your internet connection.');
+    throw Object.assign(new Error('Network unavailable. Please check your internet connection.'), { transientNetwork: true });
   }
   const body = await response.json().catch(() => null) as ApiResponse<T> | null;
   if (!response.ok || body?.success !== true || body.data === undefined) {
-    throw new Error(body?.message ?? `Client meeting request failed (${response.status}).`);
+    const retryAfter = response.headers.get('Retry-After');
+    const seconds = retryAfter === null ? NaN : Number(retryAfter);
+    const delay = Number.isFinite(seconds) ? seconds * 1000 : retryAfter ? Date.parse(retryAfter) - Date.now() : 0;
+    throw Object.assign(new Error(body?.message ?? `Client meeting request failed (${response.status}).`),
+      { status: response.status, retryAfterMs: Number.isFinite(delay) ? Math.max(0, delay) : 0 });
   }
   return body.data;
 };
@@ -43,6 +48,8 @@ const post = async <T>(path: string, payload: unknown): Promise<T> => {
   return body.data;
 };
 
+const meetingClients = new Map<string, string>();
+
 export const clientMeetingApi = {
   getPendingVerification(page = 0, size = 100): Promise<ClientMeetingVerificationPage> {
     return get<ClientMeetingVerificationPage>(`/v1/client-meetings/verification/pending?page=${page}&size=${size}`);
@@ -51,7 +58,10 @@ export const clientMeetingApi = {
     return get<ClientMeetingVerificationPage>(`/v1/client-meetings/verification/verified?page=${page}&size=${size}`);
   },
   getMeeting(meetingCode: string): Promise<ClientMeetingResponse> {
-    return get<ClientMeetingResponse>(`/v1/client-meetings/${encodeURIComponent(meetingCode)}`);
+    return get<ClientMeetingResponse>(`/v1/client-meetings/${encodeURIComponent(meetingCode)}`).then(meeting => {
+      if (meeting.clientCode) meetingClients.set(meetingCode, meeting.clientCode);
+      return meeting;
+    });
   },
   getByClientCode(clientCode: string): Promise<ClientMeetingResponse[]> {
     return get<ClientMeetingResponse[]>(`/v1/client-meetings/client/${encodeURIComponent(clientCode)}`);
@@ -60,11 +70,14 @@ export const clientMeetingApi = {
     return get<ClientProfileResponse>(`/v1/clients/${encodeURIComponent(clientCode)}/profile`);
   },
   verify(meetingCode: string, payload: ClientMeetingVerificationRequest): Promise<ClientMeetingResponse> {
-    return post<ClientMeetingResponse>(`/v1/client-meetings/verification/${encodeURIComponent(meetingCode)}/verify`, payload);
+    return post<ClientMeetingResponse>(`/v1/client-meetings/verification/${encodeURIComponent(meetingCode)}/verify`, payload).then(meeting => {
+      publishClientMeetingChange(meeting.clientCode ?? meetingClients.get(meetingCode));
+      return meeting;
+    });
   },
   async update(clientCode: string, payload: ClientMeetingUpdateRequest): Promise<ClientMeetingResponse> {
     const token = await SecureStorageService.getToken(); if (!token) throw new Error('Authentication token is unavailable.');
     let response: Response; try { response = await requestWithSessionRefresh(token, (accessToken) => fetch(`${API_BASE_URL}/v1/clients/${encodeURIComponent(clientCode)}/meetings/update`, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` }, body: JSON.stringify(payload) })); } catch { throw new Error('Network unavailable. Please check your internet connection.'); }
-    const body = await response.json().catch(() => null) as ApiResponse<ClientMeetingResponse> | null; if (!response.ok || body?.success !== true || !body.data) throw new Error(body?.message ?? `Client meeting update failed (${response.status}).`); return body.data;
+    const body = await response.json().catch(() => null) as ApiResponse<ClientMeetingResponse> | null; if (!response.ok || body?.success !== true || !body.data) throw new Error(body?.message ?? `Client meeting update failed (${response.status}).`); publishClientMeetingChange(body.data.clientCode ?? clientCode); return body.data;
   },
 };

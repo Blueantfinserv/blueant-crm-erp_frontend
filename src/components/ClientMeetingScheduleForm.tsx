@@ -1,4 +1,4 @@
-import { clientHistoryService } from '../services/ClientHistoryService';
+import { clientHistoryService, type ClientHistoryReadCycle } from '../services/ClientHistoryService';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Icon } from 'react-native-paper';
@@ -24,7 +24,7 @@ const followUpOptions = (): FollowUpOption[] => FOLLOW_UP_OFFSETS.map(([label, d
   return { label: String(label), value: localDate(date), detail: new Intl.DateTimeFormat('en-IN', { day: 'numeric', month: 'short', weekday: 'long' }).format(date) };
 });
 
-export function ClientMeetingScheduleForm({ client, onClose, onSuccess }: { client: SalesTask; onClose: () => void; onSuccess: () => void }) {
+export function ClientMeetingScheduleForm({ client, onClose, onSuccess }: { client: SalesTask; onClose: () => void; onSuccess: (cycle: ClientHistoryReadCycle) => void }) {
   const [outcome, setOutcome] = useState<Outcome>('CONDUCTED');
   const [mode, setMode] = useState<Mode>('PHYSICAL');
   const [aloneWith, setAloneWith] = useState<'SELF' | 'SOMEONE'>('SELF');
@@ -83,8 +83,9 @@ export function ClientMeetingScheduleForm({ client, onClose, onSuccess }: { clie
         accuracy: coordinates?.accuracy ?? undefined,
       });
       if (finishHistoryMutation()) {
-        void clientHistoryService.refresh(client.clientCode, true).catch(() => undefined);
-        onSuccess();
+        const cycle = clientHistoryService.createReadCycle();
+        void clientHistoryService.refreshForCycle(client.clientCode, cycle).catch(() => undefined);
+        onSuccess(cycle);
       }
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Client meeting update could not be saved.'); }
     finally { finishHistoryMutation?.(); setSaving(false); }

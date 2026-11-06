@@ -1,8 +1,10 @@
+import type { ClientHistoryReadCycle } from '../../../../services/ClientHistoryService';
 import type { SalesTask } from './tasks';
 import type { TaskTypeFilter } from '../mock/taskFilterOptions';
 
 export type SalesManagerTasksProps = {
   active?: boolean;
+  historyCycle?: ClientHistoryReadCycle;
   onCreateNewLead?: () => void;
   onUpdateMeeting?: (lead: SalesTask) => void;
   onOpenLeadDetails?: (lead: SalesTask) => void;

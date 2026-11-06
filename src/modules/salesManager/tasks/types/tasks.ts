@@ -6,6 +6,7 @@ export interface SalesTask {
   id: string;
   taskKind: 'LEAD' | 'MEETING' | 'CLIENT';
   clientCode?: string;
+  historyLoadState?: 'loading' | 'error';
   clientMeetingCount?: number;
   uniqueLeadId?: string;
   meetingCode?: string;

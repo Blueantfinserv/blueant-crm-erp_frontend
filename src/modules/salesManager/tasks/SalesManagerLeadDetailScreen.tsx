@@ -1,3 +1,4 @@
+import { sortedClientHistory } from '../../../utils/clientHistorySelectors';
 import { useAuth } from '../../../context/AuthContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useClientHistory } from './hooks/useClientHistory';
@@ -113,8 +114,9 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const { user } = useAuth();
   const splitClientRemarks = isClient && (user?.role === 'RELATIONSHIP_MANAGER' || user?.role === 'SALES_COORDINATOR');
   const clientHistory = useClientHistory(isClient ? lead.clientCode : undefined);
-  const isVerificationPending = isClient && clientHistory.history !== undefined
-    ? hasPendingClientVerification(clientHistory.history) : lead.verificationPending === true;
+  const isVerificationPending = isClient
+    ? clientHistory.history === undefined || clientHistory.stale || clientHistory.loading || Boolean(clientHistory.error) || hasPendingClientVerification(clientHistory.history)
+    : lead.verificationPending === true;
   const [downloadingDocument, setDownloadingDocument] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const documentDownloadInFlight = useRef(false);
@@ -143,7 +145,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const [clientProfileError, setClientProfileError] = useState<string | null>(null);
   const [prospectProfile, setProspectProfile] = useState<LeadResponse | null>(null);
   const meetingHistory = useMemo(() => isClient
-    ? [...(clientHistory.history ?? [])].sort((a, b) => String(b.meetingDate ?? '').localeCompare(String(a.meetingDate ?? ''))) as unknown as MeetingResponse[]
+    ? sortedClientHistory(clientHistory.history ?? []) as unknown as MeetingResponse[]
     : prospectHistory, [isClient, clientHistory.history, prospectHistory]);
   const historyLoading = isClient ? Boolean(lead.clientCode) && clientHistory.history === undefined && !clientHistory.error : prospectHistoryLoading;
   const historyError = isClient ? clientHistory.error : prospectHistoryError;

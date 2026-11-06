@@ -29,6 +29,7 @@ for (const includeClientTasks of [false, true]) test(includeClientTasks ? 'RM mo
   const imports = name => {
     assert.ok(!name.includes('/api/client'), 'SM must not import client APIs');
     if (name === '../clientTaskData') { assert.ok(includeClientTasks); return { loadClientTaskQueue: async () => { clientCalls++; return []; } }; }
+    if (name.endsWith('/ClientHistoryService')) { assert.ok(includeClientTasks); return {clientHistoryService:{subscribeInvalidatedHistory:()=>()=>{}}}; }
     if (name === 'react') return {
       useState: initial => [typeof initial === 'function' ? initial() : initial, () => {}],
       useRef: initial => ({ current: initial }),

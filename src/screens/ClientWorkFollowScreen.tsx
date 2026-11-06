@@ -1,9 +1,10 @@
+import { latestClientMeeting } from '../utils/clientHistorySelectors';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
-import { clientWorkFollowApi } from '../api/clientWorkFollow';
-import { clientHistoryService } from '../services/ClientHistoryService';
+import { clientHistoryService, type ClientHistoryReadCycle } from '../services/ClientHistoryService';
 import { SalesTaskCard } from '../modules/salesManager/tasks/components/SalesTaskCard';
+import { loadClientTaskQueue, type ClientTaskQueueProgress } from '../modules/salesManager/tasks/clientTaskData';
 import { getTaskSchedule } from '../modules/salesManager/tasks/taskMeetingSelectors';
 import type { SalesTask } from '../modules/salesManager/tasks/types/tasks';
 import type { ClientMeetingResponse, ClientWorkFollowResponse } from '../types/crm';
@@ -14,6 +15,7 @@ type Props = {
   onOpenDetails: (client: SalesTask) => void;
   refreshKey?: number;
   active?: boolean;
+  historyCycle?: ClientHistoryReadCycle;
 };
 
 const formatDate = (value: string | undefined, fallback: string) => {
@@ -25,7 +27,7 @@ const formatDate = (value: string | undefined, fallback: string) => {
 };
 
 const toClientTask = (client: ClientWorkFollowResponse, meetings: ClientMeetingResponse[], index: number): SalesTask => {
-  const latestMeeting = [...meetings].sort((a, b) => String(b.meetingDate ?? '').localeCompare(String(a.meetingDate ?? '')))[0];
+  const latestMeeting = latestClientMeeting(meetings);
   const nextPlanDate = latestMeeting?.nextPlanDate ?? client.activeMeetingDate;
   return {
     id: client.clientCode ?? String(client.clientId ?? `client-${index}`),
@@ -46,7 +48,7 @@ const toClientTask = (client: ClientWorkFollowResponse, meetings: ClientMeetingR
   };
 };
 
-export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refreshKey = 0, active = true }: Props) {
+export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refreshKey = 0, active = true, historyCycle }: Props) {
   const { width } = useWindowDimensions();
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
   const [clients, setClients] = useState<SalesTask[]>([]);
@@ -54,31 +56,107 @@ export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refresh
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ClientTaskQueueProgress>({
+    loadedClients: 0, totalClients: null, loadedPages: 0, totalPages: 0,
+    queueComplete: false, historyPending: 0, historyCompleted: 0, historyFailed: 0,
+  });
   const loadId = useRef(0);
+  const rawClients = useRef(new Map<string, { client: ClientWorkFollowResponse; index: number }>());
+  const consumedHistoryCycle = useRef<ClientHistoryReadCycle | undefined>(undefined);
+  const pendingHistoryUpdates = useRef(new Map<string, SalesTask>());
+  const historyUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushHistoryUpdates = () => {
+    if (historyUpdateTimer.current) clearTimeout(historyUpdateTimer.current);
+    historyUpdateTimer.current = null;
+    const updates = [...pendingHistoryUpdates.current.values()];
+    pendingHistoryUpdates.current.clear();
+    if (!updates.length) return;
+    setClients(current => {
+      let next = current;
+      updates.forEach(task => {
+        const index = next.findIndex(existing => existing.id === task.id);
+        if (index < 0) return;
+        if (next === current) next = current.slice();
+        next[index] = task;
+      });
+      return next;
+    });
+  };
+  const queueHistoryUpdate = (task: SalesTask) => {
+    pendingHistoryUpdates.current.set(task.id, task);
+    if (!historyUpdateTimer.current) historyUpdateTimer.current = setTimeout(flushHistoryUpdates, 40);
+  };
   const load = useCallback(async (refresh = false) => {
     const id = ++loadId.current;
-    refresh ? setRefreshing(true) : setLoading(true);
+    setLoading(true);
+    setRefreshing(refresh);
     setError(null);
+    setProgress({
+      loadedClients: 0, totalClients: null, loadedPages: 0, totalPages: 0,
+      queueComplete: false, historyPending: 0, historyCompleted: 0, historyFailed: 0,
+    });
     try {
       const scope = clientHistoryService.captureScope();
-      const first = await clientWorkFollowApi.getQueue({ search: '', page: 0, size: 100 });
-      const rest = await Promise.all(Array.from({ length: Math.max(0, (first.totalPages ?? 1) - 1) }, (_, index) => clientWorkFollowApi.getQueue({ search: '', page: index + 1, size: 100 })));
-      const assignedClients = [...(first.content ?? []), ...rest.flatMap((page) => page.content ?? [])];
-      if (id !== loadId.current) return;
-      if (!clientHistoryService.isCurrentScope(scope)) throw new Error('Client history account changed.');
-      const tasks = await Promise.all(assignedClients.map(async (client, index) => {
-        const code = client.clientCode?.trim();
-        const meetings = code ? await clientHistoryService.refresh(code, true).catch(() => []) : [];
-        return toClientTask(client, meetings, index);
-      }));
-      if (id === loadId.current && clientHistoryService.isCurrentScope(scope)) setClients(tasks);
+      const cycle = historyCycle && consumedHistoryCycle.current !== historyCycle ? historyCycle : undefined;
+      consumedHistoryCycle.current = historyCycle;
+      const current = () => id === loadId.current && clientHistoryService.isCurrentScope(scope);
+      pendingHistoryUpdates.current.clear();
+      rawClients.current.clear();
+      if (historyUpdateTimer.current) clearTimeout(historyUpdateTimer.current);
+      historyUpdateTimer.current = null;
+      await loadClientTaskQueue({
+        valid: current,
+        cycle,
+        onClients: (assignedClients, nextProgress, startIndex) => {
+          if (!current()) return;
+          const tasks = assignedClients.map((client, index): SalesTask => {
+            if (client.clientCode) rawClients.current.set(client.clientCode, { client, index: startIndex + index });
+            return { ...toClientTask(client, clientHistoryService.getSnapshot(client.clientCode ?? '').history ?? [], startIndex + index), historyLoadState: client.clientCode?.trim() ? 'loading' : 'error', verificationPending: true, remarks: 'Loading meeting history...', lastUpdated: 'Loading...', nextFollowUpDate: 'Loading...' };
+          });
+          if (startIndex === 0) setClients(tasks);
+          else setClients(previous => {
+            const identities = new Set(previous.map(task => task.id));
+            const additions = tasks.filter(task => !identities.has(task.id));
+            return additions.length ? [...previous, ...additions] : previous;
+          });
+        },
+        onHistory: (client, index, history) => {
+          if (current()) queueHistoryUpdate(toClientTask(client, history, index));
+        },
+        onHistoryError: code => {
+          const source = rawClients.current.get(code);
+          if (current() && source) {
+            const cached = clientHistoryService.getSnapshot(code).history;
+            queueHistoryUpdate({ ...toClientTask(source.client, cached ?? [], source.index),
+              ...(cached === undefined ? { remarks: 'Meeting history could not be loaded.', lastUpdated: 'Unavailable', nextFollowUpDate: 'Unavailable' } : {}),
+              historyLoadState: 'error', verificationPending: true });
+          }
+        },
+        onProgress: nextProgress => {
+          if (!current()) return;
+          setProgress(nextProgress);
+          if (nextProgress.queueComplete) setLoading(false);
+        },
+      });
     } catch (cause) {
       if (id === loadId.current) setError(cause instanceof Error ? cause.message : 'Client work follow could not be loaded.');
     } finally {
-      if (id === loadId.current) { setLoading(false); setRefreshing(false); }
+      if (id === loadId.current) { setLoading(false); setRefreshing(false); flushHistoryUpdates(); }
     }
-  }, []);
-  useEffect(() => { void load(); return () => { loadId.current += 1; }; }, [load, refreshKey]);
+  }, [historyCycle]);
+  useEffect(() => {
+    void load();
+    return () => {
+      loadId.current += 1;
+      if (historyUpdateTimer.current) clearTimeout(historyUpdateTimer.current);
+      historyUpdateTimer.current = null;
+      pendingHistoryUpdates.current.clear();
+    };
+  }, [load, refreshKey]);
+  useEffect(() => clientHistoryService.subscribeInvalidatedHistory((code, history) => {
+    const source = rawClients.current.get(code);
+    if (source) queueHistoryUpdate(toClientTask(source.client, history, source.index));
+  }), []);
   const wasActive = useRef(active);
   useEffect(() => {
     if (active && !wasActive.current) void load(true);
@@ -102,12 +180,14 @@ export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refresh
         <Icon source="magnify" size={19} color="#3156C8" />
         <TextInput value={search} onChangeText={setSearch} placeholder="Search by client name, mobile or code" placeholderTextColor="#94A3B8" style={styles.search} />
       </View>
-      {loading ? (
+      {loading && !clients.length ? (
         <View style={styles.state}><ActivityIndicator color="#3156C8" /><Text style={styles.stateText}>Loading assigned clients...</Text></View>
-      ) : error ? (
+      ) : error && !clients.length ? (
         <View style={styles.state}><Icon source="alert-circle-outline" size={34} color="#B91C1C" /><Text style={styles.stateText}>{error}</Text></View>
       ) : (
         <ScrollView contentContainerStyle={styles.cards} showsVerticalScrollIndicator={false}>
+          {error ? <Text accessibilityRole="alert" style={[styles.stateText, { width: '100%' }]}>Refresh failed: {error}. Showing previously loaded clients; tap Refresh to retry.</Text> : null}
+          {progress.historyFailed > 0 ? <Text accessibilityRole="alert" style={[styles.stateText, { width: '100%' }]}>Meeting history could not be loaded for {progress.historyFailed} clients. Their client cards remain available; tap Refresh to retry.</Text> : null}
           {visible.length ? visible.map((client) => (
             <SalesTaskCard key={client.id} task={client} width={cardWidth} onUpdateMeeting={onUpdateMeeting} onOpenDetails={onOpenDetails} />
           )) : (

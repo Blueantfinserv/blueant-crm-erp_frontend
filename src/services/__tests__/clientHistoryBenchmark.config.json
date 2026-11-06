@@ -1,0 +1,9 @@
+{
+  "environment": "authorized TEST only",
+  "concurrencyCandidates": [2, 4, 6, 8],
+  "clientCounts": [100, 300, 500],
+  "scenarios": ["cold", "warm"],
+  "repetitions": 3,
+  "runtimeConcurrency": 50,
+  "measurements": "PENDING: no authorized TEST HAR supplied"
+}

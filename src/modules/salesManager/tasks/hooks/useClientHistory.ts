@@ -12,8 +12,15 @@ export function useClientHistory(code?: string) {
   useEffect(() => {
     if (!code) return;
     const publish = () => setSnapshot(clientHistoryService.getSnapshot(code));
+    let disposed = false;
+    let scheduled = false;
     const refresh = () => {
-      if (canRefreshClientHistory()) void clientHistoryService.refresh(code).catch(() => undefined);
+      if (scheduled || disposed) return;
+      scheduled = true;
+      void Promise.resolve().then(() => {
+        scheduled = false;
+        if (!disposed && canRefreshClientHistory()) void clientHistoryService.refresh(code, false, () => !disposed).catch(() => undefined);
+      });
     };
     const resume = refresh;
     const unsubscribe = clientHistoryService.subscribe(publish);
@@ -24,6 +31,7 @@ export function useClientHistory(code?: string) {
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', resume);
     if (typeof window !== 'undefined') window.addEventListener('online', resume);
     return () => {
+      disposed = true;
       clearInterval(timer);
       unsubscribe();
       appState.remove();

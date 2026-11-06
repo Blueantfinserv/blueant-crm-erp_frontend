@@ -24,7 +24,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
   const tone = task.taskKind === 'CLIENT' ? { accent: '#0F766E', soft: '#ECFDF5', border: '#5EEAD4' } : prospectTones[task.schedule];
   const isRemovedLead = task.taskKind === 'LEAD'
     && (task.leadStatus === 'REMOVED' || task.leadStatus === 'NOT_INTERESTED');
-  const isVerificationPending = task.verificationPending === true;
+  const isVerificationPending = task.verificationPending === true || (task.taskKind === 'CLIENT' && !!task.historyLoadState);
   const recordedMeetingCount = task.clientMeetingCount ?? 0;
   const clientMeetingSummary = recordedMeetingCount > 0
     ? `${recordedMeetingCount} meeting${recordedMeetingCount === 1 ? '' : 's'} recorded`
@@ -129,7 +129,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
         <View style={styles.clientMeetingSummary}>
           <Icon source="calendar-check-outline" size={13} color={tone.accent} />
           <Text style={[styles.clientMeetingSummaryText, { color: tone.accent }]}>
-            {clientMeetingSummary}
+            {task.historyLoadState === 'loading' ? 'Loading meeting history...' : task.historyLoadState === 'error' ? 'Meeting history unavailable' : clientMeetingSummary}
           </Text>
         </View>
       ) : null}
@@ -137,7 +137,7 @@ export const SalesTaskCard = memo(function SalesTaskCard({ task, width, onUpdate
       {isVerificationPending ? (
         <View style={styles.verificationPendingBadge}>
           <Icon source="clock-alert-outline" size={12} color="#B45309" />
-          <Text style={styles.verificationPendingText}>Verification Pending</Text>
+          <Text style={styles.verificationPendingText}>{task.historyLoadState === 'loading' ? 'Checking verification...' : task.historyLoadState === 'error' ? 'History refresh failed' : 'Verification Pending'}</Text>
         </View>
       ) : null}
 

@@ -1,3 +1,4 @@
+import type { ClientWorkFollowResponse } from '../../../../types/crm';
 import { selectLocationMeeting } from '../locationMeetingSelector';
 import type { SalesTask } from '../types/tasks';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -13,8 +14,9 @@ import { calendarDateFromValue, todayCalendarDate } from '../taskDateUtils';
 import { meetingTitleOrder, mapLeadToSalesTask, mapMeetingToSalesTask } from '../taskMappers';
 import { getActionableTaskMeetings, isHiddenCompletedLead, isRemovedLead } from '../taskMeetingSelectors';
 import { filterSalesTasks, getTaskFilterCounts } from '../taskFilters';
+import type { ClientTaskQueueProgress } from '../clientTaskData';
 
-export function useSalesManagerTasks({ active = true, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
+export function useSalesManagerTasks({ active = true, historyCycle, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
   const [search, setSearch] = useState('');
   const [taskType, setTaskType] = useState<TaskTypeFilter>(initialTaskType);
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
@@ -30,41 +32,141 @@ export function useSalesManagerTasks({ active = true, includeClientTasks = false
   const [clientTasks, setClientTasks] = useState<SalesTask[]>([]);
   const [clientLoading, setClientLoading] = useState(includeClientTasks);
   const [clientError, setClientError] = useState<string | null>(null);
+  const [clientProgress, setClientProgress] = useState<ClientTaskQueueProgress>({
+    loadedClients: 0, totalClients: null, loadedPages: 0, totalPages: 0,
+    queueComplete: false, historyPending: 0, historyCompleted: 0, historyFailed: 0,
+  });
   const clientLoadId = useRef(0);
+  const clientRuntime = useRef<{ store: typeof import('../../../../services/ClientHistoryService').clientHistoryService; map: typeof import('../clientTaskData').mapClientTaskWithHistory } | null>(null);
+  const rawClients = useRef(new Map<string, { client: ClientWorkFollowResponse; index: number }>());
+  const pendingClientUpdates = useRef(new Map<string, { task: SalesTask; loadId: number }>());
+  const clientUpdateTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const consumedHistoryCycle = useRef<typeof historyCycle>(undefined);
+  const refreshSequence = useRef(0);
+  const refreshRunning = useRef(false);
   const mountRefreshCycle = useRef(Symbol('task mount')).current;
+  const flushClientUpdates = () => {
+    if (clientUpdateTimer.current) clearTimeout(clientUpdateTimer.current);
+    clientUpdateTimer.current = null;
+    const updates = [...pendingClientUpdates.current.values()];
+    pendingClientUpdates.current.clear();
+    if (!updates.length) return;
+    setClientTasks(current => {
+      let next = current;
+      updates.forEach(({ task, loadId }) => {
+        if (loadId !== clientLoadId.current) return;
+        const index = next.findIndex(existing => existing.id === task.id);
+        if (index < 0) return;
+        if (next === current) next = current.slice();
+        next[index] = task;
+      });
+      return next;
+    });
+  };
+  const queueClientUpdate = (task: SalesTask, loadId: number) => {
+    pendingClientUpdates.current.set(task.id, { task, loadId });
+    if (!clientUpdateTimer.current) clientUpdateTimer.current = setTimeout(flushClientUpdates, 40);
+  };
   const loadClients = async () => {
     if (!includeClientTasks) return;
     const id = ++clientLoadId.current;
-    setClientLoading(true); setClientError(null);
+    pendingClientUpdates.current.clear();
+    if (clientUpdateTimer.current) clearTimeout(clientUpdateTimer.current);
+    clientUpdateTimer.current = null;
+    rawClients.current.clear();
+    setClientLoading(true);
+    setClientError(null);
+    setClientProgress({
+      loadedClients: 0, totalClients: null, loadedPages: 0, totalPages: 0,
+      queueComplete: false, historyPending: 0, historyCompleted: 0, historyFailed: 0,
+    });
     try {
-      const { loadClientTaskQueue } = await import('../clientTaskData');
-      const records = await loadClientTaskQueue();
-      if (id === clientLoadId.current) setClientTasks(records);
+      const { loadClientTaskQueue, mapClientTaskWithHistory } = await import('../clientTaskData');
+      const { clientHistoryService } = await import('../../../../services/ClientHistoryService');
+      clientRuntime.current = { store: clientHistoryService, map: mapClientTaskWithHistory };
+      if (id !== clientLoadId.current) return;
+      const cycle = historyCycle && consumedHistoryCycle.current !== historyCycle ? historyCycle : undefined;
+      consumedHistoryCycle.current = historyCycle;
+      await loadClientTaskQueue({
+        valid: () => id === clientLoadId.current,
+        cycle,
+        onPage: (records, progress) => {
+          if (id !== clientLoadId.current) return;
+          if (progress.loadedPages === 1) setClientTasks(records);
+          else setClientTasks(current => {
+            const identities = new Set(current.map(task => task.id));
+            const additions = records.filter(task => !identities.has(task.id));
+            return additions.length ? [...current, ...additions] : current;
+          });
+        },
+        onClients: (clients, _progress, start) => { clients.forEach((client, index) => { if (client.clientCode) rawClients.current.set(client.clientCode, { client, index: start + index }); }); },
+        onTaskUpdate: task => { if (id === clientLoadId.current) queueClientUpdate(task, id); },
+        onProgress: progress => {
+          if (id !== clientLoadId.current) return;
+          setClientProgress(progress);
+          if (progress.queueComplete) setClientLoading(false);
+        },
+      });
     } catch (error) {
       if (id === clientLoadId.current) setClientError(error instanceof Error ? error.message : 'Client tasks could not be loaded.');
-    } finally { if (id === clientLoadId.current) setClientLoading(false); }
+    } finally {
+      if (id === clientLoadId.current) {
+        setClientLoading(false);
+        flushClientUpdates();
+      }
+    }
   };
   useEffect(() => {
     if (includeClientTasks) void loadClients();
-    else { setClientTasks([]); setClientLoading(false); setClientError(null); }
-    return () => { clientLoadId.current += 1; };
-  }, [includeClientTasks]);
+    else {
+      setClientTasks([]);
+      setClientLoading(false);
+      setClientError(null);
+      setClientProgress({
+        loadedClients: 0, totalClients: null, loadedPages: 0, totalPages: 0,
+        queueComplete: false, historyPending: 0, historyCompleted: 0, historyFailed: 0,
+      });
+    }
+    return () => {
+      clientLoadId.current += 1;
+      if (clientUpdateTimer.current) clearTimeout(clientUpdateTimer.current);
+      clientUpdateTimer.current = null;
+      pendingClientUpdates.current.clear();
+    };
+  }, [includeClientTasks, historyCycle]);
   // Retain one complete calculation input while a visible RM/SC list refreshes.
   // Partial service/page completions must never publish partial counts or results.
   const complete = useRef<{
     leads: LeadSearchState['leads']; meetings: MeetingQueueState['meetings'];
     pending: MeetingResponse[]; verified: MeetingResponse[]; clients: SalesTask[];
   } | null>(null);
-  const loading = leadState.isLoading || meetingState.isLoading || clientLoading;
-  const failed = Boolean(leadState.error || meetingState.error || clientError);
-  if (includeClientTasks && !loading && !failed) complete.current = {
+  const loading = clientTasks.some(task => task.historyLoadState === 'loading') || leadState.isLoading || meetingState.isLoading || clientLoading || clientProgress.historyPending > 0;
+  const failed = Boolean(leadState.error || meetingState.error || clientError || clientProgress.historyFailed);
+  if (includeClientTasks && clientProgress.queueComplete && !loading && !failed) complete.current = {
     leads: leadState.leads, meetings: meetingState.meetings,
     pending: meetingService.getPendingVerificationMeetings(), verified: meetingService.getVerifiedMeetings(), clients: clientTasks,
   };
   const source = includeClientTasks && complete.current ? complete.current : {
     leads: leadState.leads, meetings: meetingState.meetings,
-    pending: meetingService.getPendingVerificationMeetings(), verified: meetingService.getVerifiedMeetings(), clients: clientTasks,
+    pending: meetingService.getPendingVerificationMeetings(), verified: meetingService.getVerifiedMeetings(), clients: clientTasks.filter(task => !task.historyLoadState),
   };
+  useEffect(() => {
+    if (!includeClientTasks) return;
+    let disposed = false;
+    let unsubscribe: (() => void) | undefined;
+    void import('../../../../services/ClientHistoryService').then(({ clientHistoryService }) => {
+      if (disposed) return;
+      unsubscribe = clientHistoryService.subscribeInvalidatedHistory((code, history) => {
+        const source = rawClients.current.get(code);
+        const runtime = clientRuntime.current;
+        if (!source || !runtime) return;
+        const task = runtime.map(source.client, source.index, history);
+        if (complete.current) complete.current = { ...complete.current, clients: complete.current.clients.map(old => old.id === task.id ? task : old) };
+        queueClientUpdate(task, clientLoadId.current);
+      });
+    });
+    return () => { disposed = true; unsubscribe?.(); };
+  }, [includeClientTasks]);
   const tasks = useMemo(
     () => {
       const actionableMeetings = getActionableTaskMeetings(source.meetings, source.leads);
@@ -194,19 +296,21 @@ export function useSalesManagerTasks({ active = true, includeClientTasks = false
     return unsubscribe;
   }, []);
 
-  const refreshTasks = async () => {
-    if (isRefreshing) return;
+  const refreshTasks = async (newNavigation = false) => {
+    if ((includeClientTasks ? refreshRunning.current && !newNavigation : isRefreshing)) return;
+    refreshRunning.current = true;
+    const sequence = ++refreshSequence.current;
     setIsRefreshing(true);
     try {
       await Promise.all([leadSearchService.loadLeads(), meetingService.loadMeetings(), loadClients()]);
     } finally {
-      setIsRefreshing(false);
+      if (sequence === refreshSequence.current) { refreshRunning.current = false; setIsRefreshing(false); }
     }
   };
 
   const wasActive = useRef(active);
   useEffect(() => {
-    if (includeClientTasks && active && !wasActive.current) void refreshTasks();
+    if (includeClientTasks && active && !wasActive.current) void refreshTasks(true);
     wasActive.current = active;
   }, [active]);
 
@@ -249,5 +353,7 @@ export function useSalesManagerTasks({ active = true, includeClientTasks = false
 
   const filteredTasks = useMemo(() => filterSalesTasks({ allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, leadFilter, meetingFilter, pendingTaskMode, search, taskStage, taskToDoMode, taskType, tasks, todaysTaskMode }), [allLeadTasks, allLeadsMode, allTaskFilter, allTaskMode, future3DaysTaskMode, futureDayFilter, leadFilter, meetingFilter, pendingTaskMode, search, taskStage, taskToDoMode, taskType, tasks, todaysTaskMode]);
 
-  return { hasCompleteData: includeClientTasks && complete.current !== null, clientLoading, clientError, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks };
+  const hasCompleteData = includeClientTasks && complete.current !== null;
+  const taskDataComplete = hasCompleteData && !loading && !failed && clientProgress.queueComplete;
+  return { hasCompleteData, taskDataComplete, clientLoading, clientError, clientProgress, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks };
 }

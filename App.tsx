@@ -40,7 +40,7 @@ import { SalesManagerLeadDetailScreen } from './src/modules/salesManager/tasks/S
 import { leadService } from './src/services/LeadService';
 import { leadSearchService } from './src/services/LeadSearchService';
 import { meetingService } from './src/services/MeetingService';
-import { clientHistoryService, hasPendingClientVerification } from './src/services/ClientHistoryService';
+import { clientHistoryService, hasPendingClientVerification, type ClientHistoryReadCycle } from './src/services/ClientHistoryService';
 import { meetingApi } from './src/api/meeting';
 import type { CreateLeadRequest } from './src/types/lead';
 import type { MeetingFormSubmission } from './src/types/meeting';
@@ -143,6 +143,7 @@ function AppShell() {
   const [salesTaskFilter, setSalesTaskFilter] = useState<'Today' | 'Pending' | 'Future 3 Days'>('Today');
   const [salesTaskView, setSalesTaskView] = useState<SalesTaskView>('task-to-do');
   const [salesTaskScreenKey, setSalesTaskScreenKey] = useState(0);
+  const clientHistoryReloadCycle = useRef<ClientHistoryReadCycle | undefined>(undefined);
   const screenHistory = useRef<ScreenState[]>([]);
   const fade = useRef(new Animated.Value(0)).current;
   const authenticatedUserKey = auth.isAuthenticated && auth.user
@@ -220,6 +221,7 @@ function AppShell() {
     setSelectedDashboardListId(null);
     setSelectedSalesTask(null);
     setClientMeetingTask(null);
+    clientHistoryReloadCycle.current = undefined;
     setLeadForm(null);
     if (isSalesWorkspaceExperience(getRoleExperience(backendRole))) {
       setSalesTaskView('task-to-do');
@@ -420,6 +422,7 @@ function AppShell() {
       return renderShell(<View style={{ flex: 1, minHeight: 0 }}>
         <View style={{ flex: 1, minHeight: 0, display: screen === 'sales-task-details' ? 'none' : 'flex' }}>
           {returningList === 'leads' ? <SalesManagerTasksScreen
+              historyCycle={clientHistoryReloadCycle.current}
               active={screen === 'leads'}
               includeClientTasks={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR'}
               key={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR' ? `${authenticatedUserKey}:${salesTaskScreenKey}` : salesTaskScreenKey}
@@ -437,6 +440,7 @@ function AppShell() {
                 navigate('sales-task-details');
               }}
             /> : <ClientWorkFollowScreen
+            historyCycle={clientHistoryReloadCycle.current}
             active={screen === 'client-work-follow'}
             key={authenticatedUserKey}
             refreshKey={salesTaskScreenKey}
@@ -540,6 +544,7 @@ function AppShell() {
             <CrmOnboardingScreen />
           ) : isSalesWorkspaceExperience(experience) ? (
             <SalesManagerTasksScreen
+              historyCycle={clientHistoryReloadCycle.current}
               includeClientTasks={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR'}
               key={backendRole === 'RELATIONSHIP_MANAGER' || backendRole === 'SALES_COORDINATOR' ? `${authenticatedUserKey}:${salesTaskScreenKey}` : salesTaskScreenKey}
               initialTaskType={salesTaskFilter}
@@ -564,6 +569,7 @@ function AppShell() {
       case 'client-work-follow':
         return renderShell(
           <ClientWorkFollowScreen
+            historyCycle={clientHistoryReloadCycle.current}
             key={authenticatedUserKey}
             refreshKey={salesTaskScreenKey}
             onUpdateMeeting={(client) => void openTaskWorkflowForm(client)}
@@ -645,7 +651,7 @@ function AppShell() {
         <Modal transparent visible={Boolean(clientMeetingTask)} animationType="fade" onRequestClose={() => setClientMeetingTask(null)}>
           <Pressable style={styles.newLeadBackdrop} onPress={() => setClientMeetingTask(null)}>
             <Pressable style={styles.newLeadModal} onPress={() => {}}>
-              {clientMeetingTask ? <ClientMeetingScheduleForm client={clientMeetingTask} onClose={() => setClientMeetingTask(null)} onSuccess={() => { setClientMeetingTask(null); setSalesTaskScreenKey((current) => current + 1); }} /> : null}
+              {clientMeetingTask ? <ClientMeetingScheduleForm client={clientMeetingTask} onClose={() => setClientMeetingTask(null)} onSuccess={(cycle) => { clientHistoryReloadCycle.current = cycle; setClientMeetingTask(null); setSalesTaskScreenKey((current) => current + 1); }} /> : null}
             </Pressable>
           </Pressable>
         </Modal>

@@ -13,12 +13,12 @@ import type { SalesManagerTasksProps } from './types/screen';
 
 export { matchesAssignmentTaskFilter } from './taskDateUtils';
 
-export function SalesManagerTasksScreen({ active = true, onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
+export function SalesManagerTasksScreen({ active = true, historyCycle, onCreateNewLead, onUpdateMeeting, onOpenLeadDetails, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
   const { isDark } = useAppTheme();
   const { width } = useWindowDimensions();
   const isMobile = width < 700;
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
-  const { hasCompleteData, clientLoading, clientError, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks } = useSalesManagerTasks({ active, includeClientTasks, initialTaskType, allTaskMode, taskToDoMode, todaysTaskMode, pendingTaskMode, future3DaysTaskMode, allLeadsMode });
+  const { hasCompleteData, taskDataComplete, clientLoading, clientError, clientProgress, search, setSearch, taskType, setTaskType, taskStage, setTaskStage, leadFilter, setLeadFilter, meetingFilter, setMeetingFilter, allTaskFilter, setAllTaskFilter, futureDayFilter, setFutureDayFilter, openDropdown, setOpenDropdown, searchFocused, setSearchFocused, isRefreshing, leadState, meetingState, meetingFilterOptions, allTaskFilterOptions, refreshTasks, getLeadFilterCount, getMeetingFilterCount, filteredTasks } = useSalesManagerTasks({ active, historyCycle, includeClientTasks, initialTaskType, allTaskMode, taskToDoMode, todaysTaskMode, pendingTaskMode, future3DaysTaskMode, allLeadsMode });
 
   const header = (<View style={styles.stickyHeader}>
           <View style={styles.headerCard}>
@@ -265,27 +265,31 @@ export function SalesManagerTasksScreen({ active = true, onCreateNewLead, onUpda
           </View>
         </View>);
   if (includeClientTasks) {
-    const loading = leadState.isLoading || meetingState.isLoading || clientLoading;
-    const error = leadState.error ?? meetingState.error ?? clientError;
+    const loading = leadState.isLoading || meetingState.isLoading || clientLoading || clientProgress.historyPending > 0;
+    const error = leadState.error ?? meetingState.error ?? clientError ?? (clientProgress.historyFailed > 0 ? 'Client meeting history is incomplete.' : null);
     return <VirtualizedTaskList header={header}
       summary={<>
         <View style={styles.bodyHeader}>
             <Text style={styles.bodyTitle}>Task Pipeline</Text>
             <Text style={[styles.bodyCount, isDark && styles.darkModeWhiteSource]}>
-              {filteredTasks.length ? `${filteredTasks.length} tasks` : '0 tasks'}
+              {filteredTasks.length} {taskDataComplete ? 'tasks' : 'tasks loaded'}
             </Text>
           </View>
-        {hasCompleteData && loading ? <Text style={styles.emptyText}>Refreshing tasks. Showing the previous complete results.</Text> : null}
-        {hasCompleteData && !loading && error ? <Text accessibilityRole="alert" style={styles.emptyText}>Refresh failed: {error}. Showing the previous complete results; tap Refresh to retry.</Text> : null}
+        {hasCompleteData && loading ? <Text style={styles.emptyText}>Refreshing task data; loaded tasks remain available.</Text> : null}
+        {error ? <Text accessibilityRole="alert" style={styles.emptyText}>Some task data could not be loaded: {error}. Loaded tasks are preserved; tap Refresh to retry.</Text> : null}
+        {clientProgress.historyFailed > 0 ? <Text accessibilityRole="alert" style={styles.emptyText}>Meeting history could not be loaded for {clientProgress.historyFailed} clients. These clients cannot be classified until history is available; tap Refresh to retry.</Text> : null}
       </>}
-      tasks={hasCompleteData || (!loading && !error) ? filteredTasks : []}
-      placeholder={loading && !hasCompleteData ? <View style={styles.emptyState}>
+      tasks={filteredTasks}
+      placeholder={loading && !hasCompleteData && !filteredTasks.length ? <View style={styles.emptyState}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
-              <Text style={styles.emptyTitle}>Loading tasks</Text>
+              <Text style={styles.emptyTitle}>Loading task data</Text>
             </View> : error && !hasCompleteData ? <View style={styles.emptyState}>
               <Icon source="alert-circle-outline" size={30} color="#DC2626" />
               <Text style={styles.emptyTitle}>Tasks could not be loaded</Text>
-              <Text style={styles.emptyText}>{leadState.error ?? meetingState.error ?? clientError}</Text>
+              <Text style={styles.emptyText}>{error}</Text>
+            </View> : loading && !filteredTasks.length ? <View style={styles.emptyState}>
+              <ActivityIndicator size="small" color={theme.colors.primary} />
+              <Text style={styles.emptyTitle}>Loading more task data</Text>
             </View> : <View style={styles.emptyState}>
               <Icon source="clipboard-search-outline" size={30} color={theme.colors.subtle} />
               <Text style={styles.emptyTitle}>{allLeadsMode && !search ? 'No prospects assigned' : allLeadsMode ? 'No matching prospects found' : pendingTaskMode && !search ? 'No pending tasks' : future3DaysTaskMode && !search ? 'No tasks scheduled' : 'No matching tasks found'}</Text>
