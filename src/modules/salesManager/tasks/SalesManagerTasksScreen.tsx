@@ -316,12 +316,12 @@ export function SalesManagerTasksScreen({ active = true, historyCycle, onCreateN
               {filteredTasks.length ? `${filteredTasks.length} tasks` : '0 tasks'}
             </Text>
           </View>
-          {leadState.isLoading || meetingState.isLoading || clientLoading ? (
+          {(leadState.isLoading || meetingState.isLoading || clientLoading) && !filteredTasks.length ? (
             <View style={styles.emptyState}>
               <ActivityIndicator size="small" color={theme.colors.primary} />
               <Text style={styles.emptyTitle}>Loading tasks</Text>
             </View>
-          ) : leadState.error || meetingState.error || clientError ? (
+          ) : (leadState.error || meetingState.error || clientError) && !filteredTasks.length ? (
             <View style={styles.emptyState}>
               <Icon source="alert-circle-outline" size={30} color="#DC2626" />
               <Text style={styles.emptyTitle}>Tasks could not be loaded</Text>

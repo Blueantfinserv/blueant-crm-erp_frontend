@@ -38,6 +38,7 @@ export class ClientHistoryService {
   private epoch = 0;
   private entries = new Map<string, Entry>();
   private listeners = new Set<() => void>();
+  private accountChangeListeners = new Set<(scope: number) => void>();
   private serial = 0;
   private activeRequests = 0;
   private waiting: Array<() => void> = [];
@@ -178,7 +179,12 @@ export class ClientHistoryService {
     this.epoch += 1;
     this.entries.forEach(entry => entry.finishMutation?.());
     this.entries.clear();
+    this.accountChangeListeners.forEach(listener => listener(this.epoch));
     this.emit();
+  }
+  subscribeAccountChange(listener: (scope: number) => void) {
+    this.accountChangeListeners.add(listener);
+    return () => { this.accountChangeListeners.delete(listener); };
   }
   captureScope() {
     if (!this.account) throw new Error('Client history account is unavailable.');

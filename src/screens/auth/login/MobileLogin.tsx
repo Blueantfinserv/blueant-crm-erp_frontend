@@ -1,7 +1,8 @@
-import { Image, View, StyleSheet, Text, useWindowDimensions } from 'react-native';
+import { View, StyleSheet, Text, useWindowDimensions } from 'react-native';
 import { BackgroundCurves } from '../../../components/BackgroundCurves';
 import { LoginCard, LogoRow, LoginScreenProps } from './LoginShared';
 import { FooterLink } from '../../../components/LegalPage';
+import { LoginMascot } from './LoginMascot';
 
 export function MobileLogin(props: LoginScreenProps) {
   const { width, height } = useWindowDimensions();
@@ -20,11 +21,7 @@ export function MobileLogin(props: LoginScreenProps) {
       <View style={styles.top}>
         <LogoRow width={logoWidth} height={logoHeight} />
         <View style={[styles.mascotStage, { width: mascotWidth, height: mascotHeight }]}>
-          <Image
-            source={require('../../../../assets/download.gif')}
-            style={[styles.gifSlot, { transform: [{ scale: mascotScale }] }]}
-            resizeMode="contain"
-          />
+          <LoginMascot style={[styles.gifSlot, { transform: [{ scale: mascotScale }] }]} />
         </View>
       </View>
 

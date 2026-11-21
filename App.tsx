@@ -366,7 +366,7 @@ function AppShell() {
       if (key === 'pending-task') setSalesTaskFilter('Pending');
       if (key === 'future-3-days') setSalesTaskFilter('Future 3 Days');
       setSalesTaskView(taskView);
-      setSalesTaskScreenKey((current) => current + 1);
+      if (taskView === 'all-leads') setSalesTaskScreenKey((current) => current + 1);
       setActiveTab('all-tasks');
       navigate('leads');
     };
@@ -510,7 +510,7 @@ function AppShell() {
           ) : (
             <ComingSoon title={comingSoonModule} />
           ),
-          { salesMenu: true, scrollable: experience !== 'SALES_COORDINATOR' }
+          { salesMenu: true, scrollable: experience !== 'SALES_COORDINATOR' && experience !== 'CRM_ONBOARDING' }
         );
       case 'dashboard-list': {
         const selectedList = dashboardListsData.find((list) => list.id === selectedDashboardListId);
@@ -564,7 +564,7 @@ function AppShell() {
           ) : (
             <LeadScreen onOpenLeadDetails={() => navigate('lead-details')} />
           ),
-          { salesMenu: true, scrollable: !isSalesWorkspaceExperience(experience) }
+          { salesMenu: true, scrollable: !isSalesWorkspaceExperience(experience) && experience !== 'CRM_ONBOARDING' }
         );
       case 'client-work-follow':
         return renderShell(

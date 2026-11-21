@@ -14,9 +14,10 @@ import { calendarDateFromValue, todayCalendarDate } from '../taskDateUtils';
 import { meetingTitleOrder, mapLeadToSalesTask, mapMeetingToSalesTask } from '../taskMappers';
 import { getActionableTaskMeetings, isHiddenCompletedLead, isRemovedLead } from '../taskMeetingSelectors';
 import { filterSalesTasks, getTaskFilterCounts } from '../taskFilters';
+import { mergeReadyClientTasks } from '../taskSource';
 import type { ClientTaskQueueProgress } from '../clientTaskData';
 
-export function useSalesManagerTasks({ active = true, historyCycle, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
+export function useSalesManagerTasks({ historyCycle, includeClientTasks = false, initialTaskType = 'Today', allTaskMode = false, taskToDoMode = false, todaysTaskMode = false, pendingTaskMode = false, future3DaysTaskMode = false, allLeadsMode = false }: SalesManagerTasksProps) {
   const [search, setSearch] = useState('');
   const [taskType, setTaskType] = useState<TaskTypeFilter>(initialTaskType);
   const [taskStage, setTaskStage] = useState<TaskStageFilter>('Meetings');
@@ -37,6 +38,7 @@ export function useSalesManagerTasks({ active = true, historyCycle, includeClien
     queueComplete: false, historyPending: 0, historyCompleted: 0, historyFailed: 0,
   });
   const clientLoadId = useRef(0);
+  const clientLoadInFlight = useRef(false);
   const clientRuntime = useRef<{ store: typeof import('../../../../services/ClientHistoryService').clientHistoryService; map: typeof import('../clientTaskData').mapClientTaskWithHistory } | null>(null);
   const rawClients = useRef(new Map<string, { client: ClientWorkFollowResponse; index: number }>());
   const pendingClientUpdates = useRef(new Map<string, { task: SalesTask; loadId: number }>());
@@ -67,8 +69,10 @@ export function useSalesManagerTasks({ active = true, historyCycle, includeClien
     pendingClientUpdates.current.set(task.id, { task, loadId });
     if (!clientUpdateTimer.current) clientUpdateTimer.current = setTimeout(flushClientUpdates, 40);
   };
-  const loadClients = async () => {
+  const loadClients = async (forceRefresh = false) => {
     if (!includeClientTasks) return;
+    if (clientLoadInFlight.current) return;
+    clientLoadInFlight.current = true;
     const id = ++clientLoadId.current;
     pendingClientUpdates.current.clear();
     if (clientUpdateTimer.current) clearTimeout(clientUpdateTimer.current);
@@ -90,6 +94,7 @@ export function useSalesManagerTasks({ active = true, historyCycle, includeClien
       await loadClientTaskQueue({
         valid: () => id === clientLoadId.current,
         cycle,
+        forceRefresh: forceRefresh || Boolean(cycle),
         onPage: (records, progress) => {
           if (id !== clientLoadId.current) return;
           if (progress.loadedPages === 1) setClientTasks(records);
@@ -113,6 +118,7 @@ export function useSalesManagerTasks({ active = true, historyCycle, includeClien
       if (id === clientLoadId.current) {
         setClientLoading(false);
         flushClientUpdates();
+        clientLoadInFlight.current = false;
       }
     }
   };
@@ -129,6 +135,7 @@ export function useSalesManagerTasks({ active = true, historyCycle, includeClien
     }
     return () => {
       clientLoadId.current += 1;
+      clientLoadInFlight.current = false;
       if (clientUpdateTimer.current) clearTimeout(clientUpdateTimer.current);
       clientUpdateTimer.current = null;
       pendingClientUpdates.current.clear();
@@ -146,10 +153,14 @@ export function useSalesManagerTasks({ active = true, historyCycle, includeClien
     leads: leadState.leads, meetings: meetingState.meetings,
     pending: meetingService.getPendingVerificationMeetings(), verified: meetingService.getVerifiedMeetings(), clients: clientTasks,
   };
-  const source = includeClientTasks && complete.current ? complete.current : {
+  const currentSource = {
     leads: leadState.leads, meetings: meetingState.meetings,
     pending: meetingService.getPendingVerificationMeetings(), verified: meetingService.getVerifiedMeetings(), clients: clientTasks.filter(task => !task.historyLoadState),
   };
+  const source = includeClientTasks && complete.current ? {
+    ...currentSource,
+    clients: mergeReadyClientTasks(complete.current.clients, currentSource.clients),
+  } : currentSource;
   useEffect(() => {
     if (!includeClientTasks) return;
     let disposed = false;
@@ -296,23 +307,18 @@ export function useSalesManagerTasks({ active = true, historyCycle, includeClien
     return unsubscribe;
   }, []);
 
-  const refreshTasks = async (newNavigation = false) => {
-    if ((includeClientTasks ? refreshRunning.current && !newNavigation : isRefreshing)) return;
+  const refreshTasks = async () => {
+    if (refreshRunning.current || isRefreshing || leadState.isLoading || meetingState.isLoading
+      || (includeClientTasks && (clientLoadInFlight.current || clientProgress.historyPending > 0))) return;
     refreshRunning.current = true;
     const sequence = ++refreshSequence.current;
     setIsRefreshing(true);
     try {
-      await Promise.all([leadSearchService.loadLeads(), meetingService.loadMeetings(), loadClients()]);
+      await Promise.all([leadSearchService.loadLeads(), meetingService.loadMeetings(), loadClients(true)]);
     } finally {
       if (sequence === refreshSequence.current) { refreshRunning.current = false; setIsRefreshing(false); }
     }
   };
-
-  const wasActive = useRef(active);
-  useEffect(() => {
-    if (includeClientTasks && active && !wasActive.current) void refreshTasks(true);
-    wasActive.current = active;
-  }, [active]);
 
   useEffect(() => {
     const unsubscribe = meetingService.subscribe(setMeetingState);

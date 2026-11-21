@@ -323,6 +323,12 @@ export type ClientProfileResponse = {
   familyName?: string;
   isFamilyHead?: boolean;
   relationshipToHead?: string;
+  salesPersonId?: number;
+  salesPersonCode?: string;
+  salesPersonName?: string;
+  createdBySalesPersonId?: number;
+  createdBySalesPersonCode?: string;
+  createdBySalesPersonName?: string;
   assignedSalesPersonCode?: string;
   assignedSalesPersonName?: string;
   assignedSalesPersonRole?: string;

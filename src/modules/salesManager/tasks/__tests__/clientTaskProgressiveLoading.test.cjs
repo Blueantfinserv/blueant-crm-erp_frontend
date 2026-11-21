@@ -82,8 +82,8 @@ test('basic client pages publish before histories and each history is deduplicat
   assert.equal(pages[0].progress.loadedClients, 100);
   assert.equal(pages[1].count, 19, 'duplicate clientCode on the second page is discarded');
   assert.equal(progress.at(-1).queueComplete, true);
-  assert.equal(historyRequests.length, 50, 'history workers start immediately but stay capped');
-  assert.equal(peak, 50);
+  assert.equal(historyRequests.length, 6, 'history workers start immediately but stay capped');
+  assert.equal(peak, 6);
 
   while (updates.length < 119) {
     await flush();
@@ -93,7 +93,7 @@ test('basic client pages publish before histories and each history is deduplicat
   }
   assert.equal(updates.length, 119);
   assert.equal(new Set(updates.map(task => task.clientCode)).size, 119);
-  assert.equal(peak, 50);
+  assert.equal(peak, 6);
   assert.equal(progress.at(-1).historyCompleted, 119);
   assert.equal(progress.at(-1).historyPending, 0);
 });
@@ -136,6 +136,57 @@ test('a later queue page failure preserves already published clients', async () 
   await assert.rejects(load({ onPage: tasks => pages.push(...tasks) }), /page unavailable/);
   assert.equal(pages.length, 1);
   assert.equal(pages[0].name, 'Visible client');
+});
+
+test('completed work-follow pages and client histories are reused until an explicit refresh', async () => {
+  let queueRequests = 0, historyRequests = 0;
+  const store = historyStore(async () => { historyRequests += 1; return []; });
+  const load = taskLoader(async () => {
+    queueRequests += 1;
+    return { content: [client('C1', 1)], totalPages: 1, totalElements: 1 };
+  }, store);
+
+  await load();
+  assert.equal(queueRequests, 1);
+  assert.equal(historyRequests, 1);
+
+  await load();
+  assert.equal(queueRequests, 1, 'normal load reuses the successful queue page');
+  assert.equal(historyRequests, 1, 'normal load reuses successful client history');
+
+  await load({ forceRefresh: true });
+  assert.equal(queueRequests, 2, 'explicit refresh fetches the latest queue page');
+  assert.equal(historyRequests, 2, 'explicit refresh fetches the latest client history');
+});
+
+test('concurrent client queue loads share page and history requests', async () => {
+  const queueRequest = deferred(), historyRequest = deferred();
+  let queueRequests = 0, historyRequests = 0;
+  const store = historyStore(() => { historyRequests += 1; return historyRequest.promise; });
+  const load = taskLoader(() => { queueRequests += 1; return queueRequest.promise; }, store);
+  const first = load();
+  const second = load();
+  await flush();
+  assert.equal(queueRequests, 1);
+  queueRequest.resolve({ content: [client('C1', 1)], totalPages: 1, totalElements: 1 });
+  await flush();
+  assert.equal(historyRequests, 1);
+  historyRequest.resolve([]);
+  await Promise.all([first, second]);
+});
+
+test('account changes clear reusable work-follow data and isolate the next load', async () => {
+  let queueRequests = 0, historyRequests = 0;
+  const store = historyStore(async () => { historyRequests += 1; return []; });
+  const load = taskLoader(async () => {
+    queueRequests += 1;
+    return { content: [client('C1', 1)], totalPages: 1, totalElements: 1 };
+  }, store);
+  await load();
+  store.setAccount('SC:2:DV0101');
+  await load();
+  assert.equal(queueRequests, 2);
+  assert.equal(historyRequests, 2);
 });
 
 test('account changes and navigation cancellation suppress stale history updates', async () => {

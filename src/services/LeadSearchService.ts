@@ -75,6 +75,7 @@ export class LeadSearchService {
     const generation = ++this.requestGeneration;
     const assignedUserId = this.assignedUserId;
     const assignedEmployeeCode = this.assignedEmployeeCode;
+    const previousLeads = this.state.leads;
     this.setState({ isLoading: true, error: null });
     try {
       const request = {
@@ -82,42 +83,72 @@ export class LeadSearchService {
         size: 100,
       };
       const response = await leadSearchApi.search({ ...request, page: 0 });
-      const totalPages = response.data?.totalPages ?? 1;
-      const remainingPages = await Promise.all(Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => (
-        leadSearchApi.search({ ...request, page: index + 1 })
-      )));
-      const allLeads = [
-        ...(response.data?.content ?? []),
-        ...remainingPages.flatMap((page) => page.data?.content ?? []),
-      ];
-      // The search response already contains the fields needed by task and dashboard lists.
-      // Fetching every individual lead detail here produces hundreds of simultaneous requests.
-      const seenLeadKeys = new Set<string>();
-      const leads = allLeads.map((lead) => ({
-        ...lead,
-        assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
-      })).filter((lead) => {
-        const key = this.getDeduplicationKey(lead);
-        if (!key) return true;
-        if (seenLeadKeys.has(key)) return false;
-        seenLeadKeys.add(key);
-        return true;
-      });
+      type Lead = LeadSearchState['leads'][number];
+      const totalPages = Math.max(1, response.data?.totalPages ?? 1);
+      const pages = new Map<number, Lead[]>([[0, response.data?.content ?? []]]);
+      const collectLeads = (includePrevious: boolean) => {
+        const byKey = new Map<string, Lead>();
+        const refreshedKeys = new Set<string>();
+        if (includePrevious) previousLeads.forEach((lead) => {
+          const key = this.getDeduplicationKey(lead);
+          if (key) byKey.set(key, lead);
+        });
+        const unkeyed: Lead[] = [];
+        [...pages.keys()].sort((left, right) => left - right).forEach((pageNumber) => {
+          pages.get(pageNumber)?.forEach((lead) => {
+            const key = this.getDeduplicationKey(lead);
+            if (!key) unkeyed.push(lead);
+            else if (!refreshedKeys.has(key)) {
+              byKey.set(key, lead);
+              refreshedKeys.add(key);
+            }
+          });
+        });
+        const leads = [...byKey.values(), ...unkeyed].map((lead) => ({
+          ...lead,
+          assignedAt: lead.assignmentDate ?? lead.assignedDate ?? lead.assignedAt,
+        }));
+        return (assignedUserId === null && assignedEmployeeCode === null
+          ? leads
+          : leads.filter((lead) => (
+            (assignedUserId !== null && lead.assignedUserId === assignedUserId)
+            || (assignedEmployeeCode !== null && lead.assignedEmployeeCode === assignedEmployeeCode)
+          ))).filter((lead) => !this.isHiddenTaskLead(lead));
+      };
       if (generation !== this.requestGeneration) return;
-      const scopedLeads = assignedUserId === null && assignedEmployeeCode === null
-        ? leads
-        : leads.filter((lead) => (
-          (assignedUserId !== null && lead.assignedUserId === assignedUserId)
-          || (assignedEmployeeCode !== null && lead.assignedEmployeeCode === assignedEmployeeCode)
-        ));
       this.setState({
-        leads: scopedLeads.filter((lead) => !this.isHiddenTaskLead(lead)),
+        leads: collectLeads(true),
+        timestamp: response.timestamp ?? null,
+        error: null,
+      });
+      let nextPage = 1;
+      let failed = false;
+      let failure: unknown;
+      const loadPage = async () => {
+        while (!failed && nextPage < totalPages) {
+          const pageNumber = nextPage++;
+          try {
+            const page = await leadSearchApi.search({ ...request, page: pageNumber });
+            if (generation !== this.requestGeneration) return;
+            pages.set(pageNumber, page.data?.content ?? []);
+            this.setState({ leads: collectLeads(true), error: null });
+          } catch (error) {
+            failed = true;
+            failure = error;
+          }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(3, totalPages - 1) }, loadPage));
+      if (failure) throw failure;
+      if (generation !== this.requestGeneration) return;
+      this.setState({
+        leads: collectLeads(false),
         timestamp: response.timestamp ?? null,
         error: null,
       });
     } catch (error) {
       if (generation !== this.requestGeneration) return;
-      this.setState({ leads: [], timestamp: null, error: toMessage(error) });
+      this.setState({ error: toMessage(error) });
     } finally {
       if (generation === this.requestGeneration) this.setState({ isLoading: false });
     }

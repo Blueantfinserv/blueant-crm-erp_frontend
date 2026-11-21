@@ -1,15 +1,36 @@
 import { Linking,Pressable,Text,useWindowDimensions,View } from 'react-native';
+import { useState } from 'react';
 import { Icon } from 'react-native-paper';
 import type { MeetingResponse } from '../../../types/meeting';
 import { popupStyles,styles } from '../../salesCoordinatorStyles';
 import { FIELDS } from '../coordinatorConstants';
 import { employeeRoleLabels,mapUrlFor,maskedMobile,show,timeText } from '../coordinatorUtils';
 
+function ExpandableRemarks({ text, summary = false }: { text: string; summary?: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const preview = text.split('\n').slice(0, 3).join('\n').slice(0, 160);
+  const expandable = preview.length < text.length;
+  return <View style={{ minWidth: 0 }}>
+    <Text selectable style={summary ? popupStyles.bodyText : styles.contextValue}>{expanded || !expandable ? text : `${preview.trimEnd()}…`}</Text>
+    {expandable ? <Pressable accessibilityRole="button" accessibilityLabel={expanded ? 'Show less remarks' : 'Show full remarks'} accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} style={{ alignSelf: 'flex-start', paddingVertical: 5 }}>
+      <Text style={{ color: '#3156C8', fontSize: 11, fontWeight: '700' }}>{expanded ? 'Show less' : 'Show more'}</Text>
+    </Pressable> : null}
+  </View>;
+}
+
+function meetingModeLabel(value: MeetingResponse['meetingMode']) {
+  const mode = String(value ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (mode === 'PHYSICAL') return 'Physical';
+  if (['PHONE', 'CALL', 'ON_CALL', 'PHONE_CALL', 'TELEPHONIC'].includes(mode)) return 'On Call';
+  if (['VIRTUAL', 'ONLINE', 'VIRTUAL/ONLINE', 'VIRTUAL_ONLINE'].includes(mode)) return 'Virtual / Online';
+  return show(value);
+}
+
 export function Details({ meeting: m, visitOnly = false, presentation, hideMeetingDate = false }: { meeting: MeetingResponse; visitOnly?: boolean; hideMeetingDate?: boolean; presentation?: 'sidebar' | 'summary' }) {
   const compact = useWindowDimensions().width < 760;
   const meetingPlace = m.meetingLocation ?? m.location ?? m.address;
   const mapUrl = mapUrlFor(m);
-  const overviewFields: [string, unknown][] = [['Meeting Type', m.meetingTitle ?? m.meetingType], ...(!hideMeetingDate ? [['Meeting Date', m.meetingDate] as [string, unknown]] : []), ['Next Plan Date', m.nextMeetingDate]];
+  const overviewFields: [string, unknown][] = [['Meeting Type', m.meetingTitle ?? m.meetingType], ['Meeting Mode', meetingModeLabel(m.meetingMode)], ...(!hideMeetingDate ? [['Meeting Date', m.meetingDate] as [string, unknown]] : []), ['Next Plan Date', m.nextMeetingDate]];
   if (!visitOnly) overviewFields.push(['Lead Status', m.leadStatus?.replace(/_/g, ' ')]);
   const employeeLabels = employeeRoleLabels(m);
   const clientDetails = m.isClientMeeting && (m.clinicAddress || m.speciality) ? [m.speciality, m.clinicAddress].filter(Boolean).join(' · ') : '';
@@ -26,7 +47,7 @@ export function Details({ meeting: m, visitOnly = false, presentation, hideMeeti
     if (clientDetails) contactFields.push(['Client Details', clientDetails]);
   }
   if (presentation === 'summary') return <View style={popupStyles.sidebarCards}><View style={popupStyles.summaryGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[popupStyles.summaryCard, compact && { flexBasis: '46%', padding: 8, gap: 6 }, label === 'Lead Status' && popupStyles.summaryStatus]}><Icon source={label === 'Lead Status' ? 'chart-timeline-variant' : 'calendar-outline'} size={20} color="#2563EB" /><View style={popupStyles.summaryCopy}><Text style={popupStyles.label}>{label}</Text><Text numberOfLines={label === 'Lead Status' ? 1 : undefined} adjustsFontSizeToFit={label === 'Lead Status'} minimumFontScale={0.8} style={[popupStyles.value, label === 'Lead Status' && popupStyles.statusValue]}>{show(field)}</Text></View></View>)}</View>
-    {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={popupStyles.remarks}><View style={popupStyles.formHeading}><Icon source="comment-text-outline" size={18} color="#A16207" /><Text style={popupStyles.cardTitle}>Remarks</Text></View><Text style={popupStyles.bodyText}>{show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)}</Text></View> : null}
+    {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={popupStyles.remarks}><View style={popupStyles.formHeading}><Icon source="comment-text-outline" size={18} color="#A16207" /><Text style={popupStyles.cardTitle}>Remarks</Text></View><ExpandableRemarks key={m.meetingCode ?? m.id} summary text={show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)} /></View> : null}
   </View>;
   if (presentation === 'sidebar') return <View style={popupStyles.sidebarCards}>
     <View style={popupStyles.infoCard}><View style={popupStyles.formHeading}><Icon source="account-box-outline" size={20} color="#2563EB" /><Text style={popupStyles.cardTitle}>Client Information</Text></View>
@@ -41,7 +62,7 @@ export function Details({ meeting: m, visitOnly = false, presentation, hideMeeti
     <View style={styles.overviewGrid}>{overviewFields.map(([label, field], index) => <View key={label} style={[styles.overviewCard, [styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.overviewStatusCard][index]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={1} style={[styles.overviewValue, label === 'Lead Status' && styles.overviewStatusText]}>{show(field)}</Text></View>)}</View>
     <View style={styles.contactGrid}>{contactFields.map(([label, field], index) => <View key={label} style={[styles.contactCard, label === 'Joined With' && styles.contactCardCompact, label === 'Client Details' && styles.clientDetailsContactCard, [styles.toneSlate, styles.toneBlue, styles.toneViolet, styles.toneTeal, styles.toneAmber][index % 5]]}><Text style={styles.label}>{label}</Text><Text numberOfLines={label === 'Client Details' || label === 'Residential Address' ? undefined : 1} style={styles.detailValue}>{show(field)}</Text></View>)}</View>
     <View style={styles.contextGrid}>
-      {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)}</Text></View> : null}
+      {(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks) ? <View style={[styles.contextCard, styles.remarksCard, styles.remarksWide]}><View style={styles.contextHeading}><Icon source="comment-text-outline" size={15} color="#A16207" /><Text style={styles.contextLabel}>REMARKS</Text></View><ExpandableRemarks key={m.meetingCode ?? m.id} text={show(m.isClientMeeting ? m.meetingRemarks ?? m.remarks : m.remarks ?? m.meetingRemarks)} /></View> : null}
       {meetingPlace ? <View style={[styles.contextCard, styles.locationCard, styles.locationNarrow]}><View style={styles.contextHeading}><Icon source="map-marker-outline" size={15} color="#0F766E" /><Text style={styles.contextLabel}>{m.isClientMeeting ? 'CLIENT LOCATION' : 'MEETING LOCATION'}</Text></View><Text numberOfLines={2} style={styles.contextValue}>{show(meetingPlace)}</Text></View> : null}
       {mapUrl ? <Pressable onPress={() => void Linking.openURL(mapUrl)} style={[styles.mapButton, styles.mapButtonCompact]}><Icon source="map-marker-radius" size={17} color="#FFFFFF" /><Text style={styles.mapButtonText}>Open in Google Maps</Text></Pressable> : null}
     </View>

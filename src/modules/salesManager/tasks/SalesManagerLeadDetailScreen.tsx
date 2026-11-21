@@ -1,9 +1,11 @@
 import { sortedClientHistory } from '../../../utils/clientHistorySelectors';
 import { useAuth } from '../../../context/AuthContext';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useClientHistory } from './hooks/useClientHistory';
 import { hasPendingClientVerification } from '../../../services/ClientHistoryService';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import type { ClientHistorySnapshot } from '../../../services/ClientHistoryService';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../theme/theme';
 import { meetingService } from '../../../services/MeetingService';
@@ -21,7 +23,19 @@ import type { SalesTask } from './types/tasks';
 type Props = {
   lead: SalesTask;
   onBack: () => void;
-  onUpdateMeeting: (lead: SalesTask) => void;
+  onUpdateMeeting?: (lead: SalesTask) => void;
+  embedded?: boolean;
+  headerAction?: ReactNode;
+  crmEdit?: {
+    draft: Record<string, string>;
+    onChange: (key: string, value: string) => void;
+  };
+  clientDetails?: {
+    profile: ClientProfileResponse | null;
+    profileLoading: boolean;
+    profileError: string | null;
+    history: ClientHistorySnapshot;
+  };
 };
 
 const clientInfoFields = (client: SalesTask, profile: ClientProfileResponse | null) => [
@@ -38,7 +52,7 @@ const clientInfoFields = (client: SalesTask, profile: ClientProfileResponse | nu
 const displayProfileValue = (value: string | number | boolean | string[] | undefined) => {
   if (Array.isArray(value)) return value.length ? value.join(', ') : 'Not provided';
   if (typeof value === 'boolean') return value ? 'Yes' : 'No';
-  return value === undefined || value === '' ? 'Not provided' : String(value).replace(/_/g, ' ');
+  return value === undefined || value === null || value === '' ? 'Not provided' : String(value).replace(/_/g, ' ');
 };
 
 const clientProfileSections = (profile: ClientProfileResponse) => [
@@ -107,13 +121,48 @@ const meetingTimeText = (time?: MeetingSummary['meetingTime'] | string) => {
   return time?.hour === undefined ? '' : [time.hour, time.minute ?? 0].map((value) => String(value).padStart(2, '0')).join(':');
 };
 
-export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: Props) {
+const crmEditKeyByLabel: Record<string, string> = {
+  'Mobile Number': 'mobileNumber',
+  'Alternate Mobile': 'alternateMobileNumber',
+  'Email': 'email',
+  'Speciality': 'speciality',
+  'Clinic Address': 'clinicAddress',
+  'Best Time to Meet': 'bestTimeToMeet',
+  'Client Status': 'clientStatus',
+  'PAN Number': 'panNumber',
+  'Date of Birth': 'dateOfBirth',
+  'Mother Name': 'motherName',
+  'Place of Birth': 'placeOfBirth',
+  'Occupation': 'occupation',
+  'Residential Address': 'residentialAddress',
+  'Correspondence Address': 'correspondenceAddress',
+  'Office Address': 'officeAddress',
+  'City / State / PIN': 'city',
+  'Client Source': 'clientSource',
+  'Source Description': 'sourceDescription',
+  'Application Received': 'applicationReceivedDate',
+  'Application Mode': 'applicationMode',
+  'Client Report Date': 'clientReportDate',
+  'Investment Type': 'investmentType',
+  'Investment Types': 'investmentTypes',
+  'First Investment Amount': 'firstInvestmentAmount',
+  'Expected Max SIP': 'expectedMaxSIP',
+  'Investwell ID': 'investwellId',
+  'Family Code': 'familyCode',
+  'Family Head': 'familyHeadName',
+  'Family Details': 'familyDetails',
+  'Assigned On': 'assignmentDate',
+};
+
+export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting, embedded = false, headerAction, crmEdit, clientDetails }: Props) {
   const { width } = useWindowDimensions();
   const isMobile = width < 600;
   const isClient = lead.taskKind === 'CLIENT';
   const { user } = useAuth();
-  const splitClientRemarks = isClient && (user?.role === 'RELATIONSHIP_MANAGER' || user?.role === 'SALES_COORDINATOR');
-  const clientHistory = useClientHistory(isClient ? lead.clientCode : undefined);
+  const splitClientRemarks = isClient && (Boolean(clientDetails) || user?.role === 'RELATIONSHIP_MANAGER' || user?.role === 'SALES_COORDINATOR');
+  const hideCrmClientExtras = isClient && Boolean(clientDetails);
+  const sharedClientHistory = useClientHistory(isClient && !clientDetails ? lead.clientCode : undefined);
+  const clientHistory = clientDetails?.history ?? sharedClientHistory;
   const isVerificationPending = isClient
     ? clientHistory.history === undefined || clientHistory.stale || clientHistory.loading || Boolean(clientHistory.error) || hasPendingClientVerification(clientHistory.history)
     : lead.verificationPending === true;
@@ -140,9 +189,12 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   const [prospectHistory, setMeetingHistory] = useState<MeetingResponse[]>([]);
   const [prospectHistoryLoading, setHistoryLoading] = useState(true);
   const [prospectHistoryError, setHistoryError] = useState<string | null>(null);
-  const [clientProfile, setClientProfile] = useState<ClientProfileResponse | null>(null);
-  const [clientProfileLoading, setClientProfileLoading] = useState(false);
-  const [clientProfileError, setClientProfileError] = useState<string | null>(null);
+  const [loadedClientProfile, setClientProfile] = useState<ClientProfileResponse | null>(null);
+  const [profileLoading, setClientProfileLoading] = useState(false);
+  const [profileError, setClientProfileError] = useState<string | null>(null);
+  const clientProfile = clientDetails ? clientDetails.profile : loadedClientProfile;
+  const clientProfileLoading = clientDetails ? clientDetails.profileLoading : profileLoading;
+  const clientProfileError = clientDetails ? clientDetails.profileError : profileError;
   const [prospectProfile, setProspectProfile] = useState<LeadResponse | null>(null);
   const meetingHistory = useMemo(() => isClient
     ? sortedClientHistory(clientHistory.history ?? []) as unknown as MeetingResponse[]
@@ -209,6 +261,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   }, [isClient, lead.leadCode, lead.leadId, lead.meetingCode]);
 
   useEffect(() => {
+    if (clientDetails) return;
     if (!isClient || !lead.clientCode) {
       setClientProfile(null); setClientProfileLoading(false); setClientProfileError(null); return;
     }
@@ -224,7 +277,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
     };
     void loadProfile();
     return () => { active = false; };
-  }, [isClient, lead.clientCode]);
+  }, [isClient, lead.clientCode, clientDetails]);
 
   useEffect(() => {
     if (isClient) return;
@@ -267,14 +320,14 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
   });
 
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, embedded && { borderRadius: 14, overflow: 'hidden' }]}>
       <View style={styles.fixedHeader}>
         <View style={[styles.hero, isMobile && styles.mobileHero]}>
           <View style={styles.heroGlowLarge} />
           <View style={styles.heroGlowSmall} />
           <View style={[styles.heroRow, isMobile && styles.mobileHeroRow]}>
-            <Pressable accessibilityRole="button" accessibilityLabel="Back to tasks" onPress={onBack} style={styles.backButton}>
-              <Icon source="arrow-left" size={19} color="#FFFFFF" />
+            <Pressable accessibilityRole="button" accessibilityLabel={embedded ? 'Close client details' : 'Back to tasks'} onPress={onBack} style={styles.backButton}>
+              <Icon source={embedded ? 'close' : 'arrow-left'} size={19} color="#FFFFFF" />
             </Pressable>
             <View style={[styles.heroIdentity, isMobile && styles.mobileHeroIdentity]}>
               <View style={styles.heroIcon}>
@@ -292,6 +345,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
             </View>
 
             <View style={[styles.heroActions, isMobile && styles.mobileHeroActions]}>
+              {headerAction}
               <Pressable onPress={() => void Linking.openURL(`tel:${phone}`)} style={[styles.heroAction, isMobile && styles.mobileHeroAction]}>
                 <Icon source="phone-outline" size={isMobile ? 12 : 15} color="#FFFFFF" />
                 <Text style={[styles.heroActionText, isMobile && styles.mobileHeroActionText]}>Call</Text>
@@ -300,7 +354,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                 <Icon source="whatsapp" size={isMobile ? 12 : 15} color="#FFFFFF" />
                 <Text style={[styles.heroActionText, isMobile && styles.mobileHeroActionText]}>WhatsApp</Text>
               </Pressable>
-              <Pressable
+              {onUpdateMeeting ? <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={isVerificationPending ? 'Verification pending' : `Update meeting for ${lead.name}`}
                 accessibilityState={{ disabled: isVerificationPending }}
@@ -316,7 +370,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
               >
                 <Icon source={isVerificationPending ? 'clock-alert-outline' : 'calendar-edit'} size={isMobile ? 12 : 15} color={isVerificationPending ? '#94A3B8' : '#4C1D95'} />
                 <Text style={[styles.updateActionText, isMobile && styles.mobileHeroActionText, isVerificationPending && styles.updateActionTextDisabled]}>{isVerificationPending ? 'Verification Pending' : 'Update Meeting'}</Text>
-              </Pressable>
+              </Pressable> : null}
             </View>
 
           </View>
@@ -349,11 +403,22 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
                   </View>
                   <View style={styles.infoCopy}>
                     <Text style={styles.infoLabel}>{field.label}</Text>
-                    <ExpandableDetailText
-                      value={field.value}
-                      lines={isClient && field.label !== 'Clinic Address' && field.label !== 'Email' ? 1 : undefined}
-                      style={[styles.infoValue, field.label === 'Clinic Address' && styles.infoAddressValue]}
-                    />
+                    {crmEdit && crmEditKeyByLabel[field.label] ? (
+                      <TextInput
+                        value={crmEdit.draft[crmEditKeyByLabel[field.label]] ?? ''}
+                        onChangeText={value => crmEdit.onChange(crmEditKeyByLabel[field.label], value)}
+                        style={[styles.infoValue, styles.inlineEditInput]}
+                        multiline={field.label === 'Clinic Address'}
+                        placeholder={field.label}
+                        placeholderTextColor="#94A3B8"
+                      />
+                    ) : (
+                      <ExpandableDetailText
+                        value={field.value}
+                        lines={isClient && field.label !== 'Clinic Address' && field.label !== 'Email' ? 1 : undefined}
+                        style={[styles.infoValue, field.label === 'Clinic Address' && styles.infoAddressValue]}
+                      />
+                    )}
                   </View>
                 </View>
               ))}
@@ -361,22 +426,40 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
             {isClient && clientProfile ? <View style={[styles.clientProfileDetails, splitClientRemarks && styles.compactProfileDetails]}>
               {clientProfileSections(clientProfile).map((section) => <View key={section.title} style={[styles.clientProfileSection, splitClientRemarks && styles.compactProfileSection]}>
                 <View style={styles.clientProfileHeading}><Icon source={section.icon} size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>{section.title}</Text></View>
-                <View style={[styles.clientProfileGrid, splitClientRemarks && styles.compactProfileGrid]}>{section.fields.map((field, index) => <View key={`${field.label}-${index}`} style={[styles.clientProfileItem, splitClientRemarks && styles.compactProfileItem, splitClientRemarks && !isMobile && styles.compactDesktopProfileItem]}><Text style={styles.clientProfileLabel}>{field.label}</Text><ExpandableDetailText value={field.value} lines={field.label.includes('Address') ? undefined : 2} style={styles.clientProfileValue} /></View>)}</View>
+                <View style={[styles.clientProfileGrid, splitClientRemarks && styles.compactProfileGrid]}>{section.fields.map((field, index) => {
+                  const editKey = crmEditKeyByLabel[field.label];
+                  return <View key={`${field.label}-${index}`} style={[styles.clientProfileItem, splitClientRemarks && styles.compactProfileItem, splitClientRemarks && !isMobile && styles.compactDesktopProfileItem]}>
+                    <Text style={styles.clientProfileLabel}>{field.label}</Text>
+                    {crmEdit && editKey ? (
+                      <TextInput
+                        value={crmEdit.draft[editKey] ?? ''}
+                        onChangeText={value => crmEdit.onChange(editKey, value)}
+                        style={[styles.clientProfileValue, styles.inlineProfileEditInput]}
+                        multiline={field.label.includes('Address') || field.label === 'Family Details'}
+                        placeholder={field.label}
+                        placeholderTextColor="#94A3B8"
+                      />
+                    ) : <ExpandableDetailText value={field.value} lines={field.label.includes('Address') ? undefined : 2} style={styles.clientProfileValue} />}
+                  </View>;
+                })}</View>
               </View>)}
               <View style={[styles.clientProfileSection, splitClientRemarks && styles.compactProfileSection]}>
                 <View style={styles.clientProfileHeading}><Icon source="account-heart-outline" size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>Nominee Details</Text></View>
                 {clientProfile.nominees?.length ? <View style={[styles.clientProfileGrid, splitClientRemarks && styles.compactProfileGrid]}>{clientProfile.nominees.flatMap((nominee, nomineeIndex) => [
-                  { label: `Nominee ${nomineeIndex + 1}`, value: displayProfileValue(nominee.nomineeName) }, { label: 'Relationship', value: displayProfileValue(nominee.relationship) },
-                  { label: 'Date of Birth', value: displayProfileValue(nominee.dateOfBirth) }, { label: 'Contact Number', value: displayProfileValue(nominee.contactNumber) },
-                  { label: 'Minor', value: displayProfileValue(nominee.isMinor) }, { label: 'Guardian', value: displayProfileValue(nominee.guardianName) },
-                ]).map((field, index) => <View key={`${field.label}-${index}`} style={[styles.clientProfileItem, splitClientRemarks && styles.compactProfileItem, splitClientRemarks && !isMobile && styles.compactDesktopProfileItem]}><Text style={styles.clientProfileLabel}>{field.label}</Text><ExpandableDetailText value={field.value} lines={2} style={styles.clientProfileValue} /></View>)}</View> : <Text style={styles.clientProfileEmpty}>No nominee details recorded.</Text>}
+                    { label: `Nominee ${nomineeIndex + 1}`, key: `nominee_${nomineeIndex}_nomineeName`, value: displayProfileValue(nominee.nomineeName) }, { label: 'Relationship', key: `nominee_${nomineeIndex}_relationship`, value: displayProfileValue(nominee.relationship) },
+                    { label: 'Date of Birth', key: `nominee_${nomineeIndex}_dateOfBirth`, value: displayProfileValue(nominee.dateOfBirth) }, { label: 'Contact Number', key: `nominee_${nomineeIndex}_contactNumber`, value: displayProfileValue(nominee.contactNumber) },
+                    { label: 'Minor', key: `nominee_${nomineeIndex}_isMinor`, value: displayProfileValue(nominee.isMinor) }, { label: 'Guardian', key: `nominee_${nomineeIndex}_guardianName`, value: displayProfileValue(nominee.guardianName) },
+                  ]).map((field, index) => <View key={`${field.label}-${index}`} style={[styles.clientProfileItem, splitClientRemarks && styles.compactProfileItem, splitClientRemarks && !isMobile && styles.compactDesktopProfileItem]}>
+                    <Text style={styles.clientProfileLabel}>{field.label}</Text>
+                    {crmEdit ? <TextInput value={crmEdit.draft[field.key] ?? ''} onChangeText={value => crmEdit.onChange(field.key, value)} style={[styles.clientProfileValue, styles.inlineProfileEditInput]} placeholder={field.label} placeholderTextColor="#94A3B8" /> : <ExpandableDetailText value={field.value} lines={2} style={styles.clientProfileValue} />}
+                  </View>)}</View> : <Text style={styles.clientProfileEmpty}>No nominee details recorded.</Text>}
               </View>
               <View style={[styles.clientProfileSection, splitClientRemarks && styles.compactProfileSection]}>
                 <View style={styles.clientProfileHeading}><Icon source="file-check-outline" size={15} color="#0F766E" /><Text style={styles.clientProfileTitle}>Documents</Text></View>
                 {clientProfile.documents?.length ? <View style={[styles.clientProfileGrid, splitClientRemarks && styles.compactProfileGrid]}>{clientProfile.documents.flatMap((document, documentIndex) => [
-                  { label: `Document ${documentIndex + 1}`, value: displayProfileValue(document.documentName) }, { label: 'Document Type', value: displayProfileValue(document.documentType) },
-                  { label: 'Received', value: displayProfileValue(document.received) }, { label: 'Received Date', value: displayProfileValue(document.receivedDate) },
-                  { label: 'Verification', value: displayProfileValue(document.verificationStatus) }, { label: 'Reference', value: document.documentReference || 'Not provided' },
+                  { label: `Document ${documentIndex + 1}`, key: `document_${documentIndex}_documentName`, value: displayProfileValue(document.documentName) }, { label: 'Document Type', key: `document_${documentIndex}_documentType`, value: displayProfileValue(document.documentType) },
+                  { label: 'Received', key: `document_${documentIndex}_received`, value: displayProfileValue(document.received) }, { label: 'Received Date', key: `document_${documentIndex}_receivedDate`, value: displayProfileValue(document.receivedDate) },
+                  { label: 'Verification', key: `document_${documentIndex}_verificationStatus`, value: displayProfileValue(document.verificationStatus) }, { label: 'Reference', key: `document_${documentIndex}_documentReference`, value: document.documentReference || 'Not provided' },
                 ].map((field) => ({ ...field, document }))).map((field, index) => <View key={`${field.label}-${index}`} style={[styles.clientProfileItem, splitClientRemarks && styles.compactProfileItem, splitClientRemarks && !isMobile && styles.compactDesktopProfileItem]}>
                   <Text style={styles.clientProfileLabel}>{field.label}</Text>
                   {field.label === 'Reference' && field.document.documentReference ? (
@@ -436,7 +519,7 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
             </View> : null}
           </View>
 
-          <View style={styles.rightColumn}>
+          {!hideCrmClientExtras ? <View style={styles.rightColumn}>
             <View style={[
               styles.panel,
               styles.locationPanel,
@@ -503,15 +586,15 @@ export function SalesManagerLeadDetailScreen({ lead, onBack, onUpdateMeeting }: 
               </View>
             </View>
             )}
-          </View>
+          </View> : null}
         </View>
 
-        <View style={[styles.panel, isMobile && styles.mobilePanel, splitClientRemarks && styles.compactPanel]}>
+        {!hideCrmClientExtras ? <View style={[styles.panel, isMobile && styles.mobilePanel, splitClientRemarks && styles.compactPanel]}>
           <SectionHeading compact={splitClientRemarks} icon="history" title="Meeting History" subtitle={historyLoading ? 'Loading meeting history...' : `${meetingHistory.length} meeting${meetingHistory.length === 1 ? '' : 's'} recorded`} />
           {isClient && clientHistory.history !== undefined && historyError ? <Text accessibilityRole="alert" style={[styles.historyStateText, styles.historyError]}>Refresh failed. Showing previously loaded history. {historyError}</Text> : null}
           {isClient && clientHistory.history !== undefined && clientHistory.loading ? <Text style={styles.historyStateText}>Refreshing meeting history...</Text> : null}
           {historyLoading ? <View style={styles.historyState}><ActivityIndicator size="small" color="#4F46E5" /><Text style={styles.historyStateText}>Loading meeting history...</Text></View> : historyError && !(isClient && clientHistory.history !== undefined) ? <View style={styles.historyState}><Icon source="alert-circle-outline" size={18} color="#DC2626" /><Text style={[styles.historyStateText, styles.historyError]}>{historyError}</Text></View> : meetingHistory.length ? <View style={styles.historyList}>{meetingHistory.map((meeting, index) => { const clientMeeting = meeting as unknown as ClientMeetingResponse; const remarks = meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion; const time = isClient ? clientMeeting.meetingTime : meeting.meetingTime; const nextPlan = isClient ? clientMeeting.nextPlanDate : meeting.nextMeetingDate; return <View key={meeting.meetingCode ?? `${meeting.id ?? index}`} style={[styles.historyRow, splitClientRemarks && styles.compactHistoryRow]}><View style={styles.historyDot} /><View style={styles.historyCopy}><View style={styles.historyTop}><Text style={styles.historyTitle}>{isClient ? `Client Meeting${clientMeeting.meetingNumber ? ` ${clientMeeting.meetingNumber}` : ''}` : meeting.meetingTitle ?? meeting.meetingType ?? 'Meeting'}</Text><Text style={styles.historyStatus}>{isClient ? clientMeeting.meetingConducted ?? clientMeeting.meetingStatus ?? 'SCHEDULED' : meeting.meetingStatus ?? 'SCHEDULED'}</Text></View><Text style={styles.historyMeta}>{meeting.meetingDate ?? 'Date not available'}{meetingTimeText(time) ? ` · ${meetingTimeText(time)}` : ''}</Text>{remarks ? <Text style={styles.historyRemarks}>Remarks: {remarks}</Text> : null}{nextPlan ? <Text style={styles.historyNext}>Next plan: {nextPlan}</Text> : null}</View></View>; })}</View> : <View style={styles.historyState}><Icon source="calendar-blank-outline" size={18} color="#94A3B8" /><Text style={styles.historyStateText}>No meeting history is available for this {isClient ? 'client' : 'prospect'}.</Text></View>}
-        </View>
+        </View> : null}
       </ScrollView>
     </View>
   );
@@ -538,6 +621,8 @@ function SectionHeading({ icon, title, subtitle, compact = false }: { icon: stri
 }
 
 const styles = StyleSheet.create({
+  inlineEditInput: { minHeight: 34, width: '100%', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: '#F8FAFC', color: '#1E293B' },
+  inlineProfileEditInput: { minHeight: 32, width: '100%', borderWidth: 1, borderColor: '#CBD5E1', borderRadius: 7, paddingHorizontal: 7, paddingVertical: 5, backgroundColor: '#F8FAFC', color: '#334155' },
   compactContent: { gap: 10 },
   compactGrid: { gap: 12 },
   compactPanel: { padding: 12, gap: 10 },

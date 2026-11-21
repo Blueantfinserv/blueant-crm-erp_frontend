@@ -45,7 +45,7 @@ function runner() {
     return local(name);
   }, exports);
   return { leads, meetings, clients,
-    render: active => { cursor = 0; const result = exports.useSalesManagerTasks({ includeClientTasks: true, allTaskMode: true, active }); effects.splice(0).forEach(effect => effect()); return result; },
+    render: (active, historyCycle) => { cursor = 0; const result = exports.useSalesManagerTasks({ includeClientTasks: true, allTaskMode: true, active, historyCycle }); effects.splice(0).forEach(effect => effect()); return result; },
     async finish(index, tasks) {
       const progress = { loadedClients: tasks.length, totalClients: tasks.length, loadedPages: 1, totalPages: 1, queueComplete: true, historyPending: 0, historyCompleted: 0, historyFailed: 0 };
       clients[index].options.onPage(tasks, progress);
@@ -58,26 +58,81 @@ function runner() {
 }
 const task = id => ({ id, taskKind: 'CLIENT', name: `Client ${id}`, phone: '9876543210', schedule: 'Today', scheduledAt: '2026-11-04', nextPlanDate: '2026-11-04' });
 
-test('RM/SC Details-to-Back keeps complete results and refreshes without remounting or publishing partial data', async () => {
+test('client task loading restarts after history-cycle cancellation and stale completion cannot block a newer cycle', async () => {
+  const r = runner();
+  r.render(true, 'cycle-1');
+  await flush();
+  assert.equal(r.clients.length, 1);
+
+  r.render(true, 'cycle-2');
+  await flush();
+  assert.equal(r.clients.length, 2, 'changed cycle starts a replacement load');
+
+  r.clients[0].request.resolve([]);
+  await flush();
+  r.render(true, 'cycle-3');
+  await flush();
+  assert.equal(r.clients.length, 3, 'stale load completion does not interfere with the next cycle');
+});
+
+test('RM/SC Details-to-Back keeps loaded results without refreshing; manual refresh remains progressive', async () => {
   const r = runner(); assert.equal(r.render(true).hasCompleteData, false); await flush();
   const old = [task('1'), task('2')]; await r.finish(0, old);
   const ready = r.render(true); assert.equal(ready.hasCompleteData, true); assert.deepEqual(ready.filteredTasks, old);
   r.render(false); assert.equal(r.leads.requests.length, 1); assert.equal(r.meetings.requests.length, 1);
-  r.render(true); await flush(); assert.equal(r.leads.requests.length, 2); assert.equal(r.clients.length, 2);
+  r.render(true); await flush(); assert.equal(r.leads.requests.length, 1); assert.equal(r.clients.length, 1);
+  const manualRefresh = r.render(true).refreshTasks(); await flush();
+  assert.equal(r.leads.requests.length, 2); assert.equal(r.clients.length, 2);
+  assert.equal(r.clients[1].options.forceRefresh, true, 'manual refresh bypasses the shared queue/history cache');
   const waiting = r.render(true); assert.equal(waiting.hasCompleteData, true); assert.deepEqual(waiting.filteredTasks, old);
   r.leads.set({ leads: [{ leadId: 3, leadCode: 'L3', clientName: 'new assignment' }], isLoading: false });
-  assert.deepEqual(r.render(true).filteredTasks, old, 'new lead response cannot publish a partial result');
-  await r.finish(1, [task('3')]); assert.deepEqual(r.render(true).filteredTasks, [task('3')]);
+  const progressive = r.render(true).filteredTasks;
+  assert.ok(progressive.some(task => task.id === 'L3'), 'ready lead is published without waiting for client histories');
+  assert.deepEqual(progressive.filter(task => task.taskKind === 'CLIENT'), old, 'previously loaded client tasks remain visible');
+  await r.finish(1, [task('3')]); await manualRefresh; assert.deepEqual(r.render(true).filteredTasks, [task('3')]);
 });
 
 test('failed background refresh retains complete results; manual retry still performs fresh reads', async () => {
   const r = runner(); r.render(true); await flush(); const old = [task('1')]; await r.finish(0, old); r.render(true);
-  r.render(false); r.render(true); await flush();
+  const backgroundRefresh = r.render(true).refreshTasks(); await flush();
   r.leads.set({ leads: [], isLoading: false, error: 'server failed' }); r.meetings.set({ meetings: [], isLoading: false });
   r.leads.requests[1].resolve(); r.meetings.requests[1].resolve(); r.clients[1].request.reject(new Error('queue failed')); await flush();
+  await backgroundRefresh;
   const failed = r.render(true); assert.equal(failed.hasCompleteData, true); assert.deepEqual(failed.filteredTasks, old); assert.equal(failed.clientError, 'queue failed');
   const retry = failed.refreshTasks(); await flush(); assert.equal(r.clients.length, 3); await r.finish(2, [task('2')]); await retry;
   assert.deepEqual(r.render(true).filteredTasks, [task('2')]);
+});
+
+test('ordinary RM/SC task-view selections retain the list key while All Leads keeps its reset', () => {
+  const source = fs.readFileSync(path.join(root, 'App.tsx'), 'utf8');
+  const start = source.indexOf('    const onSalesPersonMenuSelect = (key: string) => {');
+  const end = source.indexOf('    const currentDate', start);
+  assert.ok(start >= 0 && end > start);
+  const handler = source.slice(start, end);
+  const code = ts.transpileModule(`export function select(key) {
+    let screenKey = 0, view = 'task-to-do', filter = 'Today', activeTab = 'dashboard', route = '';
+    const setSalesTaskScreenKey = update => { screenKey = typeof update === 'function' ? update(screenKey) : update; };
+    const setSalesTaskFilter = value => { filter = value; };
+    const setSalesTaskView = value => { view = value; };
+    const setActiveTab = value => { activeTab = value; };
+    const navigate = value => { route = value; };
+    ${handler}
+    onSalesPersonMenuSelect(key);
+    return { screenKey, view, filter, activeTab, route };
+  }`, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+  const exports = {};
+  new Function('exports', code)(exports);
+  const expectedViews = {
+    'task-to-do': ['task-to-do', 'Today'],
+    'all-task': ['all-task', 'Today'],
+    'today-task': ['today-task', 'Today'],
+    'pending-task': ['pending-task', 'Pending'],
+    'future-3-days': ['future-3-days', 'Future 3 Days'],
+  };
+  for (const [key, [view, filter]] of Object.entries(expectedViews)) {
+    assert.deepEqual(exports.select(key), { screenKey: 0, view, filter, activeTab: 'all-tasks', route: 'leads' });
+  }
+  assert.equal(exports.select('all-leads').screenKey, 1);
 });
 
 test('virtualized rows preserve all records, duplicate identities, complete search and exact ordering', () => {
@@ -126,9 +181,11 @@ test('App keeps the same keyed RM/SC list during Details and leaves SM on its ex
 test('All Clients screen uses progressive cards and retains them when later loading fails', () => {
   const source = fs.readFileSync(path.join(root, 'src/screens/ClientWorkFollowScreen.tsx'), 'utf8');
   assert.ok(source.includes('loadClientTaskQueue({'));
+  assert.ok(source.includes('forceRefresh: refresh || Boolean(cycle)'));
   assert.ok(source.includes('onClients:'));
   assert.ok(source.includes('setClients(previous =>'));
   assert.ok(source.includes('error && !clients.length'));
+  assert.equal(source.includes('active && !wasActive.current'), false, 'returning from Details does not force a full queue refresh');
   assert.ok(source.includes('loadId.current += 1'));
 });
 
@@ -167,9 +224,9 @@ test('All Clients screen keeps history failure feedback without progress narrati
 
 test('partial history enrichment cannot replace complete global task inputs during refresh',async()=>{
  const r=runner();r.render(true);await flush();const old=[task('1'),task('2')];await r.finish(0,old);r.render(true);
- r.render(false);r.render(true);await flush();
+ const refresh=r.render(true).refreshTasks();await flush();
  const progress={loadedClients:1,totalClients:2,loadedPages:1,totalPages:1,queueComplete:true,historyPending:1,historyCompleted:0,historyFailed:0};
  r.clients[1].options.onPage([{...task('3'),historyLoadState:'loading',verificationPending:true}],progress);r.clients[1].options.onProgress(progress);
  const partial=r.render(true);assert.deepEqual(partial.filteredTasks,old);assert.equal(partial.taskDataComplete,false);
- await r.finish(1,[task('3')]);assert.deepEqual(r.render(true).filteredTasks,[task('3')]);
+ await r.finish(1,[task('3')]);await refresh;assert.deepEqual(r.render(true).filteredTasks,[task('3')]);
 });

@@ -1,10 +1,9 @@
-import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BackgroundCurves } from '../../../components/BackgroundCurves';
 import { FeatureCard, LoginCard, LogoRow, LoginScreenProps } from './LoginShared';
 import { theme } from '../../../theme/theme';
 import { FooterLink } from '../../../components/LegalPage';
-
-const mascotAsset = require('../../../../assets/download.gif');
+import { LoginMascot } from './LoginMascot';
 
 export function TabletLogin(props: LoginScreenProps) {
   const { width, height } = useWindowDimensions();
@@ -45,7 +44,7 @@ export function TabletLogin(props: LoginScreenProps) {
         </View>
 
         <View style={[styles.mascotWrap, { width: mascotWidth, height: mascotHeight }]}>
-          <Image source={mascotAsset} style={styles.mascot} resizeMode="contain" />
+          <LoginMascot style={styles.mascot} />
         </View>
 
         <View style={[styles.right, { width: cardWidth, maxWidth: cardWidth }]}>

@@ -1,3 +1,6 @@
+import { CrmClientDetailsDialog } from './CrmClientDetailsDialog';
+import { CrmAssignedClientPages, assignedClientPageRows, CRM_ASSIGNED_CLIENT_PAGE_SIZE } from './crmAssignedClientPages';
+import { CrmAssignedToDropdown } from './CrmAssignedToDropdown';
 import { buildCrmAssignedLeadExport } from './crmAssignedLeadExport';
 import { downloadCsv, exportDatePart, exportNamePart } from './salesCoordinator/coordinatorExport';
 import { styles as pcHistoryStyles } from './salesCoordinatorStyles';
@@ -7,7 +10,7 @@ import { meetingApi } from '../api/meeting';
 import type { MeetingResponse } from '../types/meeting';
 import { parsePastedDate } from '../utils/parsePastedDate';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Platform, Animated, Easing, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Icon } from 'react-native-paper';
@@ -16,7 +19,7 @@ import { clientMeetingApi } from '../api/clientMeeting';
 import { leadSearchApi } from '../api/leadSearch';
 import { SecureStorageService } from '../services/SecureStorageService';
 import type { LeadResponse } from '../types/lead';
-import type { ClientMeetingResponse, ClientProfileResponse, ClientRegistrationRequest, CrmAssignmentTarget, CrmPhysicalLeadRequest, EligibleFamilyHeadResponse, FamilyDetailResponse, FamilyHeadHistoryResponse, FamilyRelationship } from '../types/crm';
+import type { ClientProfileResponse, ClientRegistrationRequest, CrmAssignmentTarget, CrmPhysicalLeadRequest, EligibleFamilyHeadResponse, FamilyDetailResponse, FamilyHeadHistoryResponse, FamilyRelationship } from '../types/crm';
 import { theme } from '../theme/theme';
 import { useAppTheme } from '../theme/ThemeProvider';
 
@@ -41,9 +44,11 @@ type AssignedClient = CrmAssignForm & {
   id: string;
   clientId?: number;
   clientCode?: string;
+  salesPersonId?: number;
   assignedEmployeeName?: string;
   assignedEmployeeRole?: CrmAssignmentTarget['role'];
   status: 'ASSIGNED';
+  profile?: ClientProfileResponse;
 };
 const parseStoredAssignedClients = (value: string | null): AssignedClient[] => {
   try {
@@ -55,18 +60,25 @@ const parseStoredAssignedClients = (value: string | null): AssignedClient[] => {
 };
 const resolveAssignedClientTarget = (client: AssignedClient, targets: readonly CrmAssignmentTarget[]): AssignedClient => {
   const employeeCode = client.salesPersonEmployeeCode?.trim().toUpperCase();
-  const target = targets.find((item) => item.employeeCode.trim().toUpperCase() === employeeCode);
-  const savedRole = roleCode(client.assignedEmployeeRole);
-  const assignedEmployeeRole = savedRole === 'RM' ? 'RELATIONSHIP_MANAGER'
-    : savedRole === 'SC' ? 'SALES_COORDINATOR'
-      : savedRole === 'RELATIONSHIP_MANAGER' || savedRole === 'SALES_COORDINATOR' ? savedRole as CrmAssignmentTarget['role']
-        : target?.role;
+  const target = targets.find((item) => (
+    (employeeCode && item.employeeCode.trim().toUpperCase() === employeeCode)
+    || (client.salesPersonId !== undefined && item.id === client.salesPersonId)
+  ));
+  const savedEmployeeRole = assignedClientRole(client.assignedEmployeeRole);
+  const providedName = client.assignedEmployeeName?.trim();
+  const normalizeEmployeeCode = (value: string) => value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const nameIsEmployeeCode = Boolean(employeeCode && providedName
+    && normalizeEmployeeCode(providedName) === normalizeEmployeeCode(employeeCode));
   // Employee code is authoritative: use its current directory display name so
   // a stale local spelling cannot create a second dropdown option.
-  return { ...client, assignedEmployeeName: target?.fullName ?? client.assignedEmployeeName, assignedEmployeeRole };
+  return {
+    ...client,
+    assignedEmployeeName: target?.fullName ?? (nameIsEmployeeCode ? undefined : providedName),
+    assignedEmployeeRole: target?.role ?? savedEmployeeRole,
+  };
 };
 type AssignmentFilters = { search: string; assignedTo: string; role: string; from: string; to: string };
-type AssignmentFilterItem = { name?: string; mobile?: string; assignedTo?: string; role?: string; assignedAt?: string };
+type AssignmentFilterItem = { name?: string; mobile?: string; panNumber?: string; assignedTo?: string; role?: string; assignedAt?: string };
 const DATE_FORM_FIELDS = new Set<keyof CrmAssignForm>([
   'dateOfBirth', 'actualDateOfBirth', 'applicationReceivedDate', 'clientReportDate',
   'nomineeDateOfBirth',
@@ -103,6 +115,12 @@ const parseStoredClientFormDraft = (value: string | null): ClientFormDraft | nul
 };
 const show = (value?: string | null) => value?.trim() || '-';
 const roleCode = (value?: string) => String(value ?? '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+const assignedClientRole = (value?: string): CrmAssignmentTarget['role'] | undefined => {
+  const role = roleCode(value);
+  if (role === 'RM' || role === 'RELATIONSHIP_MANAGER') return 'RELATIONSHIP_MANAGER';
+  if (role === 'SC' || role === 'SALES_COORDINATOR') return 'SALES_COORDINATOR';
+  return undefined;
+};
 const messageFor = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 const emptyAssignmentFilters = (): AssignmentFilters => ({ search: '', assignedTo: '', role: '', from: '', to: '' });
 const CLIENT_FORM_SECTIONS: readonly { key: ClientFormSection; label: string }[] = [
@@ -140,8 +158,12 @@ const hasClientDraftData = (form?: Partial<CrmAssignForm>) =>
 const LEAD_REQUIRED_FIELDS: readonly (keyof CrmAssignForm)[] = ['clientName', 'mobileNumber', 'location', 'clinicAddress', 'speciality', 'salesPersonEmployeeCode'];
 const matchesAssignmentFilters = (item: AssignmentFilterItem, filters: AssignmentFilters) => {
   const query = filters.search.trim().toLowerCase();
+  const phoneQuery = query.replace(/\D/g, '');
   const assignedAt = String(item.assignedAt ?? '').slice(0, 10);
-  return (!query || [item.name, item.mobile, item.assignedTo].some((value) => String(value ?? '').toLowerCase().includes(query)))
+  const searchMatches = !query
+    || [item.name, item.mobile, item.panNumber, item.assignedTo].some((value) => String(value ?? '').toLowerCase().includes(query))
+    || Boolean(phoneQuery && String(item.mobile ?? '').replace(/\D/g, '').includes(phoneQuery));
+  return searchMatches
     && (!filters.assignedTo || item.assignedTo === filters.assignedTo)
     && (!filters.role || roleCode(item.role) === filters.role)
     && (!filters.from || assignedAt >= filters.from)
@@ -182,6 +204,7 @@ export function CrmOnboardingScreen() {
   const [form, setForm] = useState<CrmAssignForm>(emptyForm);
   const [clientForm, setClientForm] = useState<CrmAssignForm>(emptyForm);
   const assignmentTargets = CRM_ASSIGNMENT_TARGETS;
+  const [assignedClientTargets, setAssignedClientTargets] = useState<CrmAssignmentTarget[]>([]);
   const [assignedLeads, setAssignedLeads] = useState<LeadResponse[]>([]);
   const [exportingLeads, setExportingLeads] = useState(false);
   const [leadExportError, setLeadExportError] = useState<string | null>(null);
@@ -189,6 +212,13 @@ export function CrmOnboardingScreen() {
   const [assignedClients, setAssignedClients] = useState<AssignedClient[]>([]);
   const [leadFilters, setLeadFilters] = useState<AssignmentFilters>(emptyAssignmentFilters);
   const [clientFilters, setClientFilters] = useState<AssignmentFilters>(emptyAssignmentFilters);
+  const [clientPage, setClientPage] = useState(0);
+  const [clientPagesComplete, setClientPagesComplete] = useState(false);
+  const [clientTotal, setClientTotal] = useState<number | undefined>();
+  const clientPages = useRef<CrmAssignedClientPages | null>(null);
+  const clientDirectory = useRef<Promise<CrmAssignmentTarget[]> | null>(null);
+  const clientQueryActive = useRef(false);
+  clientQueryActive.current = Boolean(clientFilters.search.trim() || clientFilters.assignedTo);
   const [loadingAssigned, setLoadingAssigned] = useState(false);
   const [assigning, setAssigning] = useState(false);
   const [assigningClient, setAssigningClient] = useState(false);
@@ -203,6 +233,11 @@ export function CrmOnboardingScreen() {
   const assignedLeadsLoadInFlight = useRef(false);
   const hasAssignedClientsData = useRef(false);
   const assignedClientsLoadInFlight = useRef(false);
+  const assignedClientsGeneration = useRef(0);
+  useEffect(() => () => {
+    assignedClientsGeneration.current++;
+    assignedClientsLoadInFlight.current = false;
+  }, []);
   const clientDraftHydrated = useRef(false);
   const skipNextClientDraftSave = useRef(false);
 
@@ -264,32 +299,66 @@ export function CrmOnboardingScreen() {
     finally { assignedLeadsLoadInFlight.current = false; if (showLoader) setLoadingAssigned(false); }
   }, [assignmentTargets]);
 
-  const loadAssignedClients = useCallback(async (showLoader = true) => {
+  const loadAssignedClients = useCallback(async (showLoader = true, all = false, count = 100, reset = false) => {
     if (assignedClientsLoadInFlight.current) return;
     assignedClientsLoadInFlight.current = true;
-    if (showLoader) setLoadingAssigned(true);
+    const generation = ++assignedClientsGeneration.current;
+    const current = () => generation === assignedClientsGeneration.current;
+    const valid = () => current() && (!all || clientQueryActive.current);
+    setLoadingAssigned(true);
     setAssignedError(null);
-    try {
-      const clients = await crmAssignmentApi.getAssignedClients();
-      setAssignedClients(clients.map((client): AssignedClient => ({
+    const mapClients = (clients: ClientProfileResponse[]) => clients.map((client): AssignedClient => ({
         ...emptyForm(),
         ...Object.fromEntries(Object.entries(client).filter(([, value]) => typeof value === 'string')),
         id: String(client.id ?? client.clientCode ?? client.mobileNumber),
-        clientId: client.id, clientCode: client.clientCode,
+        clientId: client.id, clientCode: client.clientCode, profile: client,
+        salesPersonId: client.salesPersonId,
         clientName: client.clientName ?? '', mobileNumber: client.mobileNumber ?? '',
-        salesPersonEmployeeCode: client.assignedSalesPersonCode ?? '',
-        assignedEmployeeName: client.assignedSalesPersonName,
-        assignedEmployeeRole: roleCode(client.assignedSalesPersonRole) as CrmAssignmentTarget['role'],
+        salesPersonEmployeeCode: client.salesPersonCode ?? client.assignedSalesPersonCode ?? '',
+        assignedEmployeeName: client.salesPersonName ?? client.assignedSalesPersonName,
+        assignedEmployeeRole: assignedClientRole(client.assignedSalesPersonRole),
         assignedAt: client.assignedAt ?? client.assignmentDate ?? '',
         status: 'ASSIGNED',
-      })));
+      }));
+    try {
+      if (!clientPages.current || reset) {
+        clientPages.current = new CrmAssignedClientPages(crmAssignmentApi.getAssignedClientsPage);
+        setClientPagesComplete(false);
+        if (reset) setClientPage(0);
+        clientDirectory.current = crmAssignmentApi.getTargets();
+      }
+      void clientDirectory.current?.then(targets => { if (current()) setAssignedClientTargets(targets); })
+        .catch((error: unknown) => console.error('Failed to load CRM employee directory.', error));
+      await clientPages.current.load(all ? Infinity : count, valid, snapshot => {
+        if (!valid()) return;
+        setAssignedClients(mapClients(snapshot.clients));
+        setClientTotal(snapshot.totalElements);
+        setClientPagesComplete(snapshot.complete);
+      });
+      if (!valid()) return;
       hasAssignedClientsData.current = true;
-    } catch (error) { setAssignedError(messageFor(error)); }
-    finally { assignedClientsLoadInFlight.current = false; if (showLoader) setLoadingAssigned(false); }
+    } catch (error) { if (valid()) setAssignedError(messageFor(error)); }
+    finally {
+      if (current()) {
+        assignedClientsLoadInFlight.current = false;
+        setLoadingAssigned(false);
+      }
+    }
   }, []);
 
   useEffect(() => { if (tab === 'assigned' && !hasAssignedLeadsData.current) void loadAssigned(); }, [loadAssigned, tab]);
   useEffect(() => { if (tab === 'assignedClients' && !hasAssignedClientsData.current) void loadAssignedClients(); }, [loadAssignedClients, tab]);
+  useEffect(() => { setClientPage(0); }, [clientFilters.search, clientFilters.assignedTo]);
+  useEffect(() => {
+    if (tab !== 'assignedClients' || loadingAssigned || assignedError || clientPagesComplete) return;
+    const globalFilter = Boolean(clientFilters.search.trim() || clientFilters.assignedTo);
+    if (globalFilter) {
+      const timer = setTimeout(() => { void loadAssignedClients(false, true); }, 250);
+      return () => clearTimeout(timer);
+    }
+    const needed = (clientPage + 1) * CRM_ASSIGNED_CLIENT_PAGE_SIZE;
+    if (assignedClients.length < needed) void loadAssignedClients(false, false, needed);
+  }, [tab, clientFilters.search, clientFilters.assignedTo, clientPage, clientPagesComplete, assignedClients.length, loadingAssigned, assignedError, loadAssignedClients]);
   useEffect(() => {
     // Only leads come from the server; assigned clients are read from local
     // storage, so polling them would never surface anything new.
@@ -301,7 +370,15 @@ export function CrmOnboardingScreen() {
 
   const selectedTarget = useMemo(() => assignmentTargets.find((target) => target.employeeCode === form.salesPersonEmployeeCode), [assignmentTargets, form.salesPersonEmployeeCode]);
   const selectedClientTarget = useMemo(() => assignmentTargets.find((target) => target.employeeCode === clientForm.salesPersonEmployeeCode), [assignmentTargets, clientForm.salesPersonEmployeeCode]);
-  const resolvedAssignedClients = useMemo(() => assignedClients.map((client) => resolveAssignedClientTarget(client, assignmentTargets)), [assignedClients, assignmentTargets]);
+  const resolvedAssignedClients = useMemo(() => assignedClients.map((client) => resolveAssignedClientTarget(client, assignedClientTargets)), [assignedClients, assignedClientTargets]);
+  const matchingAssignedClients = useMemo(() => resolvedAssignedClients.filter(client => matchesAssignmentFilters({
+    name: client.clientName, mobile: client.panNumber, assignedTo: client.assignedEmployeeName,
+  }, clientFilters)), [resolvedAssignedClients, clientFilters]);
+  const currentClientRows = assignedClientPageRows(matchingAssignedClients, clientPage);
+  const filteringClients = Boolean(clientFilters.search.trim() || clientFilters.assignedTo);
+  const clientCount = filteringClients || clientPagesComplete ? matchingAssignedClients.length : clientTotal ?? resolvedAssignedClients.length;
+  const clientRange = currentClientRows.length ? `${clientPage * 100 + 1}-${clientPage * 100 + currentClientRows.length}` : '0';
+  const clientCountLabel = `Showing ${clientRange} of ${clientCount} ${filteringClients && !clientPagesComplete ? 'loaded matches' : 'assigned clients'}`;
   const canSubmit = !assigning && LEAD_REQUIRED_FIELDS.every((field) => form[field].trim());
   const uploadedDocumentCount = [clientForm.panDocumentReference, clientForm.aadhaarDocumentReference, clientForm.passportDocumentReference, clientForm.chequeDocumentReference, clientForm.signatureDocumentReference, clientForm.otherDocumentReference].filter(Boolean).length;
   const canAssignClient = !assigningClient && CLIENT_FORM_REQUIRED_FIELDS.every((field) => clientForm[field].trim()) && CLIENT_LOCATIONS.includes(clientForm.location) && CLIENT_PROFESSIONS.includes(clientForm.speciality) && Boolean(clientForm.salesPersonEmployeeCode.trim());
@@ -449,7 +526,7 @@ export function CrmOnboardingScreen() {
 
   const sync = async () => {
     setRefreshing(true);
-    await (tab === 'assigned' ? loadAssigned() : tab === 'assignedClients' ? loadAssignedClients() : Promise.resolve());
+    await (tab === 'assigned' ? loadAssigned() : tab === 'assignedClients' ? loadAssignedClients(true, false, 100, true) : Promise.resolve());
     setRefreshing(false);
   };
 
@@ -465,11 +542,11 @@ export function CrmOnboardingScreen() {
       <Pressable disabled={refreshing || assigning} onPress={() => void sync()} style={({ pressed }) => [styles.syncButton, (refreshing || assigning) && styles.disabled, pressed && styles.pressed]}>{refreshing ? <ActivityIndicator size="small" color="#3156C8" /> : <Icon source="refresh" size={18} color="#3156C8" />}<Text style={styles.syncText}>{refreshing ? 'Syncing...' : 'Sync data'}</Text></Pressable>
     </View>
     <View style={styles.panel}>
-      <View style={[styles.panelHeading, (tab === 'assigned' || tab === 'assignedClients') && styles.panelHeadingWithFilters]}><View><Text style={styles.panelTitle}>{tab === 'assign' ? 'Assign Leads' : tab === 'assigned' ? 'Assigned Leads' : tab === 'assignClients' ? 'Assign Clients' : tab === 'assignedClients' ? 'Assigned Clients' : 'Today Meetings'}</Text><Text style={styles.panelSubtitle}>{tab === 'assign' ? 'Create a physical lead and assign it only to an RM or SC.' : tab === 'assigned' ? `Showing ${assignedLeads.filter((lead) => matchesAssignmentFilters({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }, leadFilters)).length} of ${assignedLeads.length} assigned leads` : tab === 'assignClients' ? 'Assign an existing client to a Relationship Manager or Sales Coordinator.' : tab === 'assignedClients' ? `Showing ${resolvedAssignedClients.filter((client) => matchesAssignmentFilters({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }, clientFilters)).length} of ${resolvedAssignedClients.length} assigned clients` : ' '}</Text></View>{tab === 'assigned' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}><AssignmentHeaderFilters items={assignedLeads.map((lead) => ({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }))} targets={assignmentTargets} filters={leadFilters} onChange={setLeadFilters} label="leads" /><Pressable accessibilityRole="button" accessibilityLabel="Export assigned leads to Excel" disabled={exportingLeads} onPress={() => void exportCrmAssignedLeads()} style={[pcHistoryStyles.assignedExportButton, exportingLeads && styles.disabled]}>{exportingLeads ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Icon source="file-excel-outline" size={18} color="#FFFFFF" />}</Pressable></View> : tab === 'assignedClients' ? <AssignmentHeaderFilters items={resolvedAssignedClients.map((client) => ({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }))} targets={assignmentTargets} filters={clientFilters} onChange={setClientFilters} label="clients" /> : null}</View>
+      <View style={[styles.panelHeading, (tab === 'assigned' || tab === 'assignedClients') && styles.panelHeadingWithFilters]}><View><Text style={styles.panelTitle}>{tab === 'assign' ? 'Assign Leads' : tab === 'assigned' ? 'Assigned Leads' : tab === 'assignClients' ? 'Assign Clients' : tab === 'assignedClients' ? 'Assigned Clients' : 'Today Meetings'}</Text><Text style={styles.panelSubtitle}>{tab === 'assign' ? 'Create a physical lead and assign it only to an RM or SC.' : tab === 'assigned' ? `Showing ${assignedLeads.filter((lead) => matchesAssignmentFilters({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }, leadFilters)).length} of ${assignedLeads.length} assigned leads` : tab === 'assignClients' ? 'Assign an existing client to a Relationship Manager or Sales Coordinator.' : tab === 'assignedClients' ? clientCountLabel : ' '}</Text></View>{tab === 'assigned' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap', flex: 1, justifyContent: 'flex-end' }}><AssignmentHeaderFilters items={assignedLeads.map((lead) => ({ name: lead.clientName, mobile: lead.mobileNumber, assignedTo: lead.assignedEmployeeName, role: lead.assignedEmployeeRole, assignedAt: lead.assignedAt }))} targets={assignmentTargets} filters={leadFilters} onChange={setLeadFilters} label="leads" /><Pressable accessibilityRole="button" accessibilityLabel="Export assigned leads to Excel" disabled={exportingLeads} onPress={() => void exportCrmAssignedLeads()} style={[pcHistoryStyles.assignedExportButton, exportingLeads && styles.disabled]}>{exportingLeads ? <ActivityIndicator size="small" color="#FFFFFF" /> : <Icon source="file-excel-outline" size={18} color="#FFFFFF" />}</Pressable></View> : tab === 'assignedClients' ? <AssignmentHeaderFilters items={resolvedAssignedClients.map((client) => ({ name: client.clientName, mobile: client.panNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }))} targets={assignedClientTargets} filters={clientFilters} onChange={setClientFilters} label="clients" /> : null}</View>
       {tab === 'assigned' && exportingLeads ? <Text accessibilityLiveRegion="polite" style={{ paddingHorizontal: 16, paddingVertical: 8, color: '#3156C8', fontSize: 12 }}>Preparing Excel export from available CRM data?</Text> : null}
       {tab === 'assigned' && leadExportError ? <Text accessibilityRole="alert" style={{ paddingHorizontal: 16, paddingVertical: 8, color: '#B91C1C', fontSize: 12 }}>{leadExportError}</Text> : null}
       {tab === 'assignClients' ? <ClientFormSubheader active={clientSection} dark={isDark} onChange={setClientSection} /> : null}
-      {tab === 'assign' ? <AssignForm form={form} targets={assignmentTargets} selectedTarget={selectedTarget} assigning={assigning} canSubmit={canSubmit} message={message} dark={isDark} onChange={(next) => setForm((current) => ({ ...current, ...next }))} onSubmit={() => void assignLead()} /> : tab === 'assigned' ? <AssignedLeadList leads={assignedLeads} filters={leadFilters} loading={loadingAssigned} error={assignedError} onSelectLead={setSelectedLead} /> : tab === 'assignClients' ? <AssignForm form={clientForm} targets={assignmentTargets} selectedTarget={selectedClientTarget} assigning={assigningClient} canSubmit={canAssignClient} message={clientMessage} dark={isDark} kind="Client" section={clientSection} onChange={(next) => setClientForm((current) => ({ ...current, ...next }))} onValidateSection={saveAndValidateClientSection} onSubmit={() => void assignClient()} /> : tab === 'assignedClients' ? <AssignedClientList clients={resolvedAssignedClients} filters={clientFilters} loading={loadingAssigned} error={assignedError} onOpenClient={setSelectedClientDetails} /> : <View style={styles.blankPanel} />}
+      {tab === 'assign' ? <AssignForm form={form} targets={assignmentTargets} selectedTarget={selectedTarget} assigning={assigning} canSubmit={canSubmit} message={message} dark={isDark} onChange={(next) => setForm((current) => ({ ...current, ...next }))} onSubmit={() => void assignLead()} /> : tab === 'assigned' ? <AssignedLeadList leads={assignedLeads} filters={leadFilters} loading={loadingAssigned} error={assignedError} onSelectLead={setSelectedLead} /> : tab === 'assignClients' ? <AssignForm form={clientForm} targets={assignmentTargets} selectedTarget={selectedClientTarget} assigning={assigningClient} canSubmit={canAssignClient} message={clientMessage} dark={isDark} kind="Client" section={clientSection} onChange={(next) => setClientForm((current) => ({ ...current, ...next }))} onValidateSection={saveAndValidateClientSection} onSubmit={() => void assignClient()} /> : tab === 'assignedClients' ? <AssignedClientList clients={resolvedAssignedClients} filters={clientFilters} page={clientPage} onPage={setClientPage} complete={clientPagesComplete} total={clientTotal} loading={loadingAssigned} error={assignedError} onOpenClient={setSelectedClientDetails} /> : <View style={styles.blankPanel} />}
     </View>
     <CrmLeadDetailsModal lead={selectedLead} onClose={() => setSelectedLead(null)} />
     <CrmClientDetailsModal client={selectedClientDetails} onClose={() => setSelectedClientDetails(null)} onManageFamily={(client) => { setSelectedClientDetails(null); setFamilyClient(client); }} />
@@ -620,30 +697,49 @@ function AssignedLeadList({ leads, filters, loading, error, onSelectLead }: { le
   return <ScrollView contentContainerStyle={styles.cards} showsVerticalScrollIndicator={false}>{visibleLeads.length ? visibleLeads.map((lead) => <Pressable key={lead.leadId ?? lead.leadCode} accessibilityRole="button" accessibilityLabel={`Open ${show(lead.clientName)} details`} onPress={() => onSelectLead(lead)} style={({ pressed }) => [styles.card, pressed && styles.pressed]}><View style={styles.cardTop}><View style={styles.cardCopy}><Text numberOfLines={1} style={styles.cardName}>{show(lead.clientName)}</Text><Text style={styles.cardMobile}>{roleCode(lead.assignedEmployeeRole) === 'RELATIONSHIP_MANAGER' ? 'RM' : 'SC'} · {show(lead.mobileNumber)}</Text></View><View style={styles.rolePill}><Text numberOfLines={1} style={styles.rolePillText}>{show(lead.leadStatus?.replace(/_/g, ' '))}</Text></View></View><View style={styles.cardDivider} /><View style={styles.cardDetails}><Info label="ASSIGNED TO" value={lead.assignedEmployeeName} /><Info label="ASSIGNED DATE" value={lead.assignedAt} /></View></Pressable>) : <NoFilteredResults />}</ScrollView>;
 }
 
-function AssignedClientList({ clients, filters, loading, error, onOpenClient }: { clients: AssignedClient[]; filters: AssignmentFilters; loading: boolean; error: string | null; onOpenClient: (client: AssignedClient) => void }) {
-  const visibleClients = clients.filter((client) => matchesAssignmentFilters({ name: client.clientName, mobile: client.mobileNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }, filters));
-  if (loading) return <View style={styles.state}><ActivityIndicator color="#3156C8" /><Text style={styles.stateText}>Loading assigned clients...</Text></View>;
-  if (error) return <View style={styles.state}><Icon source="alert-circle-outline" size={34} color="#B91C1C" /><Text style={styles.stateText}>{error}</Text></View>;
+function AssignedClientList({ clients, filters, loading, error, onOpenClient, page, onPage, complete, total }: { clients: AssignedClient[]; filters: AssignmentFilters; loading: boolean; error: string | null; onOpenClient: (client: AssignedClient) => void; page: number; onPage: (page: number) => void; complete: boolean; total?: number }) {
+  const visibleClients = clients.filter((client) => matchesAssignmentFilters({ name: client.clientName, mobile: client.mobileNumber, panNumber: client.panNumber, assignedTo: client.assignedEmployeeName, role: client.assignedEmployeeRole, assignedAt: client.assignedAt }, filters));
+  const pageClients = assignedClientPageRows(visibleClients, page);
+  const globalFilter = Boolean(filters.search.trim() || filters.assignedTo);
+  const hasCachedNext = visibleClients.length > (page + 1) * 100;
+  const canNext = hasCachedNext || (!complete && !globalFilter && !loading);
+  const pageCount = Math.max(1, Math.ceil((globalFilter || complete ? visibleClients.length : total ?? clients.length) / 100));
+  if (loading && !pageClients.length) return <View style={styles.state}><ActivityIndicator color="#3156C8" /><Text style={styles.stateText}>Loading assigned clients...</Text></View>;
+  if (error && !visibleClients.length) return <View style={styles.state}><Icon source="alert-circle-outline" size={34} color="#B91C1C" /><Text style={styles.stateText}>{error}</Text></View>;
   if (!clients.length) return <View style={styles.state}><Icon source="account-multiple-outline" size={34} color="#94A3B8" /><Text style={styles.stateTitle}>No clients assigned by CRM yet</Text><Text style={styles.stateText}>Clients assigned from the Assign Clients tab will appear here.</Text></View>;
   if (!visibleClients.length) return <NoFilteredResults />;
-  return <ScrollView horizontal style={clientTableStyles.scroll} contentContainerStyle={{ minWidth: '100%', flexGrow: 1 }}>
+  return <View style={{ flex: 1, minHeight: 0 }}>
+    {error ? <Text accessibilityRole="alert" style={{ color: '#B91C1C', padding: 8 }}>{error}</Text> : null}
+    <ScrollView horizontal style={clientTableStyles.scroll} contentContainerStyle={{ minWidth: '100%', flexGrow: 1 }}>
     <View style={clientTableStyles.table}>
       <View style={[clientTableStyles.row, clientTableStyles.heading]}>
-        {['Client name', 'Mobile number', 'Assigned to', 'Role', 'Assigned date', 'Location', ''].map((label, index) => <Text key={index} style={[clientTableStyles.cell, clientTableStyles.headingText, index === 0 && clientTableStyles.nameColumn, index === 3 && clientTableStyles.roleColumn, index === 6 && clientTableStyles.actionColumn]}>{label}</Text>)}
+        {['Client name', 'PAN number', 'Assigned to', 'Date of Birth', 'Location', ''].map((label, index) => <Text key={index} style={[clientTableStyles.cell, clientTableStyles.headingText, index === 0 && clientTableStyles.nameColumn, index === 5 && clientTableStyles.actionColumn]}>{label}</Text>)}
       </View>
-      <ScrollView style={{ flex: 1 }}>
-        {visibleClients.map((client, index) => <View key={client.id} style={[clientTableStyles.row, index % 2 === 0 ? clientTableStyles.lavender : clientTableStyles.mint]}>
+      <FlatList style={{ flex: 1 }} data={pageClients} keyExtractor={client => client.id}
+        initialNumToRender={20} maxToRenderPerBatch={20} windowSize={7}
+        renderItem={({ item: client, index }) => <View style={[clientTableStyles.row, index % 2 === 0 ? clientTableStyles.lavender : clientTableStyles.mint]}>
           <Text numberOfLines={2} style={[clientTableStyles.cell, clientTableStyles.nameColumn, clientTableStyles.name]}>{show(client.clientName)}</Text>
-          <Text numberOfLines={1} style={clientTableStyles.cell}>{show(client.mobileNumber)}</Text>
+          <Text numberOfLines={1} style={clientTableStyles.cell}>{show(client.panNumber)}</Text>
           <Text numberOfLines={2} style={clientTableStyles.cell}>{show(client.assignedEmployeeName)}</Text>
-          <View style={[clientTableStyles.cell, clientTableStyles.roleColumn]}><View style={clientTableStyles.badge}><Text style={clientTableStyles.badgeText}>{client.assignedEmployeeRole ? roleLabel(client.assignedEmployeeRole) : '-'}</Text></View></View>
-          <Text numberOfLines={1} style={clientTableStyles.cell}>{show(client.assignedAt?.slice(0, 10))}</Text>
+          <Text numberOfLines={1} style={clientTableStyles.cell}>{client.dateOfBirth?.slice(0, 10) ?? ''}</Text>
           <Text numberOfLines={2} style={clientTableStyles.cell}>{show(client.location)}</Text>
           <View style={[clientTableStyles.cell, clientTableStyles.actionColumn]}><Pressable accessibilityRole="button" accessibilityLabel={`Open ${show(client.clientName)} details`} onPress={() => onOpenClient(client)} style={({ pressed }) => [clientTableStyles.details, pressed && styles.pressed]}><Text style={clientTableStyles.detailsText}>Details</Text><Icon source="chevron-right" size={16} color="#3156C8" /></Pressable></View>
-        </View>)}
-      </ScrollView>
+        </View>}
+      />
     </View>
-  </ScrollView>;
+    </ScrollView>
+    <View style={clientPagingStyles.bar}>
+      <Pressable accessibilityRole="button" accessibilityLabel="Previous 100 clients" disabled={page === 0}
+        onPress={() => onPage(page - 1)} style={[clientPagingStyles.button, page === 0 && styles.disabled]}>
+        <Icon source="chevron-left" size={17} color="#3156C8" /><Text style={clientPagingStyles.buttonText}>Previous</Text>
+      </Pressable>
+      <Text style={clientPagingStyles.label}>Page {page + 1}{complete || (!globalFilter && total !== undefined) ? ` of ${pageCount}` : ''}</Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="Next 100 clients" disabled={!canNext}
+        onPress={() => onPage(page + 1)} style={[clientPagingStyles.button, !canNext && styles.disabled]}>
+        <Text style={clientPagingStyles.buttonText}>Next</Text><Icon source="chevron-right" size={17} color="#3156C8" />
+      </Pressable>
+    </View>
+  </View>;
 }
 
 function AssignmentHeaderFilters({ items, targets, filters, onChange, label }: { items: AssignmentFilterItem[]; targets: readonly CrmAssignmentTarget[]; filters: AssignmentFilters; onChange: (filters: AssignmentFilters) => void; label: string }) {
@@ -659,8 +755,11 @@ function AssignmentHeaderFilters({ items, targets, filters, onChange, label }: {
   const [dateTarget, setDateTarget] = useState<'from' | 'to'>('from');
   const update = (next: Partial<AssignmentFilters>) => onChange({ ...filters, ...next });
   const hasFilters = Boolean(filters.search || filters.assignedTo || filters.role || filters.from || filters.to);
+  useEffect(() => {
+    if (label === 'clients' && (filters.role || filters.from || filters.to)) onChange({ ...filters, role: '', from: '', to: '' });
+  }, [label, filters.role, filters.from, filters.to, onChange]);
   const rangeLabel = filters.from || filters.to ? `${filters.from || '...'} to ${filters.to || '...'}` : 'All assigned dates';
-  return <><View style={styles.headerFilters}><TextInput value={filters.search} onChangeText={(search) => update({ search })} placeholder={`Search ${label.slice(0, -1)} name or mobile`} placeholderTextColor="#CBD9FF" style={styles.headerSearch} /><Pressable onPress={() => { setDateTarget('from'); setCalendarOpen(true); }} style={styles.headerDatePicker}><Icon source="calendar-month-outline" size={15} color="#BFD1FF" /><Text numberOfLines={1} style={styles.headerDateText}>{rangeLabel}</Text>{filters.from || filters.to ? <Pressable onPress={() => update({ from: '', to: '' })}><Icon source="close-circle" size={15} color="#BFD1FF" /></Pressable> : <Icon source="chevron-down" size={15} color="#BFD1FF" />}</Pressable><View style={styles.headerPickerShell}><Picker selectedValue={filters.assignedTo} onValueChange={(assignedTo) => update({ assignedTo: String(assignedTo) })} style={styles.headerPicker}><Picker.Item label="All assigned to" value="" />{assignedTo.map((name) => <Picker.Item key={name} label={name} value={name} />)}</Picker></View><View style={styles.headerPickerShell}><Picker selectedValue={filters.role} onValueChange={(role) => update({ role: String(role) })} style={styles.headerPicker}><Picker.Item label="All roles" value="" />{roles.map((role) => <Picker.Item key={role} label={role === 'RELATIONSHIP_MANAGER' ? 'Relationship Manager' : 'Sales Coordinator'} value={role} />)}</Picker></View>{hasFilters ? <Pressable onPress={() => onChange(emptyAssignmentFilters())} style={styles.clearFilters}><Text style={styles.clearFiltersText}>Clear</Text></Pressable> : null}</View><Modal transparent visible={calendarOpen} animationType="fade" onRequestClose={() => setCalendarOpen(false)}><Pressable style={styles.calendarBackdrop} onPress={() => setCalendarOpen(false)}><Pressable style={styles.calendarCard} onPress={(event) => event.stopPropagation()}><Text style={styles.calendarTitle}>ASSIGNED DATE RANGE</Text><View style={styles.calendarActions}><Pressable onPress={() => setDateTarget('from')} style={[styles.calendarAction, dateTarget === 'from' && styles.calendarActionActive]}><Text style={styles.calendarActionText}>From: {filters.from || 'Choose date'}</Text></Pressable><Pressable onPress={() => setDateTarget('to')} style={[styles.calendarAction, dateTarget === 'to' && styles.calendarActionActive]}><Text style={styles.calendarActionText}>To: {filters.to || 'Choose date'}</Text></Pressable></View><InlineCalendar value={filters[dateTarget]} onSelect={(value) => update({ [dateTarget]: value })} /></Pressable></Pressable></Modal></>;
+  return <><View style={styles.headerFilters}><TextInput value={filters.search} onChangeText={(search) => update({ search })} placeholder={label === 'clients' ? 'Search client name, mobile or PAN' : `Search ${label.slice(0, -1)} name or mobile`} placeholderTextColor="#CBD9FF" style={styles.headerSearch} />{label !== 'clients' ? <Pressable onPress={() => { setDateTarget('from'); setCalendarOpen(true); }} style={styles.headerDatePicker}><Icon source="calendar-month-outline" size={15} color="#BFD1FF" /><Text numberOfLines={1} style={styles.headerDateText}>{rangeLabel}</Text>{filters.from || filters.to ? <Pressable onPress={() => update({ from: '', to: '' })}><Icon source="close-circle" size={15} color="#BFD1FF" /></Pressable> : <Icon source="chevron-down" size={15} color="#BFD1FF" />}</Pressable> : null}{label === 'clients' ? <CrmAssignedToDropdown value={filters.assignedTo} options={assignedTo} onChange={assignedTo => update({ assignedTo })} /> : <View style={styles.headerPickerShell}><Picker selectedValue={filters.assignedTo} onValueChange={(assignedTo) => update({ assignedTo: String(assignedTo) })} style={styles.headerPicker}><Picker.Item label="All assigned to" value="" />{assignedTo.map((name) => <Picker.Item key={name} label={name} value={name} />)}</Picker></View>}{label !== 'clients' ? <View style={styles.headerPickerShell}><Picker selectedValue={filters.role} onValueChange={(role) => update({ role: String(role) })} style={styles.headerPicker}><Picker.Item label="All roles" value="" />{roles.map((role) => <Picker.Item key={role} label={role === 'RELATIONSHIP_MANAGER' ? 'Relationship Manager' : 'Sales Coordinator'} value={role} />)}</Picker></View> : null}{hasFilters ? <Pressable onPress={() => onChange(emptyAssignmentFilters())} style={styles.clearFilters}><Text style={styles.clearFiltersText}>Clear</Text></Pressable> : null}</View><Modal transparent visible={calendarOpen} animationType="fade" onRequestClose={() => setCalendarOpen(false)}><Pressable style={styles.calendarBackdrop} onPress={() => setCalendarOpen(false)}><Pressable style={styles.calendarCard} onPress={(event) => event.stopPropagation()}><Text style={styles.calendarTitle}>ASSIGNED DATE RANGE</Text><View style={styles.calendarActions}><Pressable onPress={() => setDateTarget('from')} style={[styles.calendarAction, dateTarget === 'from' && styles.calendarActionActive]}><Text style={styles.calendarActionText}>From: {filters.from || 'Choose date'}</Text></Pressable><Pressable onPress={() => setDateTarget('to')} style={[styles.calendarAction, dateTarget === 'to' && styles.calendarActionActive]}><Text style={styles.calendarActionText}>To: {filters.to || 'Choose date'}</Text></Pressable></View><InlineCalendar value={filters[dateTarget]} onSelect={(value) => update({ [dateTarget]: value })} /></Pressable></Pressable></Modal></>;
 }
 
 function InlineCalendar({ value, onSelect }: { value: string; onSelect: (value: string) => void }) {
@@ -678,14 +777,22 @@ function Info({ label, value, dark = false }: { label: string; value?: string | 
 
 const FAMILY_RELATIONSHIPS: readonly FamilyRelationship[] = ['SELF', 'MOTHER', 'FATHER', 'SPOUSE', 'CHILD', 'SIBLING', 'OTHER'];
 function CrmClientDetailsModal({ client, onClose, onManageFamily }: { client: AssignedClient | null; onClose: () => void; onManageFamily: (client: AssignedClient) => void }) {
-  const { isDark } = useAppTheme();
-  const [profile, setProfile] = useState<ClientProfileResponse | null>(null); const [meetings, setMeetings] = useState<ClientMeetingResponse[]>([]); const [loading, setLoading] = useState(false); const [error, setError] = useState<string | null>(null);
-  useEffect(() => { let active = true; if (!client) return () => { active = false; }; setLoading(true); setError(null); void (async () => { try { const resolved = client.clientCode ? { clientCode: client.clientCode } : await crmAssignmentApi.findClientByMobile(client.mobileNumber); if (!resolved?.clientCode) throw new Error('This client could not be matched in the backend by mobile number.'); const [nextProfile, nextMeetings] = await Promise.all([clientMeetingApi.getProfile(resolved.clientCode), clientMeetingApi.getByClientCode(resolved.clientCode)]); if (active) { setProfile(nextProfile); setMeetings(nextMeetings); } } catch (loadError) { if (active) { setProfile(null); setMeetings([]); setError(messageFor(loadError)); } } finally { if (active) setLoading(false); } })(); return () => { active = false; }; }, [client]);
   if (!client) return null;
-  const profileFields = [['Client Code', profile?.clientCode ?? client.clientCode], ['Mobile Number', profile?.mobileNumber ?? client.mobileNumber], ['Email', profile?.email ?? client.email], ['Location', profile?.location ?? client.location], ['Office Address', profile?.clinicAddress ?? client.clinicAddress], ['Profession', profile?.speciality ?? client.speciality], ['Assigned To', profile?.assignedSalesPersonName ?? client.assignedEmployeeName], ['Family', profile?.familyName ?? 'Not linked']];
-  const pcVerified = meetings.filter((meeting) => String(meeting.verificationStatus ?? '').toUpperCase() === 'VERIFIED');
-  return <Modal transparent visible animationType="fade" onRequestClose={onClose}><Pressable style={styles.modalBackdrop} onPress={onClose}><Pressable style={[styles.modalCard, isDark && styles.modalCardDark]} onPress={(event) => event.stopPropagation()}><View style={[styles.modalHeader, isDark && styles.modalHeaderDark]}><View><Text style={styles.modalEyebrow}>ASSIGNED CLIENT</Text><Text style={[styles.modalTitle, isDark && styles.modalTitleDark]}>{show(client.clientName)}</Text></View><View style={styles.modalHeaderActions}><Pressable onPress={() => onManageFamily(client)} style={styles.familyHeaderButton}><Icon source="account-group-outline" size={14} color="#FFFFFF" /><Text style={styles.familyHeaderButtonText}>Manage Family</Text></Pressable><Pressable onPress={onClose} style={styles.modalClose}><Icon source="close" size={22} color="#3156C8" /></Pressable></View></View><ScrollView contentContainerStyle={styles.modalContent}>{loading ? <View style={styles.familyLoading}><ActivityIndicator color="#3156C8" /><Text style={[styles.stateText, isDark && styles.modalMutedTextDark]}>Loading client details...</Text></View> : <><DetailSection dark={isDark} title="Client Details" fields={profileFields} /><DetailSection dark={isDark} title="PC Verification Details" fields={pcVerified.length ? pcVerified.map((meeting) => [`${meeting.meetingDate ?? 'Meeting'} · ${meeting.verificationStatus}`, `App used: ${meeting.blueantAppUsed ?? '-'} · Business: ${meeting.businessGenerated ?? '-'}`]) : [['No verified PC meeting yet', 'PC verification details will appear here.']]} /><DetailSection dark={isDark} title="Client Meeting History" fields={meetings.length ? meetings.map((meeting) => [`${meeting.meetingDate ?? '-'} · ${meeting.meetingCode ?? 'Client Meeting'}`, `${meeting.meetingStatus ?? meeting.verificationStatus ?? 'PENDING'}${meeting.remarks ? ` · ${meeting.remarks}` : ''}`]) : [['No client meeting history', 'Meetings will appear here once available.']]} />{error ? <Text style={styles.familyError}>{error}</Text> : null}</>}</ScrollView></Pressable></Pressable></Modal>;
+  const profile: ClientProfileResponse = {
+    ...client.profile,
+    id: client.clientId, clientCode: client.clientCode,
+    clientName: client.clientName, mobileNumber: client.mobileNumber,
+    email: client.email, alternateMobileNumber: client.alternateMobileNumber,
+    panNumber: client.panNumber, location: client.location, clinicAddress: client.clinicAddress,
+    speciality: client.speciality, bestTimeToMeet: client.bestTimeToMeet,
+    remarks: client.remarks, assignmentDate: client.assignedAt,
+    assignedSalesPersonCode: client.salesPersonEmployeeCode,
+    assignedSalesPersonName: client.assignedEmployeeName,
+  };
+  return <CrmClientDetailsDialog key={client.clientCode ?? client.id} client={profile} onClose={onClose}
+    onManageFamily={() => onManageFamily(client)} />;
 }
+
 function FamilyManagerModal({ client, onClose }: { client: AssignedClient | null; onClose: () => void }) {
   const { isDark } = useAppTheme();
   const [profileId, setProfileId] = useState<number | undefined>(client?.clientId ?? (Number.isSafeInteger(Number(client?.id)) ? Number(client?.id) : undefined));
@@ -825,18 +932,22 @@ const styles = StyleSheet.create({
 const clientTableStyles = StyleSheet.create({
   scroll: { flex: 1 },
   table: { flex: 1, minWidth: 1050 },
-  row: { flexDirection: 'row', alignItems: 'center', minHeight: 62, borderBottomWidth: 1, borderBottomColor: '#DDE5F5', paddingHorizontal: 12 },
+  row: { flexDirection: 'row', alignItems: 'center', minHeight: 34, borderBottomWidth: 1, borderBottomColor: '#DDE5F5', paddingHorizontal: 12 },
   heading: { minHeight: 48, backgroundColor: '#EEF2FF' },
-  cell: { flex: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 10, fontSize: 13, color: '#23365E' },
+  cell: { flex: 1, minWidth: 0, paddingHorizontal: 8, paddingVertical: 5, fontSize: 13, color: '#23365E' },
   headingText: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', color: '#43609B', letterSpacing: 0.5 },
   nameColumn: { flex: 1.5 },
-  roleColumn: { flex: 0.5 },
   actionColumn: { flex: 0.8 },
-  name: { fontWeight: '800', color: '#10294F' },
+  name: { fontSize: 11, fontWeight: '800', color: '#10294F' },
   lavender: { backgroundColor: '#EEF0FF' },
   mint: { backgroundColor: '#EAF8F3' },
-  badge: { alignSelf: 'flex-start', borderRadius: 7, paddingHorizontal: 9, paddingVertical: 5, backgroundColor: '#DBEAFE' },
-  badgeText: { color: '#3156C8', fontSize: 11, fontWeight: '800' },
-  details: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1, borderColor: '#CDD7FF', borderRadius: 9, backgroundColor: '#E9EDFF', paddingHorizontal: 10 },
+  details: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: 1, borderColor: '#CDD7FF', borderRadius: 9, backgroundColor: '#E9EDFF', paddingHorizontal: 10 },
   detailsText: { color: '#3156C8', fontSize: 12, fontWeight: '800' },
+});
+
+const clientPagingStyles = StyleSheet.create({
+  bar: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 4, paddingHorizontal: 12, paddingVertical: 4, backgroundColor: '#F8FAFF', borderTopWidth: 1, borderTopColor: '#DFE6F5' },
+  button: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, minHeight: 26, paddingHorizontal: 8, borderRadius: 6, borderWidth: 1, borderColor: '#D6E0F5', backgroundColor: '#FFFFFF' },
+  buttonText: { fontSize: 11, color: '#3156C8', fontWeight: '700' },
+  label: { fontSize: 11, color: '#64748B', fontWeight: '600' },
 });

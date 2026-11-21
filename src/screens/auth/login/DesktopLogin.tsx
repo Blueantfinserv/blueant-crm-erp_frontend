@@ -1,8 +1,9 @@
-import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { BackgroundCurves } from '../../../components/BackgroundCurves';
 import { FeatureCard, LoginCard, LogoRow, LoginScreenProps } from './LoginShared';
 import { theme } from '../../../theme/theme';
 import { FooterLink } from '../../../components/LegalPage';
+import { LoginMascot } from './LoginMascot';
 
 export function DesktopLogin(props: LoginScreenProps) {
   const { width, height } = useWindowDimensions();
@@ -40,11 +41,7 @@ export function DesktopLogin(props: LoginScreenProps) {
         </View>
 
         <View style={[styles.centerMascot, { width: mascotWidth, height: mascotHeight }]}>
-          <Image
-            source={require('../../../../assets/download.gif')}
-            style={[styles.mascotGif, { width: mascotImageWidth, height: mascotImageHeight }]}
-            resizeMode="contain"
-          />
+          <LoginMascot style={[styles.mascotGif, { width: mascotImageWidth, height: mascotImageHeight }]} />
         </View>
 
         <View style={[styles.right, { width: cardWidth, maxWidth: cardWidth }]}>

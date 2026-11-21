@@ -32,7 +32,40 @@ export function Pagination({ page, total, onPageChange, pageSize = PAGE_SIZE, co
   const safePage = Math.min(page, totalPages - 1);
   const start = safePage * pageSize + 1;
   const end = Math.min(total, (safePage + 1) * pageSize);
-  return <View style={[styles.pagination, compact && { paddingHorizontal: 8, paddingVertical: 2, gap: 2 }]}>{!compact ? <Text style={styles.paginationText}>Showing {start}–{end} of {total}</Text> : null}<View style={[styles.paginationControls, compact && { flex: 1, justifyContent: 'space-between' }]}><Pressable disabled={safePage === 0} onPress={() => onPageChange(safePage - 1)} style={[styles.paginationButton, compact && { minHeight: 32, paddingVertical: 3, minWidth: 60 }, safePage === 0 && styles.disabled]}><Text style={styles.paginationButtonText}>Previous</Text></Pressable><Text style={styles.paginationText}>{compact ? `${start}-${end} / ${total}` : `Page ${safePage + 1} of ${totalPages}`}</Text><Pressable disabled={safePage === totalPages - 1} onPress={() => onPageChange(safePage + 1)} style={[styles.paginationButton, compact && { minHeight: 32, paddingVertical: 3, minWidth: 60 }, safePage === totalPages - 1 && styles.disabled]}><Text style={styles.paginationButtonText}>Next</Text></Pressable></View></View>;
+  const previousDisabled = safePage === 0;
+  const nextDisabled = safePage === totalPages - 1;
+  return <View style={[styles.pagination, compact && styles.paginationCompact]}>
+    {!compact ? <View style={styles.paginationRange}>
+      <Text style={styles.paginationRangeLabel}>Showing</Text>
+      <Text style={styles.paginationRangeValue}>{start}–{end}</Text>
+      <Text style={styles.paginationRangeLabel}>of {total}</Text>
+    </View> : null}
+    <View style={[styles.paginationControls, compact && styles.paginationControlsCompact]}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go to previous page"
+        disabled={previousDisabled}
+        onPress={() => onPageChange(safePage - 1)}
+        style={({ pressed }) => [styles.paginationButton, compact && styles.paginationButtonCompact, previousDisabled && styles.paginationButtonDisabled, pressed && !previousDisabled && styles.paginationButtonPressed]}
+      >
+        <Icon source="chevron-left" size={compact ? 16 : 17} color={previousDisabled ? '#AAB6CA' : '#3156C8'} />
+        <Text style={[styles.paginationButtonText, previousDisabled && styles.paginationButtonTextDisabled]}>Previous</Text>
+      </Pressable>
+      <View style={[styles.paginationPage, compact && styles.paginationPageCompact]}>
+        {compact ? <Text style={styles.paginationPageText}>{start}–{end}</Text> : <Text style={styles.paginationPageText}>Page <Text style={styles.paginationPageNumber}>{safePage + 1}</Text> of {totalPages}</Text>}
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Go to next page"
+        disabled={nextDisabled}
+        onPress={() => onPageChange(safePage + 1)}
+        style={({ pressed }) => [styles.paginationButton, styles.paginationButtonNext, compact && styles.paginationButtonCompact, nextDisabled && styles.paginationButtonDisabled, pressed && !nextDisabled && styles.paginationButtonPressed]}
+      >
+        <Text style={[styles.paginationButtonText, nextDisabled && styles.paginationButtonTextDisabled]}>Next</Text>
+        <Icon source="chevron-right" size={compact ? 16 : 17} color={nextDisabled ? '#AAB6CA' : '#3156C8'} />
+      </Pressable>
+    </View>
+  </View>;
 }
 
 export function Metric({ icon, value, label, tone }: { icon: string; value: number; label: string; tone: 'blue' | 'orange' }) {

@@ -1,6 +1,6 @@
 import { SecureStorageService } from '../services/SecureStorageService';
 import { requestWithSessionRefresh } from './authenticatedRequest';
-import type { ClientProfileResponse, ClientRegistrationRequest, ClientRegistrationResponse, CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleFamilyHeadResponse, EligibleLeadPage, FamilyDetailResponse, FamilyHeadHistoryResponse, FamilyRelationship } from '../types/crm';
+import type { ClientMeetingResponse, ClientProfileResponse, ClientRegistrationRequest, ClientRegistrationResponse, CrmAssignmentResponse, CrmAssignmentTarget, CrmLeadQueueItem, CrmPhysicalLeadRequest, CrmPhysicalLeadResponse, EligibleFamilyHeadResponse, EligibleLeadPage, FamilyDetailResponse, FamilyHeadHistoryResponse, FamilyRelationship } from '../types/crm';
 
 // Existing CRM requests retain the configured production host.
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.blueantfinserv.com/api';
@@ -8,6 +8,14 @@ const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.bluean
 const CRM_CLIENT_LIST_BASE_URL = 'https://blueant-crm-erp.up.railway.app/api';
 
 type ApiResponse<T> = { success?: boolean; message?: string; data?: T; details?: Record<string, unknown> };
+export type CrmClientPage = {
+  content: ClientProfileResponse[];
+  totalPages: number;
+  number?: number;
+  size?: number;
+  totalElements?: number;
+  numberOfElements?: number;
+};
 type RoleSummary = { id?: number; roleCode?: string; roleName?: string; status?: string };
 type UserSummary = { id?: number; employeeCode?: string; fullName?: string; roleName?: string; status?: string };
 type UserPage = { content?: UserSummary[]; totalPages?: number };
@@ -29,7 +37,27 @@ const roleCode = (value?: string) => {
   return code === 'RM' ? 'RELATIONSHIP_MANAGER' : code === 'SC' ? 'SALES_COORDINATOR' : code;
 };
 
-const request = async <T>(path: string, init: RequestInit = {}, baseUrl = API_BASE_URL): Promise<T> => {
+const parseCrmClientPage = (payload: unknown): CrmClientPage | undefined => {
+  const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+  const page = isRecord(payload) && payload.success === true
+    ? payload.data
+    : payload;
+  if (!isRecord(page)
+    || !Array.isArray(page.content)
+    || !Number.isInteger(page.totalPages)
+    || (page.totalPages as number) < 0
+    || (page.number !== undefined && (!Number.isInteger(page.number) || (page.number as number) < 0))
+    || page.content.some(client => !isRecord(client))) return undefined;
+  return page as unknown as CrmClientPage;
+};
+
+const request = async <T>(
+  path: string,
+  init: RequestInit = {},
+  baseUrl = API_BASE_URL,
+  parseResponse?: (payload: unknown) => T | undefined,
+): Promise<T> => {
   const token = await SecureStorageService.getToken();
   if (!token) throw new CrmAssignmentApiError('Authentication token is unavailable.', '401');
   let response: Response;
@@ -47,7 +75,18 @@ const request = async <T>(path: string, init: RequestInit = {}, baseUrl = API_BA
     throw new CrmAssignmentApiError('Network unavailable. Please check your internet connection.', 'NETWORK_ERROR');
   }
   const payload = await response.json().catch(() => null) as ApiResponse<T> | null;
-  if (!response.ok || payload?.success !== true || payload.data === undefined) {
+  if (!response.ok) {
+    const details = payload?.details && typeof payload.details === 'object'
+      ? Object.entries(payload.details).map(([field, message]) => `${field}: ${Array.isArray(message) ? message.join(', ') : String(message)}`).join(' · ')
+      : '';
+    throw new CrmAssignmentApiError(details || payload?.message || `CRM request failed (${response.status}).`, String(response.status));
+  }
+  if (parseResponse) {
+    const parsed = parseResponse(payload);
+    if (parsed !== undefined) return parsed;
+    throw new CrmAssignmentApiError('CRM response format is invalid.', String(response.status));
+  }
+  if (payload?.success !== true || payload.data === undefined) {
     const details = payload?.details && typeof payload.details === 'object'
       ? Object.entries(payload.details).map(([field, message]) => `${field}: ${Array.isArray(message) ? message.join(', ') : String(message)}`).join(' · ')
       : '';
@@ -56,11 +95,11 @@ const request = async <T>(path: string, init: RequestInit = {}, baseUrl = API_BA
   return payload.data;
 };
 
-const loadRoleTargets = async (role: 'RELATIONSHIP_MANAGER' | 'SALES_COORDINATOR', roleId: number) => {
-  const body = { keyword: '', departmentId: null, designationId: null, teamId: null, roleId, reportingManagerId: null, status: 'ACTIVE', page: 0, size: 100, sortBy: 'fullName', sortDirection: 'ASC' };
-  const firstPage = await request<UserPage>('/v1/users/search', { method: 'POST', body: JSON.stringify(body) });
+const loadRoleTargets = async (role: 'RELATIONSHIP_MANAGER' | 'SALES_COORDINATOR', roleId: number, baseUrl: string) => {
+  const body = { keyword: '', departmentId: null, designationId: null, teamId: null, roleId, reportingManagerId: null, status: 'ACTIVE', page: 0, size: 100 };
+  const firstPage = await request<UserPage>('/v1/users/search', { method: 'POST', body: JSON.stringify(body) }, baseUrl);
   const rest = await Promise.all(Array.from({ length: Math.max(0, (firstPage.totalPages ?? 1) - 1) }, (_, index) => (
-    request<UserPage>('/v1/users/search', { method: 'POST', body: JSON.stringify({ ...body, page: index + 1 }) })
+    request<UserPage>('/v1/users/search', { method: 'POST', body: JSON.stringify({ ...body, page: index + 1 }) }, baseUrl)
   )));
   return [firstPage, ...rest].flatMap((page) => page.content ?? [])
     .filter((user): user is Required<Pick<UserSummary, 'id' | 'employeeCode' | 'fullName'>> & UserSummary => Boolean(user.id && user.employeeCode && user.fullName))
@@ -68,12 +107,85 @@ const loadRoleTargets = async (role: 'RELATIONSHIP_MANAGER' | 'SALES_COORDINATOR
 };
 
 export const crmAssignmentApi = {
+  getAssignedClientProfile: (clientCode: string) => request<ClientProfileResponse>(
+    `/v1/clients/${encodeURIComponent(clientCode)}/profile`, {}, CRM_CLIENT_LIST_BASE_URL,
+  ),
+  updateClientProfile: (clientId: number, payload: Record<string, unknown>) => request<ClientProfileResponse>(
+    `/v1/clients/${encodeURIComponent(String(clientId))}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    },
+    CRM_CLIENT_LIST_BASE_URL,
+    (response: unknown) => {
+      if (typeof response !== 'object' || response === null || Array.isArray(response)) return undefined;
+      const record = response as Record<string, unknown>;
+      const data = record.data !== undefined && typeof record.data === 'object' && record.data !== null
+        ? record.data as Record<string, unknown>
+        : record;
+      if (typeof data.id !== 'number' && typeof data.clientCode !== 'string') return undefined;
+      return data as unknown as ClientProfileResponse;
+    },
+  ),
+  getAssignedClientHistory: (clientCode: string) => request<ClientMeetingResponse[]>(
+    `/v1/client-meetings/client/${encodeURIComponent(clientCode)}`, {}, CRM_CLIENT_LIST_BASE_URL,
+  ),
+  getAssignedClientsPage: async (page = 0): Promise<CrmClientPage> => {
+    const result = await request<CrmClientPage>(`/v1/clients?page=${page}&size=100`, {}, CRM_CLIENT_LIST_BASE_URL, parseCrmClientPage);
+    if (result.number !== undefined && result.number !== page) {
+      throw new CrmAssignmentApiError(`CRM clients page ${page} returned page ${result.number}.`, 'INVALID_PAGE');
+    }
+    return result;
+  },
   // CRM assignment history must survive browser/device storage changes.
-  getAssignedClients: async (): Promise<ClientProfileResponse[]> => {
-    type Page = { content?: ClientProfileResponse[]; totalPages?: number };
-    const first = await request<Page>('/v1/clients?page=0&size=100', {}, CRM_CLIENT_LIST_BASE_URL);
-    const rest = await Promise.all(Array.from({ length: Math.max(0, (first.totalPages ?? 1) - 1) }, (_, index) => request<Page>(`/v1/clients?page=${index + 1}&size=100`, {}, CRM_CLIENT_LIST_BASE_URL)));
-    return [first, ...rest].flatMap(page => page.content ?? []).filter(client => Boolean(client.assignedSalesPersonCode?.trim()));
+  getAssignedClients: async ({ onPage, valid = () => true }: {
+    onPage?: (clients: ClientProfileResponse[]) => void;
+    valid?: () => boolean;
+  } = {}): Promise<ClientProfileResponse[]> => {
+    const loadPage = (pageNumber: number) => request<CrmClientPage>(
+      `/v1/clients?page=${pageNumber}&size=100`,
+      {},
+      CRM_CLIENT_LIST_BASE_URL,
+      parseCrmClientPage,
+    ).then(page => {
+      if (page.number !== undefined && page.number !== pageNumber) {
+        throw new CrmAssignmentApiError(`CRM clients page ${pageNumber} returned page ${page.number}.`, 'INVALID_PAGE');
+      }
+      return page;
+    });
+    if (!valid()) return [];
+    const first = await loadPage(0);
+    if (!valid()) return [];
+    const pages = new Map<number, CrmClientPage>([[0, first]]);
+    const snapshot = () => {
+      const seen = new Set<string>();
+      return [...pages.entries()].sort(([left], [right]) => left - right)
+        .flatMap(([, page]) => page.content)
+        .filter(client => Boolean((client.salesPersonCode ?? client.assignedSalesPersonCode)?.trim()))
+        .filter(client => {
+          const key = client.clientCode || (client.id !== undefined ? `id:${client.id}` : '');
+          if (!key) return true;
+          if (seen.has(key)) return false;
+          seen.add(key); return true;
+        });
+    };
+    onPage?.(snapshot());
+    let nextPage = 1;
+    let failure: unknown;
+    const worker = async () => {
+      while (valid() && !failure && nextPage < first.totalPages) {
+        const pageNumber = nextPage++;
+        try {
+          const page = await loadPage(pageNumber);
+          if (!valid()) return;
+          pages.set(pageNumber, page);
+          onPage?.(snapshot());
+        } catch (error) { failure ??= error; }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(3, Math.max(0, first.totalPages - 1)) }, worker));
+    if (!valid()) return [];
+    if (failure) throw failure;
+    return snapshot();
   },
   registerClient: (payload: ClientRegistrationRequest) => request<ClientRegistrationResponse>('/v1/clients/register', {
     method: 'POST',
@@ -95,11 +207,11 @@ export const crmAssignmentApi = {
     return pages.flatMap((page) => page.content ?? []).find((client) => client.mobileNumber?.replace(/\D/g, '') === digits) ?? null;
   },
   getTargets: async (): Promise<CrmAssignmentTarget[]> => {
-    const roles = await request<RoleSummary[]>('/v1/roles');
+    const roles = await request<RoleSummary[]>('/v1/roles', {}, CRM_CLIENT_LIST_BASE_URL);
     const targetRoles = roles
       .filter((role): role is RoleSummary & { id: number } => Boolean(role.id) && ['RELATIONSHIP_MANAGER', 'SALES_COORDINATOR'].includes(roleCode(role.roleCode ?? role.roleName)))
       .map((role) => ({ id: role.id, code: roleCode(role.roleCode ?? role.roleName) as CrmAssignmentTarget['role'] }));
-    const groups = await Promise.all(targetRoles.map(({ id, code }) => loadRoleTargets(code, id)));
+    const groups = await Promise.all(targetRoles.map(({ id, code }) => loadRoleTargets(code, id, CRM_CLIENT_LIST_BASE_URL)));
     return groups.flat();
   },
   assign: (leadCode: string, salesPersonEmployeeCode: string) => request<CrmAssignmentResponse>(`/v1/Leads_assign/${encodeURIComponent(leadCode)}/assign`, {

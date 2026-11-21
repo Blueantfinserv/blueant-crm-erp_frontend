@@ -44,7 +44,8 @@ export function LeadVerificationPopup({ meeting, form, setForm, submitError, sub
   // Browser zoom viewport ko chhota karta hai. Isliye layout sirf real mobile width par stack hota hai.
   // Height kam ho to 2 columns rahte hain, bas poora popup scroll hota hai.
   const stacked = width < POPUP_STACK_WIDTH;
-  const scrollable = stacked || height < POPUP_MIN_HEIGHT_FOR_NO_SCROLL;
+  // Expanded meeting remarks can exceed even a tall desktop viewport.
+  const scrollable = true;
   const Container = scrollable ? ScrollView : View;
   const visitOnly = isNotConductedMeeting(meeting);
   if (stacked) return <View style={{ maxHeight: Math.max(240, height - 40), flexShrink: 1, backgroundColor: '#F7FAFF' }}>

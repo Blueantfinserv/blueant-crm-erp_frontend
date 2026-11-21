@@ -1,6 +1,6 @@
 import { latestClientMeeting } from '../../../utils/clientHistorySelectors';
 import { clientWorkFollowApi } from '../../../api/clientWorkFollow';
-import { clientHistoryService, type ClientHistoryLoadResult, type ClientHistoryReadCycle } from '../../../services/ClientHistoryService';
+import { clientHistoryService, type ClientHistoryReadCycle } from '../../../services/ClientHistoryService';
 import type { ClientMeetingResponse, ClientWorkFollowResponse } from '../../../types/crm';
 import type { SalesTask } from './types/tasks';
 import { mapClientToSalesTask } from './taskMappers';
@@ -21,12 +21,64 @@ export type ClientTaskQueueProgress = {
 type ClientTaskQueueOptions = {
   valid?: () => boolean;
   cycle?: ClientHistoryReadCycle;
+  forceRefresh?: boolean;
   onPage?: (tasks: SalesTask[], progress: ClientTaskQueueProgress) => void;
   onClients?: (clients: ClientWorkFollowResponse[], progress: ClientTaskQueueProgress, startIndex: number) => void;
   onTaskUpdate?: (task: SalesTask) => void;
   onHistory?: (client: ClientWorkFollowResponse, index: number, history: ClientMeetingResponse[]) => void;
   onHistoryError?: (clientCode: string, error: unknown) => void;
   onProgress?: (progress: ClientTaskQueueProgress) => void;
+};
+
+type ClientWorkFollowPage = Awaited<ReturnType<typeof clientWorkFollowApi.getQueue>>;
+type QueuePageFlight = { promise: Promise<ClientWorkFollowPage>; forced: boolean };
+let queueCacheScope: number | null = null;
+let queuePageCache = new Map<number, ClientWorkFollowPage>();
+let queuePageFlights = new Map<number, QueuePageFlight>();
+
+const clearClientTaskQueueCache = () => {
+  queueCacheScope = null;
+  queuePageCache = new Map();
+  queuePageFlights = new Map();
+};
+
+clientHistoryService.subscribeAccountChange(clearClientTaskQueueCache);
+
+const fetchQueuePage = (page: number, scope: number): Promise<ClientWorkFollowPage> =>
+  clientWorkFollowApi.getQueue({ page, size: 100 }).then(response => {
+    if (!clientHistoryService.isCurrentScope(scope)) throw new Error('Client history account changed or load cancelled.');
+    queuePageCache.set(page, response);
+    return response;
+  });
+
+const getQueuePage = (page: number, scope: number, force: boolean): Promise<ClientWorkFollowPage> => {
+  if (queueCacheScope !== scope) {
+    queueCacheScope = scope;
+    queuePageCache = new Map();
+    queuePageFlights = new Map();
+  }
+  if (!force) {
+    const cached = queuePageCache.get(page);
+    if (cached) return Promise.resolve(cached);
+  }
+  const existing = queuePageFlights.get(page);
+  if (existing) {
+    if (!force || existing.forced) return existing.promise;
+    const promise = existing.promise.catch(() => undefined).then(() => fetchQueuePage(page, scope));
+    const flight = { promise, forced: true };
+    queuePageFlights.set(page, flight);
+    void promise.finally(() => {
+      if (queuePageFlights.get(page) === flight) queuePageFlights.delete(page);
+    }).catch(() => undefined);
+    return promise;
+  }
+  const promise = fetchQueuePage(page, scope);
+  const flight = { promise, forced: force };
+  queuePageFlights.set(page, flight);
+  void promise.finally(() => {
+    if (queuePageFlights.get(page) === flight) queuePageFlights.delete(page);
+  }).catch(() => undefined);
+  return promise;
 };
 
 const clientIdentity = (client: ClientWorkFollowResponse) => {
@@ -60,6 +112,7 @@ export const mapClientTaskWithHistory = (
 export async function loadClientTaskQueue({
   valid = () => true,
   cycle: requestedCycle,
+  forceRefresh = false,
   onPage,
   onClients,
   onTaskUpdate,
@@ -75,6 +128,8 @@ export async function loadClientTaskQueue({
   const loaded: SalesTask[] = [];
   const seenClients = new Set<string>();
   const historyRequests = new Set<string>();
+  const historyQueue: Array<{ code: string; client: ClientWorkFollowResponse; index: number }> = [];
+  let historyWorkers = 0;
   let loadedClients = 0;
   let historyPending = 0;
   let historyCompleted = 0;
@@ -88,6 +143,47 @@ export async function loadClientTaskQueue({
   });
   let loadedPages = 0;
   const reportProgress = () => onProgress?.(progress());
+  const runHistoryWorkers = async () => {
+    historyWorkers += 1;
+    try {
+      while (historyQueue.length && current()) {
+        const job = historyQueue.shift()!;
+        try {
+          const cachedHistory = clientHistoryService.getSnapshot(job.code);
+          const history = !forceRefresh && !cachedHistory.stale && cachedHistory.history !== undefined
+            ? cachedHistory.history
+            : forceRefresh
+              ? await clientHistoryService.refreshForCycle(job.code, cycle, current)
+              : await clientHistoryService.refresh(job.code, false, current);
+          if (!current()) continue;
+          historyPending = Math.max(0, historyPending - 1);
+          historyCompleted += 1;
+          onTaskUpdate?.(mapClientTaskWithHistory(job.client, job.index, history));
+          onHistory?.(job.client, job.index, history);
+        } catch (error) {
+          if (!current()) continue;
+          historyPending = Math.max(0, historyPending - 1);
+          historyFailed += 1;
+          const cached = clientHistoryService.getSnapshot(job.code).history;
+          onTaskUpdate?.({ ...mapClientTaskWithHistory(job.client, job.index, cached ?? []),
+            ...(cached === undefined ? { remarks: 'Meeting history could not be loaded.', lastUpdated: 'Unavailable', nextFollowUpDate: 'Unavailable' } : {}),
+            historyLoadState: 'error', verificationPending: true });
+          onHistoryError?.(job.code, error);
+        }
+        completedSinceProgress += 1;
+        if (completedSinceProgress >= 20 || historyPending === 0) {
+          completedSinceProgress = 0;
+          reportProgress();
+        }
+      }
+    } finally {
+      historyWorkers -= 1;
+      while (historyWorkers < 6 && historyQueue.length && current()) void runHistoryWorkers();
+    }
+  };
+  const scheduleHistoryWorkers = () => {
+    while (historyWorkers < 6 && historyQueue.length && current()) void runHistoryWorkers();
+  };
   const publishPage = (pageNumber: number, page: Awaited<ReturnType<typeof clientWorkFollowApi.getQueue>>) => {
     const pageClients = (page.content ?? []).filter(client => {
       const identity = clientIdentity(client);
@@ -119,37 +215,15 @@ export async function loadClientTaskQueue({
     onPage?.(tasks, pageProgress);
     onClients?.(pageClients, pageProgress, loaded.length - tasks.length);
     reportProgress();
-    void clientHistoryService.loadManyProgressively(codes, cycle, current, (result: ClientHistoryLoadResult) => {
-      if (!current()) return;
-      historyPending = Math.max(0, historyPending - 1);
-      if ('history' in result) {
-        historyCompleted += 1;
-        const source = clientsByCode.get(result.code);
-        if (source) {
-          onTaskUpdate?.(mapClientTaskWithHistory(source.client, source.index, result.history));
-          onHistory?.(source.client, source.index, result.history);
-        }
-      } else {
-        historyFailed += 1;
-        const source = clientsByCode.get(result.code);
-        if (source) {
-          const cached = clientHistoryService.getSnapshot(result.code).history;
-          onTaskUpdate?.({ ...mapClientTaskWithHistory(source.client, source.index, cached ?? []),
-            ...(cached === undefined ? { remarks: 'Meeting history could not be loaded.', lastUpdated: 'Unavailable', nextFollowUpDate: 'Unavailable' } : {}),
-            historyLoadState: 'error', verificationPending: true });
-        }
-        onHistoryError?.(result.code, result.error);
-      }
-      completedSinceProgress += 1;
-      if (completedSinceProgress >= 20 || historyPending === 0) {
-        completedSinceProgress = 0;
-        reportProgress();
-      }
+    codes.forEach(code => {
+      const source = clientsByCode.get(code);
+      if (source) historyQueue.push({ code, ...source });
     });
+    scheduleHistoryWorkers();
   };
 
   if (!current()) throw new Error('Client history account changed or load cancelled.');
-  const firstPage = await clientWorkFollowApi.getQueue({ page: 0, size: 100 });
+  const firstPage = await getQueuePage(0, scope, forceRefresh);
   if (!current()) throw new Error('Client history account changed or load cancelled.');
   totalPages = Math.max(1, firstPage.totalPages ?? 1);
   totalClients = firstPage.totalElements ?? null;
@@ -174,9 +248,9 @@ export async function loadClientTaskQueue({
         return;
       }
       const pageNumber = nextPage++;
-      let page: Awaited<ReturnType<typeof clientWorkFollowApi.getQueue>>;
+      let page: ClientWorkFollowPage;
       try {
-        page = await clientWorkFollowApi.getQueue({ page: pageNumber, size: 100 });
+        page = await getQueuePage(pageNumber, scope, forceRefresh);
       } catch (error) {
         pageFailed = true;
         firstPageError = error;

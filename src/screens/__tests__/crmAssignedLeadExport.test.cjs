@@ -11,21 +11,17 @@ function load(file) {
 }
 const root=path.resolve(__dirname,'..');
 const {buildCrmAssignedLeadExport}=load(path.join(root,'crmAssignedLeadExport.ts'));
-const {digitsOnly,timeText}=load(path.join(root,'salesCoordinator/coordinatorUtils.ts'));
+const {ASSIGNED_LEAD_EXPORT_HEADERS,assignedLeadExportRows}=load(path.join(root,'salesCoordinator/assignedLeadExport.ts'));
 const {csvCell}=load(path.join(root,'salesCoordinator/coordinatorExport.ts'));
-const pc=fs.readFileSync(path.join(root,'SalesCoordinatorScreen.tsx'),'utf8');
-const start=pc.indexOf('      const assignedStamp =');
-const end=pc.indexOf('      const from = exportDatePart',start);
-const body=pc.slice(start,end).replace('      const allMeetings = meetings.length ? meetings : await meetingService.getAllMeetingRecords();','');
-const baseline=new Function('visibleAssignedLeads','allMeetings','pending','verified','digitsOnly','timeText',ts.transpileModule(body+';return {headers,rows};',{compilerOptions:{target:ts.ScriptTarget.ES2020}}).outputText);
+const baseline=(leads,meetings,pending,verified)=>({headers:ASSIGNED_LEAD_EXPORT_HEADERS,rows:assignedLeadExportRows(leads,meetings,pending,verified)});
 const serialize=result=>'\uFEFF'+[result.headers,...result.rows].map(row=>row.map(csvCell).join(',')).join('\r\n');
-test('CRM export is byte-for-byte equivalent to existing PC export for identical input',()=>{
+test('CRM export remains byte-for-byte equivalent to the dedicated PC export mapping',()=>{
  let seed=21; const rand=n=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed%n;};
  for(let run=0;run<100;run++){
   const leads=Array.from({length:20},(_,i)=>({uniqueLeadId:rand(3)?`U${i%12}`:undefined,leadId:i%8,leadCode:`L${i%8}`,clientName:`Client "${i}"`,mobileNumber:i%2?'98 12345':'9812345',assignedAt:['2026-10-01','2026-11-03',undefined][rand(3)],leadStatus:['CONVERTED','WORK_IN_PROGRESS',null][rand(3)],location:'Noida, Delhi',clinicAddress:'line1\nline2'}));
   const meetings=Array.from({length:30},(_,i)=>({id:i,meetingCode:`M${i%15}`,leadId:rand(8),leadCode:`L${rand(8)}`,mobileNumber:rand(2)?'9812345':undefined,meetingDate:['2026-11-01','2026-11-03',undefined][rand(3)],meetingTime:[{hour:10,minute:5},'09:00:00',null][rand(3)],updatedAt:rand(2)?'2026-11-03':undefined,remarks:'Remark, "quoted"',ageGroup:rand(2)?'AGE_25_35':undefined,profession:'DOCTOR',meetingTitle:'Intro Meeting'}));
   const pending=meetings.slice(0,5),verified=meetings.slice(3,12).map(m=>({...m,existingSip:'YES',remarks:'Verified remark'}));
-  const expected=baseline(leads,meetings,pending,verified,digitsOnly,timeText);
+  const expected=baseline(leads,meetings,pending,verified);
   const actual=buildCrmAssignedLeadExport(leads,meetings,pending,verified);
   assert.deepEqual(actual,expected);
   assert.equal(actual.headers.length,27);
@@ -34,7 +30,7 @@ test('CRM export is byte-for-byte equivalent to existing PC export for identical
 });
 test('unfiltered empty data and leads with no meetings preserve PC output',()=>{
  for(const leads of [[],[{clientName:'No meeting',leadId:1,mobileNumber:'00123'}]]){
-  assert.deepEqual(buildCrmAssignedLeadExport(leads,[],[],[]),baseline(leads,[],[],[],digitsOnly,timeText));
+  assert.deepEqual(buildCrmAssignedLeadExport(leads,[],[],[]),baseline(leads,[],[],[]));
  }
 });
 

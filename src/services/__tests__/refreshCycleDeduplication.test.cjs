@@ -159,7 +159,7 @@ test('meetings: submission from a logged-out account cannot refresh or populate 
 });
 
 
-for (const kind of ['leads', 'meetings']) test(`${kind}: complete output and error events match original services for RM SC SM`, async () => {
+for (const kind of ['leads', 'meetings']) test(`${kind}: final scoped output and errors match original services for RM SC SM`, async () => {
   const name = kind === 'leads' ? 'LeadSearchService' : 'MeetingService';
   const root = path.resolve(__dirname, '../../..');
   const originalSource = fs.readFileSync(path.join(__dirname, `fixtures/${name}.before.txt`), 'utf8');
@@ -178,10 +178,8 @@ for (const kind of ['leads', 'meetings']) test(`${kind}: complete output and err
       const histories = [];
       for (const service of [original, candidate]) {
         if (kind === 'leads') service.setAssignedUserScope(1, 'RM1'); else service.setEmployeeScope('RM1');
-        const events = [];
-        service.subscribe(state => events.push(structuredClone(state)));
         await (kind === 'leads' ? service.loadLeads() : service.loadMeetings());
-        histories.push({ state: service.getState(), events,
+        histories.push({ state: service.getState(),
           pending: kind === 'meetings' ? service.getPendingVerificationMeetings() : [],
           verified: kind === 'meetings' ? service.getVerifiedMeetings() : [] });
       }
@@ -190,7 +188,7 @@ for (const kind of ['leads', 'meetings']) test(`${kind}: complete output and err
   }
 });
 
-test('leads: same cycle shares all pages and publishes only after the complete response', async () => {
+test('leads: same cycle shares requests and publishes each page as it completes', async () => {
   const first = deferred(), second = deferred(), calls = [];
   const Service = loadClass('LeadSearchService', { search: request => {
     calls.push(request); return request.page === 0 ? first.promise : second.promise;
@@ -200,7 +198,7 @@ test('leads: same cycle shares all pages and publishes only after the complete r
   first.resolve({ data: { content: [record(1)], totalPages: 2 } });
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(calls.map(request => request.page), [0, 1]);
-  assert.equal(service.getState().isLoading, true); assert.deepEqual(service.getState().leads, []);
+  assert.equal(service.getState().isLoading, true); assert.deepEqual(service.getState().leads, [record(1)]);
   second.resolve({ data: { content: [record(1), record(2)], totalPages: 2 } });
   await Promise.all([a, b]);
   assert.deepEqual(service.getState().leads, [record(1), record(2)]);
@@ -218,4 +216,15 @@ test('meetings: optional verification failure retains existing fallback and retr
   const retry = h.load(token); assert.equal(h.cycles.length, 2);
   h.settle(1, [record(1)], [record(1)], []); await retry;
   assert.equal(h.records()[0].verificationStatus, 'PENDING');
+});
+
+test('meetings: conducted source remains independent when a lead is hidden from task state', async () => {
+  const h = harness('meetings');
+  const meetings = [record(1), record(2)];
+  const load = h.load(Symbol('initial'));
+  h.settle(0, meetings);
+  await load;
+  h.service.hideLeadFromTasks({ leadId: 1 });
+  assert.deepEqual(h.records(), [meetings[1]]);
+  assert.deepEqual(h.service.getConductedMeetingSource(), meetings);
 });

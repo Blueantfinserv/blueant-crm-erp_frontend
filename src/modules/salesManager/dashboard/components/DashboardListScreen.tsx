@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Icon } from 'react-native-paper';
 import { theme } from '../../../../theme/theme';
@@ -8,6 +8,10 @@ import type { MeetingResponse } from '../../../../types/meeting';
 import { leadSearchService } from '../../../../services/LeadSearchService';
 import { meetingService } from '../../../../services/MeetingService';
 import { clientCreatedService } from '../../../../services/ClientCreatedService';
+import { clientHistoryService } from '../../../../services/ClientHistoryService';
+import type { ClientMeetingResponse,ClientWorkFollowResponse } from '../../../../types/crm';
+import { loadClientTaskQueue } from '../../tasks/clientTaskData';
+import { filterConductedMeetingsForEmployee,getConductedMeetingPeriod,mergeConductedMeetings,toConductedMeetingListItem,upsertClientMeetingHistory } from './conductedMeetingList';
 import { isRemovedLead } from '../../tasks/taskMeetingSelectors';
 
 type Props = {
@@ -52,23 +56,6 @@ const toLeadListItem = (lead: LeadResponse, eventDate = lead.assignmentDate ?? l
       : 'Date unavailable',
     period: resolvedPeriod,
     dateValue: eventDate,
-  };
-};
-
-const toMeetingListItem = (meeting: MeetingResponse) => {
-  const period = getPeriod(meeting.meetingDate);
-  if (!period) return null;
-  const meetingDate = toCalendarDate(meeting.meetingDate);
-  return {
-    id: meeting.meetingCode ?? String(meeting.id),
-    primaryText: meeting.clientName ?? 'Unnamed client',
-    secondaryText: [meeting.meetingTitle, meeting.meetingMode].filter(Boolean).join(' · ') || 'Meeting',
-    dateLabel: meetingDate
-      ? new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(meetingDate)
-      : 'Date unavailable',
-    period,
-    dateValue: meeting.meetingDate,
-    remarks: meeting.remarks ?? meeting.meetingRemarks ?? meeting.discussion ?? 'No remarks available.',
   };
 };
 
@@ -123,6 +110,9 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
   const [showRemovedLeads, setShowRemovedLeads] = useState(false);
   const isLiveList = ['lead-collected-list', 'meeting-done-list', 'client-created-list'].includes(list.id);
   const [loading, setLoading] = useState(isLiveList);
+  const liveClientMeetingEntriesRef = useRef<Array<{ client: ClientWorkFollowResponse; history: ClientMeetingResponse[] }>>([]);
+  const meetingHistoryLoadingRef = useRef(false);
+  const meetingHistoryErrorRef = useRef<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const isMobile = width < 600;
   const isCompactHeader = width < 980;
@@ -132,6 +122,11 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
   useEffect(() => {
     if (!isLiveList) return;
     const refreshCycle = Symbol('dashboard list refresh');
+    let disposed = false;
+    if (list.id === 'meeting-done-list') liveClientMeetingEntriesRef.current = [];
+    let historyScope: number | null = null;
+    try { historyScope = clientHistoryService.captureScope(); } catch { historyScope = null; }
+    const validHistoryScope = () => !disposed && historyScope !== null && clientHistoryService.isCurrentScope(historyScope);
     const refresh = () => {
       const leads = leadSearchService.getState().leads;
       if (list.id === 'lead-collected-list') {
@@ -142,18 +137,36 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
         setLiveLeadItems(clientCreatedService.getState().leads
           .map((lead) => toLeadListItem(lead, getClientCreatedDate(lead))));
       } else {
-        setLiveLeadItems(meetingService.getVerifiedMeetings()
-          .filter((meeting) => meeting.verificationStatus === 'VERIFIED' || Boolean(meeting.verifiedBy))
-          .map(toMeetingListItem)
-          .filter((item) => item !== null));
+        const clientEntries = liveClientMeetingEntriesRef.current;
+        const clientNames = new Map(clientEntries.flatMap(({ client }) => (
+          client.clientCode ? [[client.clientCode, client.clientName ?? ''] as const] : []
+        )));
+        const clientMeetings = filterConductedMeetingsForEmployee(
+          clientEntries.flatMap(({ history }) => history),
+          employeeCode,
+        );
+        const prospectMeetings = filterConductedMeetingsForEmployee(meetingService.getConductedMeetingSource(), employeeCode);
+        const records = mergeConductedMeetings(prospectMeetings, clientMeetings);
+        const items = records.flatMap((meeting) => {
+          const period = getConductedMeetingPeriod(meeting.meetingDate);
+          const meetingDate = toCalendarDate(meeting.meetingDate);
+          if (!period || !meetingDate) return [];
+          return [toConductedMeetingListItem(
+            meeting,
+            period,
+            new Intl.DateTimeFormat('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }).format(meetingDate),
+            meeting.clientCode ? clientNames.get(meeting.clientCode) : undefined,
+          )];
+        });
+        setLiveLeadItems(items);
       }
       const stateError = list.id === 'meeting-done-list'
-        ? meetingService.getState().error
+        ? meetingService.getState().error ?? meetingHistoryErrorRef.current
         : list.id === 'client-created-list'
           ? clientCreatedService.getState().error
           : leadSearchService.getState().error;
       const stateLoading = list.id === 'meeting-done-list'
-        ? meetingService.getState().isLoading
+        ? meetingService.getState().isLoading || meetingHistoryLoadingRef.current
         : list.id === 'client-created-list'
           ? clientCreatedService.getState().isLoading
           : leadSearchService.getState().isLoading;
@@ -163,15 +176,64 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
     const unsubscribeLeads = leadSearchService.subscribe(refresh);
     const unsubscribeMeetings = meetingService.subscribe(refresh);
     const unsubscribeCreatedClients = clientCreatedService.subscribe(refresh);
+    const unsubscribeClientHistory = clientHistoryService.subscribe(refresh);
     refresh();
     if (list.id === 'meeting-done-list') {
-      if (!meetingService.getState().timestamp) void meetingService.loadMeetings(refreshCycle);
+      if (!meetingService.getState().timestamp && !meetingService.getState().isLoading) void meetingService.loadMeetings(refreshCycle);
+      meetingHistoryLoadingRef.current = true;
+      meetingHistoryErrorRef.current = null;
+      refresh();
+      void loadClientTaskQueue({
+        valid: validHistoryScope,
+        onHistory: (client, _index, history) => {
+          if (disposed) return;
+          liveClientMeetingEntriesRef.current = upsertClientMeetingHistory(liveClientMeetingEntriesRef.current, client, history);
+          refresh();
+        },
+        onClients: (clients) => {
+          if (disposed) return;
+          let updated = false;
+          clients.forEach(client => {
+            const code = client.clientCode?.trim();
+            if (!code) return;
+            const history = clientHistoryService.getSnapshot(code).history;
+            if (history === undefined) return;
+            liveClientMeetingEntriesRef.current = upsertClientMeetingHistory(liveClientMeetingEntriesRef.current, client, history);
+            updated = true;
+          });
+          if (updated) refresh();
+        },
+        onHistoryError: (_code, error) => {
+          if (!disposed) {
+            meetingHistoryErrorRef.current = error instanceof Error ? error.message : 'Client meeting history could not be loaded.';
+            refresh();
+          }
+        },
+        onProgress: (progress) => {
+          if (!disposed) {
+            meetingHistoryLoadingRef.current = !progress.queueComplete || progress.historyPending > 0;
+            refresh();
+          }
+        },
+      }).catch((error: unknown) => {
+        if (!disposed) {
+          meetingHistoryErrorRef.current = error instanceof Error ? error.message : 'Client meetings could not be loaded.';
+          meetingHistoryLoadingRef.current = false;
+          refresh();
+        }
+      });
     } else if (list.id === 'client-created-list') {
       void Promise.all([clientCreatedService.loadClients(userId, employeeCode), meetingService.loadMeetings(refreshCycle)]);
     } else if (!leadSearchService.getState().timestamp) {
       void leadSearchService.loadLeads(refreshCycle);
     }
-    return () => { unsubscribeLeads(); unsubscribeMeetings(); unsubscribeCreatedClients(); };
+    return () => {
+      disposed = true;
+      unsubscribeLeads();
+      unsubscribeMeetings();
+      unsubscribeCreatedClients();
+      unsubscribeClientHistory();
+    };
   }, [employeeCode, isLiveList, list.id, showRemovedLeads, userId]);
   const visibleItems = useMemo(() => {
     if (!showPeriodSelector) return liveLeadItems;
@@ -275,12 +337,12 @@ export function DashboardListScreen({ list, userName, userId, employeeCode, onBa
         </View>
 
         <View style={styles.rows}>
-          {loading ? (
+          {loading && !(list.id === 'meeting-done-list' && liveLeadItems.length) ? (
             <View style={styles.emptyState}>
               <ActivityIndicator size="small" color={list.accentColor} />
               <Text style={styles.emptyDescription}>Loading records...</Text>
             </View>
-          ) : loadError ? (
+          ) : loadError && !(list.id === 'meeting-done-list' && liveLeadItems.length) ? (
             <View style={styles.emptyState}>
               <Icon source="alert-circle-outline" size={30} color="#DC2626" />
               <Text style={styles.emptyTitle}>Records could not be loaded</Text>

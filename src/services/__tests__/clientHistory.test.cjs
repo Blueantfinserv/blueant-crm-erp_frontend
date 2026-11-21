@@ -428,14 +428,14 @@ test('client queue pages use bounded workers and preserve complete page ordering
 });
 
 
-test('50-request authorized configuration respects the cap and deduplicates 800 client codes', async () => {
+test('shared history default remains unchanged while independently configured batches stay bounded', async () => {
   const {ClientHistoryService,clientHistoryService}=serviceModule();
   assert.equal(clientHistoryService.concurrency,50);
   let active=0,peak=0,calls=0;
-  const store=new ClientHistoryService(async()=>{calls++;peak=Math.max(peak,++active);await flush();active--;return[];},{concurrency:50});store.setAccount('RM');
+  const store=new ClientHistoryService(async()=>{calls++;peak=Math.max(peak,++active);await flush();active--;return[];},{concurrency:6});store.setAccount('RM');
   const codes=Array.from({length:800},(_,i)=>`C${i}`);
-  const result=await store.loadMany([...codes,...codes],store.createReadCycle());
-  assert.equal(peak,50);assert.equal(calls,800);assert.equal(result.size,800);
+  const results=await store.loadMany([...codes,...codes],store.createReadCycle());
+  assert.equal(peak,6);assert.equal(calls,800);assert.equal(results.size,800);
 });
 
 

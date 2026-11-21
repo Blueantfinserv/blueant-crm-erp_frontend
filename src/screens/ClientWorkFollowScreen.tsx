@@ -48,7 +48,7 @@ const toClientTask = (client: ClientWorkFollowResponse, meetings: ClientMeetingR
   };
 };
 
-export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refreshKey = 0, active = true, historyCycle }: Props) {
+export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refreshKey = 0, historyCycle }: Props) {
   const { width } = useWindowDimensions();
   const cardWidth: `${number}%` = width >= 1200 ? '31%' : width >= 700 ? '48%' : '100%';
   const [clients, setClients] = useState<SalesTask[]>([]);
@@ -107,6 +107,7 @@ export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refresh
       await loadClientTaskQueue({
         valid: current,
         cycle,
+        forceRefresh: refresh || Boolean(cycle),
         onClients: (assignedClients, nextProgress, startIndex) => {
           if (!current()) return;
           const tasks = assignedClients.map((client, index): SalesTask => {
@@ -157,11 +158,6 @@ export function ClientWorkFollowScreen({ onUpdateMeeting, onOpenDetails, refresh
     const source = rawClients.current.get(code);
     if (source) queueHistoryUpdate(toClientTask(source.client, history, source.index));
   }), []);
-  const wasActive = useRef(active);
-  useEffect(() => {
-    if (active && !wasActive.current) void load(true);
-    wasActive.current = active;
-  }, [active, load]);
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return !needle ? clients : clients.filter((client) => [client.name, client.phone, client.clientCode, client.locationText].some((value) => String(value ?? '').toLowerCase().includes(needle)));
